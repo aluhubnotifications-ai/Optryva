@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router } from '@/lib/http'
 import { sb, must, j } from '@/db'
 import { requireAuth } from '@/lib/auth'
 import { rowToJob } from '@/lib/serialize'

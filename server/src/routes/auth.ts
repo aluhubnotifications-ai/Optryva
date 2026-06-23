@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router } from '@/lib/http'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { sb, must } from '@/db'

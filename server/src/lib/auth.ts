@@ -1,6 +1,6 @@
-import type { NextFunction, Request, Response } from 'express'
 import jwt from 'jsonwebtoken'
 import { sb, must } from '@/db'
+import type { ShimReq, ShimRes, Next } from '@/lib/http'
 
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET ?? 'dev-access-secret'
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET ?? 'dev-refresh-secret'
@@ -34,17 +34,8 @@ export function verifyRefresh(token: string): { id: string } | null {
   }
 }
 
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace Express {
-    interface Request {
-      user?: AuthUser
-    }
-  }
-}
-
 /** Require a valid access token; populates req.user. */
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+export function requireAuth(req: ShimReq, res: ShimRes, next: Next) {
   const header = req.headers.authorization
   const token = header?.startsWith('Bearer ') ? header.slice(7) : null
   const user = token ? verifyAccess(token) : null

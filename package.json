@@ -1,0 +1,16 @@
+{
+  "name": "optryva",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Optryva — AI job-matching platform, deployed as a single Cloudflare Worker (client static assets + /api).",
+  "scripts": {
+    "build": "npm --prefix client install && npm --prefix client run build",
+    "dev": "wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
+    "tail": "wrangler tail",
+    "cf-typegen": "wrangler types"
+  },
+  "devDependencies": {
+    "wrangler": "^4.42.0"
+  }
+}

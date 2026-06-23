@@ -26,7 +26,7 @@ const CAL_SCHEMA = {
   additionalProperties: false,
 } as const
 
-async function main() {
+export async function runCalibration() {
   if (!hasClaude()) { console.warn('ANTHROPIC_API_KEY not set — cannot calibrate.'); return }
 
   const apps = (must(await sb.from('applications').select('student_id, job_id, status')) as any[]) ?? []
@@ -88,4 +88,7 @@ async function main() {
   console.log('Addendum:', result.rubric_addendum)
 }
 
-main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1) })
+// CLI entry: `npm run calibrate`. The Worker imports runCalibration() directly,
+// so guard the auto-run to direct invocation (process.argv unset on Workers).
+const isCli = typeof process !== 'undefined' && Array.isArray(process.argv) && !!process.argv[1]?.includes('calibrate')
+if (isCli) runCalibration().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1) })
