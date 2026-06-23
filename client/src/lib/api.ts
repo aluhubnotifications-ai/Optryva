@@ -1,0 +1,911 @@
+import * as db from '@/data/mockDb'
+import { dmThreadId, seededScore, sleep, uid } from '@/lib/utils'
+import type {
+  AiMatch,
+  AppNotification,
+  Application,
+  ApplicationStatus,
+  HousingRequest,
+  JobListing,
+  Message,
+  Payment,
+  Profile,
+  Rating,
+  Resource,
+  SkillBooking,
+  StudentSkill,
+} from '@/types'
+
+// ----------------------------------------------------------------------------
+// Single API client. Today it operates on the in-memory mock DB. In Phase B,
+// each function body is swapped for a real `fetch(...)` call — call sites stay
+// identical. A small artificial latency makes the UI feel real.
+// ----------------------------------------------------------------------------
+
+const LATENCY = 220
+async function delay<T>(value: T, ms = LATENCY): Promise<T> {
+  await sleep(ms)
+  return value
+}
+
+/* ----------------------------- Auth (real backend) ----------------------------- */
+// The auth flow talks to the real Optryva server (Supabase-backed). Everything
+// else still runs on the mock DB until the full swap.
+export const API_BASE = ((import.meta as any).env?.VITE_API_URL as string | undefined) ?? 'http://localhost:4000/api'
+
+async function postJson(path: string, body: unknown) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data as any)?.error ?? `request_failed_${res.status}`)
+  return data
+}
+
+export const authApi = {
+  async login(email: string, password: string): Promise<{ accessToken: string; user: Profile }> {
+    return postJson('/auth/login', { email, password }) as Promise<{ accessToken: string; user: Profile }>
+  },
+  async register(payload: { full_name: string; email: string; password: string; user_type?: Profile['user_type'] }): Promise<{ accessToken: string; user: Profile }> {
+    return postJson('/auth/register', payload) as Promise<{ accessToken: string; user: Profile }>
+  },
+  async logout(): Promise<void> {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
+    } catch {
+      /* ignore network errors on logout */
+    }
+  },
+}
+
+// Access token for authenticated requests. Seeded from the persisted session so
+// it survives a page refresh; the session store keeps it in sync on login/logout.
+let authToken: string | null = null
+try {
+  const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('optryva-session-v2') : null
+  if (raw) authToken = JSON.parse(raw)?.state?.token ?? null
+} catch {
+  /* ignore */
+}
+export function setAuthToken(t: string | null) {
+  authToken = t
+}
+
+const SESSION_KEY = 'optryva-session-v2'
+
+/** Keep the persisted session token in sync (so a reload uses the fresh token). */
+function persistToken(token: string) {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY)
+    const parsed = raw ? JSON.parse(raw) : { state: {}, version: 0 }
+    parsed.state = { ...(parsed.state ?? {}), token }
+    localStorage.setItem(SESSION_KEY, JSON.stringify(parsed))
+  } catch {
+    /* ignore */
+  }
+}
+
+function rawFetch(path: string, init: RequestInit) {
+  return fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      ...(init.headers ?? {}),
+    },
+    credentials: 'include',
+  })
+}
+
+// Single-flight access-token refresh using the httpOnly refresh cookie.
+let refreshing: Promise<boolean> | null = null
+function refreshAccessToken(): Promise<boolean> {
+  if (!refreshing) {
+    refreshing = (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/auth/refresh`, { method: 'POST', credentials: 'include' })
+        if (!res.ok) return false
+        const data = await res.json().catch(() => ({}))
+        if (!(data as any)?.accessToken) return false
+        setAuthToken((data as any).accessToken)
+        persistToken((data as any).accessToken)
+        return true
+      } catch {
+        return false
+      } finally {
+        refreshing = null
+      }
+    })()
+  }
+  return refreshing
+}
+
+function handleAuthFailure() {
+  setAuthToken(null)
+  try {
+    localStorage.removeItem(SESSION_KEY)
+  } catch {
+    /* ignore */
+  }
+  if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+    window.location.href = '/login'
+  }
+}
+
+/** Authenticated fetch against the real server (Bearer token + cookies).
+ *  On a 401, transparently refresh the access token once and retry. */
+async function apiFetch(path: string, init: RequestInit = {}) {
+  let res = await rawFetch(path, init)
+  if (res.status === 401) {
+    const ok = await refreshAccessToken()
+    if (ok) {
+      res = await rawFetch(path, init)
+    } else {
+      handleAuthFailure()
+      throw new Error('unauthorized')
+    }
+  }
+  if (res.status === 204) return null
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data as any)?.error ?? `request_failed_${res.status}`)
+  return data
+}
+
+/* ----------------------------- Profiles (real backend) ----------------------------- */
+// Profiles — students, companies, and schools — come from the Supabase-backed server.
+export const profilesApi = {
+  async get(id: string): Promise<Profile | null> {
+    try {
+      return (await apiFetch(`/profiles/${id}`)) as Profile
+    } catch {
+      return null
+    }
+  },
+  async update(id: string, patch: Partial<Profile>): Promise<Profile | null> {
+    return (await apiFetch(`/profiles/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })) as Profile
+  },
+  async list(type?: Profile['user_type']): Promise<Profile[]> {
+    return (await apiFetch(`/profiles${type ? `?type=${encodeURIComponent(type)}` : ''}`)) as Profile[]
+  },
+}
+
+/* ----------------------------- Jobs ----------------------------- */
+// Jobs now come from the Supabase-backed server. The server enforces year/school
+// visibility for the authenticated viewer, so `list()` ignores its argument
+// (kept for call-site compatibility).
+export const jobsApi = {
+  async list(_viewer?: Profile | null): Promise<JobListing[]> {
+    return (await apiFetch('/jobs')) as JobListing[]
+  },
+  async get(id: string): Promise<JobListing | null> {
+    try {
+      return (await apiFetch(`/jobs/${id}`)) as JobListing
+    } catch {
+      return null
+    }
+  },
+  async byCompany(companyId: string): Promise<JobListing[]> {
+    return (await apiFetch(`/jobs/company/${companyId}`)) as JobListing[]
+  },
+  async create(job: Omit<JobListing, 'id' | 'created_at'>): Promise<JobListing> {
+    return (await apiFetch('/jobs', { method: 'POST', body: JSON.stringify(job) })) as JobListing
+  },
+  async update(id: string, patch: Partial<JobListing>): Promise<JobListing | null> {
+    return (await apiFetch(`/jobs/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })) as JobListing
+  },
+  async remove(id: string): Promise<boolean> {
+    await apiFetch(`/jobs/${id}`, { method: 'DELETE' })
+    return true
+  },
+}
+
+/* ----------------------------- Applications (real backend) ----------------------------- */
+// Talks to the Supabase-backed server. Creating an application notifies the
+// company; a status change notifies the student (server-side, in `notify`).
+export const applicationsApi = {
+  async byStudent(_studentId: string): Promise<Application[]> {
+    return (await apiFetch('/applications/mine')) as Application[]
+  },
+  async byJob(jobId: string): Promise<Application[]> {
+    return (await apiFetch(`/applications/job/${jobId}`)) as Application[]
+  },
+  async byCompany(_companyId: string): Promise<Application[]> {
+    return (await apiFetch('/applications/company')) as Application[]
+  },
+  async get(id: string): Promise<Application | null> {
+    try {
+      return (await apiFetch(`/applications/${id}`)) as Application
+    } catch {
+      return null
+    }
+  },
+  async create(app: Omit<Application, 'id' | 'created_at' | 'timeline' | 'status'>): Promise<Application> {
+    return (await apiFetch('/applications', { method: 'POST', body: JSON.stringify(app) })) as Application
+  },
+  async setStatus(id: string, status: ApplicationStatus): Promise<Application | null> {
+    return (await apiFetch(`/applications/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })) as Application
+  },
+  async remove(id: string): Promise<boolean> {
+    await apiFetch(`/applications/${id}`, { method: 'DELETE' })
+    return true
+  },
+}
+
+/* ----------------------------- Messaging ----------------------------- */
+export interface Conversation {
+  thread_id: string
+  scope: 'application' | 'dm'
+  counterpartId: string
+  jobTitle?: string
+  lastBody?: string
+  lastAt?: string
+  unread: number
+}
+
+// Messaging — real backend (Supabase). Application + DM threads. Near real-time
+// via short-interval polling in the Messages page.
+export const messagesApi = {
+  async conversations(_userId: string): Promise<Conversation[]> {
+    return (await apiFetch('/messages/conversations')) as Conversation[]
+  },
+  async markThreadRead(threadId: string, _userId: string) {
+    await apiFetch(`/messages/thread/${threadId}/read`, { method: 'POST' })
+    return true
+  },
+  async thread(threadId: string): Promise<Message[]> {
+    return (await apiFetch(`/messages/thread/${threadId}`)) as Message[]
+  },
+  async send(msg: Omit<Message, 'id' | 'created_at' | 'reactions' | 'read'>) {
+    return apiFetch('/messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        thread_id: msg.thread_id,
+        scope: msg.scope,
+        kind: msg.kind ?? 'text',
+        body: msg.body,
+        attachment: (msg as { attachment?: unknown }).attachment,
+      }),
+    })
+  },
+  async react(id: string, emoji: string, _userId: string) {
+    await apiFetch(`/messages/${id}/react`, { method: 'POST', body: JSON.stringify({ emoji }) })
+    return true
+  },
+  async remove(id: string) {
+    await apiFetch(`/messages/${id}`, { method: 'DELETE' })
+    return true
+  },
+  /** Open (or get the id of) a DM thread with another user. */
+  async startDm(otherId: string): Promise<string> {
+    const r = (await apiFetch(`/messages/dm/${otherId}`, { method: 'POST' })) as { thread_id: string }
+    return r.thread_id
+  },
+}
+
+/* ----------------------------- Skills ----------------------------- */
+export const skillsApi = {
+  async list() {
+    return delay(db.studentSkills)
+  },
+  async byOwner(ownerId: string) {
+    return delay(db.studentSkills.filter((s) => s.owner_id === ownerId))
+  },
+  async create(skill: Omit<StudentSkill, 'id' | 'sessions' | 'rating' | 'rating_count' | 'verified'>) {
+    const created: StudentSkill = {
+      ...skill,
+      id: uid('sk'),
+      verified: false,
+      sessions: 0,
+      rating: 0,
+      rating_count: 0,
+    }
+    db.studentSkills.unshift(created)
+    return delay(created)
+  },
+  async book(booking: Omit<SkillBooking, 'id' | 'created_at'>, bookerName: string) {
+    const created: SkillBooking = { ...booking, id: uid('bk'), created_at: new Date().toISOString() }
+    db.skillBookings.push(created)
+    const skill = db.studentSkills.find((s) => s.id === booking.skill_id)
+    if (skill) {
+      skill.sessions += 1
+      const thread = dmThreadId(booking.booker_id, skill.owner_id)
+      db.messages.push({
+        id: uid('m'),
+        thread_id: thread,
+        scope: 'dm',
+        sender_id: booking.booker_id,
+        kind: 'text',
+        body: `📅 Session request for "${skill.skill}" — preferred ${new Date(
+          booking.preferred_at,
+        ).toLocaleString()}.${booking.message ? `\n\n${booking.message}` : ''}`,
+        reactions: {},
+        read: false,
+        created_at: new Date().toISOString(),
+      })
+      db.notifications.unshift({
+        id: uid('n'),
+        user_id: skill.owner_id,
+        type: 'booking',
+        title: 'New session request',
+        body: `${bookerName} requested a "${skill.skill}" session.`,
+        read: false,
+        ref_id: thread,
+        created_at: new Date().toISOString(),
+      })
+      return delay({ booking: created, threadId: thread })
+    }
+    return delay({ booking: created, threadId: '' })
+  },
+}
+
+/* ----------------------------- Resources ----------------------------- */
+export const resourcesApi = {
+  async list() {
+    return delay(db.resources)
+  },
+  async create(r: Omit<Resource, 'id' | 'created_at' | 'sales'>) {
+    const created: Resource = { ...r, id: uid('r'), sales: 0, created_at: new Date().toISOString() }
+    db.resources.unshift(created)
+    return delay(created)
+  },
+}
+
+/* ----------------------------- Housing ----------------------------- */
+export const housingApi = {
+  async list() {
+    return delay(
+      db.housing
+        .filter((h) => h.status === 'active')
+        .sort((a, b) => Number(b.urgent) - Number(a.urgent)),
+    )
+  },
+  async create(h: Omit<HousingRequest, 'id' | 'created_at' | 'status'>) {
+    const created: HousingRequest = {
+      ...h,
+      id: uid('h'),
+      status: 'active',
+      created_at: new Date().toISOString(),
+    }
+    db.housing.unshift(created)
+    db.notifications.unshift({
+      id: uid('n'),
+      user_id: h.poster_id,
+      type: 'housing',
+      title: 'Housing post published',
+      body: `Your post "${h.title}" is live.`,
+      read: false,
+      ref_id: created.id,
+      created_at: new Date().toISOString(),
+    })
+    return delay(created)
+  },
+}
+
+/* ----------------------------- Guides ----------------------------- */
+export const guidesApi = {
+  async list() {
+    return delay(db.relocationGuides)
+  },
+}
+
+/* ----------------------------- Follows & Ratings ----------------------------- */
+// Follows — real backend. A student's follows live in `company_follows`, so the
+// server can notify followers when a company they follow posts a new role.
+export const followsApi = {
+  async forStudent(_studentId: string): Promise<{ company_id: string; email_notifications: boolean }[]> {
+    return (await apiFetch('/social/follows/mine')) as { company_id: string; email_notifications: boolean }[]
+  },
+  async isFollowing(studentId: string, companyId: string): Promise<boolean> {
+    const mine = await this.forStudent(studentId)
+    return mine.some((f) => f.company_id === companyId)
+  },
+  async toggle(_studentId: string, companyId: string): Promise<boolean> {
+    const r = (await apiFetch(`/social/follows/${companyId}/toggle`, { method: 'POST' })) as { following: boolean }
+    return r.following
+  },
+  async followerCount(companyId: string): Promise<number> {
+    const r = (await apiFetch(`/social/follows/count/${companyId}`)) as { count: number }
+    return r.count ?? 0
+  },
+  async setEmailPref(_studentId: string, companyId: string, on: boolean): Promise<boolean> {
+    await apiFetch(`/social/follows/${companyId}/email`, { method: 'POST', body: JSON.stringify({ on }) })
+    return true
+  },
+}
+
+export const ratingsApi = {
+  async forRef(refType: Rating['ref_type'], refId: string): Promise<Rating[]> {
+    return (await apiFetch(`/social/ratings/${refType}/${refId}`)) as Rating[]
+  },
+  async rate(r: Omit<Rating, 'id' | 'created_at'>): Promise<{ id: string }> {
+    return (await apiFetch('/social/ratings', {
+      method: 'POST',
+      body: JSON.stringify({ ref_type: r.ref_type, ref_id: r.ref_id, stars: r.stars, comment: r.comment }),
+    })) as { id: string }
+  },
+}
+
+/* ----------------------------- Notifications (real backend) ----------------------------- */
+export const notificationsApi = {
+  async forUser(_userId: string): Promise<AppNotification[]> {
+    return (await apiFetch('/notifications')) as AppNotification[]
+  },
+  async markRead(id: string): Promise<boolean> {
+    await apiFetch(`/notifications/${id}/read`, { method: 'POST' })
+    return true
+  },
+  async markAllRead(_userId: string): Promise<boolean> {
+    await apiFetch('/notifications/read-all', { method: 'POST' })
+    return true
+  },
+}
+
+/* ----------------------------- Payments ----------------------------- */
+export const paymentsApi = {
+  async forUser(userId: string) {
+    return delay(db.payments.filter((p) => p.user_id === userId))
+  },
+  async checkout(p: Omit<Payment, 'id' | 'created_at' | 'status'>) {
+    // Mock Stripe-style checkout: always succeeds after a short delay.
+    const created: Payment = {
+      ...p,
+      id: uid('p'),
+      status: 'paid',
+      created_at: new Date().toISOString(),
+    }
+    db.payments.unshift(created)
+    db.notifications.unshift({
+      id: uid('n'),
+      user_id: p.user_id,
+      type: 'payment',
+      title: 'Payment successful',
+      body: `${p.label} — paid.`,
+      read: false,
+      created_at: new Date().toISOString(),
+    })
+    return delay(created, 1400)
+  },
+}
+
+/* ----------------------------- AI — offline TEXT fallback ----------------------------- */
+// Canned text fallbacks for the NON-scoring AI features (coach, research, chat,
+// CV tips) so those still respond when the server is unreachable. There is NO
+// local match scoring — matching is Claude-only (server). When the server can't
+// score, match surfaces return null / empty rather than a fabricated number.
+const mockAi = {
+  async coach(student: Profile, job: JobListing) {
+    const draft = `As a ${student.year ? `Year ${student.year} ` : ''}${student.major ?? 'student'}, I'm excited to apply for the ${job.title} role at the company behind this listing. My hands-on work with ${(student.skills ?? []).slice(0, 3).join(', ')} maps directly to what you're building. In a recent project I shipped a production feature end-to-end, and I'd bring that same ownership here. I'm drawn to this role because it sits at the intersection of ${job.type} and real impact — exactly where I want to grow.`
+    const critique = {
+      strengths: ['Concrete skills named', 'Clear motivation', 'First-person and specific'],
+      weaknesses: ['Opening is slightly generic', 'Could quantify the project impact'],
+      missing: ['A metric or outcome from the named project'],
+      verdict: 'refine' as const,
+    }
+    const final = `I'm a ${student.year ? `Year ${student.year} ` : ''}${student.major ?? 'student'} who ships. The ${job.title} role stood out because it pairs ${job.tags.slice(0, 2).join(' and ')} with real ownership — my favourite combination. Recently I built and shipped a production feature used by thousands of users, working across ${(student.skills ?? []).slice(0, 3).join(', ')}. I move fast, sweat the details, and learn relentlessly. I'd love to bring that energy to your team.`
+    return delay({ draft, critique, final }, 1600)
+  },
+
+  async companyResearch(companyName: string, role?: string) {
+    return delay(
+      {
+        overview: `${companyName} is a fast-growing company in its space, building products with real traction across multiple markets. It has a reputation for shipping quickly and investing in early-career talent.`,
+        culture: `Interns and new hires report genuine ownership, supportive mentorship, and an async, outcomes-focused environment. Expect to contribute to real work early.`,
+        opportunity: `For an ambitious early-career candidate, ${companyName} offers strong learning velocity, exposure to production systems, and a global, diverse team.`,
+        red_flags: `As with any high-growth company, scope can shift quickly and processes are still maturing — clarify expectations and review cadence up front.`,
+        questions: [
+          `What does success look like in the first 90 days of ${role ?? 'this role'}?`,
+          `How is feedback and mentorship structured for early-career hires?`,
+          `What's the team's approach to work-life balance during crunch periods?`,
+        ],
+        verdict: `A strong fit for a self-driven learner who wants real impact early — go for it.`,
+      },
+      900,
+    )
+  },
+
+  /**
+   * AI sourcing engine (Accio-style): the user describes in plain language what they
+   * want, and the AI "finds" matching opportunities from the catalog with reasoning.
+   */
+  async sourceOpportunities(query: string, jobs: JobListing[], student: Profile) {
+    const q = query.toLowerCase()
+    const wantRemote = /\bremote\b|work from home|anywhere/.test(q)
+    const wantPaid = /\bpaid\b|stipend|salary|well[- ]?paid/.test(q)
+    const wantVisa = /visa|sponsor|relocat/.test(q)
+    let wantType: string | null = null
+    if (/intern/.test(q)) wantType = 'Internship'
+    else if (/full[- ]?time|new grad|graduate role|permanent/.test(q)) wantType = 'Full-time'
+    else if (/fellow/.test(q)) wantType = 'Fellowship'
+    else if (/part[- ]?time/.test(q)) wantType = 'Part-time'
+
+    // pay threshold like "$2000", "2k", "over 2000"
+    let minPay = 0
+    const payMatch = q.match(/(\d[\d,\.]*)\s*k|\$\s*(\d[\d,\.]*)/)
+    if (payMatch) {
+      const raw = payMatch[1] ?? payMatch[2] ?? ''
+      const n = parseFloat(raw.replace(/,/g, ''))
+      minPay = /k/.test(payMatch[0]) ? n * 1000 : n
+    }
+
+    // country detection from the jobs' own countries
+    const countries = Array.from(new Set(jobs.map((j) => j.country)))
+    const wantCountry = countries.find((c) => c !== 'Remote' && q.includes(c.toLowerCase())) ?? null
+
+    // field detection
+    const fields = ['Software Engineering', 'Data', 'Design', 'Marketing', 'Operations', 'Finance', 'Product']
+    const fieldHints: Record<string, RegExp> = {
+      'Software Engineering': /software|developer|engineer|frontend|backend|coding|web|mobile/,
+      Data: /data|machine learning|\bml\b|analyt|scientist/,
+      Design: /design|ux|ui|figma/,
+      Marketing: /marketing|content|social|growth|community/,
+      Operations: /operations|ops|process/,
+      Finance: /finance|fp&a|account|investment/,
+      Product: /product|\bpm\b|roadmap/,
+    }
+    const wantFields = fields.filter((f) => fieldHints[f]?.test(q))
+
+    function payNumber(pay?: string) {
+      if (!pay) return 0
+      const m = pay.replace(/,/g, '').match(/(\d[\d.]*)\s*k/i) || pay.replace(/,/g, '').match(/(\d[\d.]*)/)
+      if (!m) return 0
+      const n = parseFloat(m[1])
+      return /k/i.test(pay) ? n * 1000 : n
+    }
+
+    const scored = jobs
+      .map((job) => {
+        const why: string[] = []
+        let score = seededScore(`${student.id}:${job.id}`, 38, 97) / 2 // base affinity
+        let hardFail = false
+
+        if (wantRemote) {
+          if (job.remote) { score += 18; why.push('Remote ✓') } else hardFail = true
+        }
+        if (wantType) {
+          if (job.listing_type === wantType) { score += 16; why.push(`${wantType} ✓`) } else hardFail = true
+        }
+        if (wantCountry) {
+          if (job.country === wantCountry) { score += 16; why.push(`${wantCountry} ✓`) } else hardFail = true
+        }
+        if (wantFields.length) {
+          if (wantFields.includes(job.type)) { score += 16; why.push(`${job.type} role`) } else hardFail = true
+        }
+        if (minPay > 0) {
+          if (payNumber(job.pay) >= minPay) { score += 12; why.push('Meets your pay bar ✓') } else if (payNumber(job.pay) > 0) hardFail = true
+        }
+        if ((wantPaid || wantVisa) && job.remote) why.push(wantVisa ? 'Remote — easier across borders' : 'Paid role')
+
+        // skill overlap bonus + reasoning
+        const overlap = job.tags.filter((t) =>
+          (student.skills ?? []).some((s) => s.toLowerCase().includes(t.toLowerCase()) || t.toLowerCase().includes(s.toLowerCase())),
+        )
+        if (overlap.length) {
+          score += overlap.length * 4
+          why.push(`Uses your ${overlap.slice(0, 2).join(' & ')}`)
+        }
+        return { job, why, score: Math.min(99, Math.round(score)), hardFail }
+      })
+      // If the user stated hard constraints, drop the misses; otherwise keep & rank all.
+      .filter((r) => !r.hardFail)
+      .sort((a, b) => b.score - a.score)
+
+    const results = scored.slice(0, 8)
+    const bits: string[] = []
+    if (wantType) bits.push(wantType.toLowerCase() + (wantType === 'Internship' ? 's' : ' roles'))
+    else bits.push('opportunities')
+    if (wantFields.length) bits.push(`in ${wantFields.join('/')}`)
+    if (wantRemote) bits.push('that are remote')
+    if (wantCountry) bits.push(`in ${wantCountry}`)
+    if (minPay > 0) bits.push(`paying around ${minPay >= 1000 ? `$${minPay / 1000}k+` : `$${minPay}+`}`)
+
+    const summary =
+      results.length === 0
+        ? `I couldn't find a perfect match for that. Try relaxing one constraint — for example, allow remote roles or a different country.`
+        : `I found ${results.length} ${bits.join(' ')} for you, ranked by fit. The top result aligns best with your profile${
+            (student.skills ?? []).length ? ` and skills like ${(student.skills ?? []).slice(0, 2).join(', ')}` : ''
+          }.`
+
+    return delay({ summary, results }, 1300)
+  },
+
+  /** User describes what they want researched about a role/company → AI answers. */
+  async researchAsk(companyName: string, role: string | undefined, question: string) {
+    const q = question.trim()
+    const lower = q.toLowerCase()
+    let answer: string
+    if (/visa|sponsor|relocat|work permit/.test(lower)) {
+      answer = `${companyName} hires across multiple countries and ${role ? `the ${role} role ` : 'many roles '}can be remote-friendly. For visa sponsorship or relocation support, confirm directly — early-career roles vary. Ask in your first call: "Is this position open to international candidates, and do you support visas/relocation?"`
+    } else if (/salary|pay|compensation|money|stipend/.test(lower)) {
+      answer = `Based on the listing and market data, the pay for ${role ?? 'this role'} at ${companyName} is competitive for an early-career candidate in this region. There's usually room to negotiate on start date, learning budget, and remote stipend. Anchor your ask to the value you'll deliver in the first 90 days.`
+    } else if (/interview|process|hire|round/.test(lower)) {
+      answer = `A typical process at a company like ${companyName} is: (1) application screen, (2) a recruiter chat, (3) a technical or portfolio round tied to ${role ?? 'the role'}, and (4) a values/team-fit conversation. Prepare 2–3 concrete stories that show ownership and impact.`
+    } else if (/culture|work life|balance|remote|team/.test(lower)) {
+      answer = `${companyName} leans toward an outcomes-focused, collaborative culture with real ownership early on. Expect autonomy paired with mentorship. To gauge balance, ask how the team handles deadlines and what a normal week looks like for ${role ?? 'this role'}.`
+    } else if (/growth|career|promot|learn/.test(lower)) {
+      answer = `For an ambitious early-career candidate, ${companyName} offers strong learning velocity and exposure to real production work. Growth tends to follow impact — ask about how progression and feedback work for ${role ?? 'this role'} in the first year.`
+    } else {
+      answer = `Here's what I found on "${q}" for ${role ?? 'this role'} at ${companyName}: it's a strong, fast-moving environment where early-career talent gets real responsibility. ${companyName} values self-driven people who ship. To go deeper, raise this exact question with the hiring manager — and tie your follow-up to your own goals.`
+    }
+    return delay(answer, 1100)
+  },
+
+  async chat(_message: string) {
+    return delay(
+      `Here's how I'd approach that:\n\n1. **Sharpen your résumé** around measurable outcomes.\n2. **Target roles** that match your top skills.\n3. **Prepare stories** using the STAR format.\n\n| Focus | Why it matters |\n|---|---|\n| Projects | Proof you can ship |\n| Metrics | Show impact |\n| Fit | Tailor every application |\n\nWant me to draft a 30-day prep plan?`,
+      1100,
+    )
+  },
+
+  /* ---- Career Compass (multi-stage counselor) ---- */
+  compassQuestions: [
+    'To start: what kind of problem or impact do you most want to work on?',
+    'What environment helps you do your best work — big team, small startup, remote, on-site?',
+    "Tell me about a project or moment you're genuinely proud of.",
+    'Which skills do you most want to build over the next year?',
+    'Any real-life constraints I should factor in — location, language, schedule?',
+  ] as string[],
+
+  async compassInterview(answers: string[]) {
+    const idx = answers.length
+    const reactions = [
+      'That gives me a strong signal.',
+      'Love that — it tells me a lot about how you work.',
+      'Great, noted.',
+      'Helpful, thank you.',
+    ]
+    if (idx >= this.compassQuestions.length) {
+      return delay({ done: true as const, message: "Perfect — I have enough to suggest some directions. Let me pull together your matches." })
+    }
+    const lead = idx === 0 ? "Let's find a path that fits you. " : `${reactions[(idx - 1) % reactions.length]} `
+    return delay({ done: false as const, message: lead + this.compassQuestions[idx], question: this.compassQuestions[idx] })
+  },
+
+  async compassRecommend(answers: string[], jobs: JobListing[], student: Profile) {
+    const scored = jobs
+      .map((job) => {
+        const score = seededScore(`${student.id}:${job.id}`, 38, 97)
+        const matched = job.tags.filter((t) => (student.skills ?? []).some((s) => s.toLowerCase().includes(t.toLowerCase()) || t.toLowerCase().includes(s.toLowerCase())))
+        return { job, score, matched }
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+
+    const recs = scored.map(({ job, score, matched }) => {
+      const missing = job.tags.filter((t) => !matched.includes(t))
+      return {
+        job,
+        score,
+        why: `This fits what you told me${answers[0] ? ` about wanting to work on ${answers[0].toLowerCase().slice(0, 60)}` : ''}. Your background${matched.length ? ` in ${matched.slice(0, 2).join(', ')}` : ''} lines up well with this ${job.listing_type.toLowerCase()}.`,
+        stretch: missing.length ? `You'd stretch into ${missing.slice(0, 2).join(' and ')} — a healthy challenge.` : `You'd deepen your existing strengths here.`,
+        actions: [
+          `Tailor your CV to highlight ${matched[0] ?? job.type} for this role.`,
+          `Build or polish one small project using ${missing[0] ?? job.tags[0] ?? 'a core skill'}.`,
+          `Use AI Research on this role, then message someone on the team.`,
+        ],
+      }
+    })
+
+    const intro =
+      recs.length === 0
+        ? "I couldn't find strong matches right now — try broadening your profile or adding skills."
+        : `Based on our conversation, here are my top ${recs.length} recommendations, ranked by fit. I prioritized roles that match both what you said and your profile.`
+    return delay({ intro, recs }, 1500)
+  },
+
+  async compassPrep(job: JobListing, student: Profile) {
+    const matched = job.tags.filter((t) => (student.skills ?? []).some((s) => s.toLowerCase().includes(t.toLowerCase()) || t.toLowerCase().includes(s.toLowerCase())))
+    const missing = job.tags.filter((t) => !matched.includes(t))
+    return delay(
+      {
+        fit: `You're a solid candidate for ${job.title}: your strengths${matched.length ? ` in ${matched.join(', ')}` : ''} are directly relevant.`,
+        gap: missing.length ? `The main gap is ${missing.slice(0, 2).join(' and ')} — address it head-on.` : 'No major gaps — focus on storytelling and polish.',
+        skills: (missing.length ? missing : job.tags).slice(0, 4).map((t) => `Brush up on ${t}`),
+        talkingPoints: [
+          `I've worked hands-on with ${(student.skills ?? [job.type]).slice(0, 2).join(' and ')}.`,
+          `I'm drawn to this role because it combines ${job.tags.slice(0, 2).join(' and ')}.`,
+          `As a ${student.major ?? 'student'}, I learn fast and take ownership.`,
+        ],
+        questions: [
+          `What does success look like in the first 90 days of ${job.title}?`,
+          'How is feedback and mentorship structured here?',
+          `What's the team's tech/tooling for ${job.type}?`,
+          'What are the biggest challenges the team is facing right now?',
+        ],
+        actions: [
+          `Do a 2-hour refresher on ${missing[0] ?? job.tags[0] ?? job.type}.`,
+          'Rewrite your top CV bullet to show measurable impact.',
+          'Prepare 2 STAR stories about ownership and teamwork.',
+        ],
+      },
+      1300,
+    )
+  },
+
+  async cvTips(_student: Profile) {
+    return delay(
+      [
+        'Lead each bullet with a strong verb and a measurable result.',
+        'Move your most relevant project to the top of the page.',
+        'Add the specific tools/frameworks recruiters search for.',
+        'Cut anything older than your most recent, most relevant work.',
+        'Keep it to one page — every line should earn its place.',
+        'Add links: GitHub, portfolio, and LinkedIn in the header.',
+      ],
+      900,
+    )
+  },
+}
+
+/* ----------------------------- AI — real backend (Claude), mock fallback ----------------------------- */
+export interface CoachResult {
+  draft: string
+  critique: { strengths: string[]; weaknesses: string[]; missing: string[]; verdict: string }
+  final: string
+}
+export interface PrepResult {
+  fit: string
+  gap: string
+  skills: string[]
+  talkingPoints: string[]
+  questions: string[]
+  actions: string[]
+}
+export interface CompanyResearch {
+  overview: string
+  culture: string
+  opportunity: string
+  red_flags: string
+  questions: string[]
+  verdict: string
+}
+export interface CompassRec {
+  job: JobListing
+  score: number
+  why: string
+  stretch: string
+  actions: string[]
+}
+export interface InsightsData {
+  readiness: number
+  total: number
+  distribution: { excellent: number; strong: number; stretch: number; weak: number }
+  gaps: { name: string; count: number }[]
+  strengths: { name: string; count: number }[]
+  demand: { name: string; count: number }[]
+  topMatches: { job_id: string; title: string; company_id: string; listing_type: string; location: string; score: number }[]
+  doNext: string[]
+}
+
+async function aiPost(path: string, body: unknown) {
+  return apiFetch(path, { method: 'POST', body: JSON.stringify(body) })
+}
+
+const EMPTY_INSIGHTS: InsightsData = {
+  readiness: 0, total: 0,
+  distribution: { excellent: 0, strong: 0, stretch: 0, weak: 0 },
+  gaps: [], strengths: [], demand: [], topMatches: [], doNext: [],
+}
+
+export const aiApi = {
+  compassQuestions: mockAi.compassQuestions,
+
+  /** Per-job match — Claude-only (server). Returns null when the server can't
+   *  score it (no API key / unreachable). No local fabricated fallback. */
+  async match(_student: Profile, job: JobListing): Promise<AiMatch | null> {
+    try {
+      return (await apiFetch(`/ai/match/${job.id}`)) as AiMatch
+    } catch {
+      return null
+    }
+  },
+
+  /** All matches in ONE request (server scores every visible job). Empty when
+   *  the server is unreachable — there is no local engine. */
+  async matchAll(_student: Profile, _jobs: JobListing[]): Promise<AiMatch[]> {
+    try {
+      return (await apiFetch('/ai/matches')) as AiMatch[]
+    } catch {
+      return []
+    }
+  },
+
+  /** Aggregate insights (skill gaps, demand, do-next) — server-computed. */
+  async insights(_jobs: JobListing[], _student: Profile): Promise<InsightsData> {
+    try {
+      return (await apiFetch('/ai/insights')) as InsightsData
+    } catch {
+      return EMPTY_INSIGHTS
+    }
+  },
+
+  async coach(student: Profile, job: JobListing): Promise<CoachResult> {
+    try {
+      return (await aiPost('/ai/coach', { job_id: job.id })) as CoachResult
+    } catch {
+      return mockAi.coach(student, job)
+    }
+  },
+
+  async companyResearch(companyName: string, role?: string): Promise<CompanyResearch> {
+    try {
+      return (await aiPost('/ai/company', { company: companyName, role })) as CompanyResearch
+    } catch {
+      return mockAi.companyResearch(companyName, role)
+    }
+  },
+
+  async sourceOpportunities(query: string, jobs: JobListing[], student: Profile) {
+    try {
+      const r = (await aiPost('/ai/source', { query })) as { summary: string; results: { job: { id: string }; why: string[]; score: number }[] }
+      const byId = new Map(jobs.map((j) => [j.id, j]))
+      const results = r.results
+        .map((x) => ({ job: byId.get(x.job.id), why: x.why, score: x.score }))
+        .filter((x): x is { job: JobListing; why: string[]; score: number } => !!x.job)
+      return { summary: r.summary, results }
+    } catch {
+      return mockAi.sourceOpportunities(query, jobs, student)
+    }
+  },
+
+  async researchAsk(companyName: string, role: string | undefined, question: string): Promise<string> {
+    try {
+      const r = (await aiPost('/ai/research/ask', { company: companyName, role, question })) as { answer: string }
+      return r.answer
+    } catch {
+      return mockAi.researchAsk(companyName, role, question)
+    }
+  },
+
+  async chat(message: string): Promise<string> {
+    try {
+      const r = (await aiPost('/ai/chat', { message })) as { text: string }
+      return r.text
+    } catch {
+      return mockAi.chat(message)
+    }
+  },
+
+  async compassInterview(answers: string[]): Promise<{ done: boolean; message: string; question?: string }> {
+    try {
+      return (await aiPost('/ai/compass/interview', { answers })) as { done: boolean; message: string; question?: string }
+    } catch {
+      return mockAi.compassInterview(answers)
+    }
+  },
+
+  async compassRecommend(answers: string[], jobs: JobListing[], student: Profile): Promise<{ intro: string; signals?: string[]; recs: CompassRec[] }> {
+    try {
+      const r = (await aiPost('/ai/compass/recommend', { answers })) as {
+        intro: string
+        signals?: string[]
+        recs: { job: { id: string }; score: number; why: string; stretch: string; actions: string[] }[]
+      }
+      const byId = new Map(jobs.map((j) => [j.id, j]))
+      const recs: CompassRec[] = r.recs
+        .map((x) => ({ ...x, job: byId.get(x.job.id) }))
+        .filter((x): x is CompassRec => !!x.job)
+      return { intro: r.intro, signals: r.signals, recs }
+    } catch {
+      return mockAi.compassRecommend(answers, jobs, student)
+    }
+  },
+
+  async compassPrep(job: JobListing, student: Profile): Promise<PrepResult> {
+    try {
+      return (await aiPost('/ai/compass/prep', { job_id: job.id })) as PrepResult
+    } catch {
+      return mockAi.compassPrep(job, student)
+    }
+  },
+
+  async cvTips(student: Profile): Promise<string[]> {
+    try {
+      return (await aiPost('/ai/cv-tips', {})) as string[]
+    } catch {
+      return mockAi.cvTips(student)
+    }
+  },
+}

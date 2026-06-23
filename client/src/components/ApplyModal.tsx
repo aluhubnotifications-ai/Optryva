@@ -1,0 +1,321 @@
+import { useMemo, useRef, useState } from 'react'
+import {
+  Upload,
+  FileText,
+  X,
+  Sparkles,
+  CheckCircle2,
+  AlertTriangle,
+  Wand2,
+  ThumbsUp,
+} from 'lucide-react'
+import { Modal } from '@/components/ui/Modal'
+import { Input, Label, Textarea, Select, Badge } from '@/components/ui/primitives'
+import { Button } from '@/components/ui/Button'
+import { useToast } from '@/components/ui/toast'
+import { aiApi, applicationsApi } from '@/lib/api'
+import { fileToDataUrl, formatBytes } from '@/lib/utils'
+import type { Application, AppDocument, JobListing, Profile } from '@/types'
+
+const OPTIONAL_DOCS: { kind: AppDocument['kind']; label: string }[] = [
+  { kind: 'cover', label: 'Cover Letter' },
+  { kind: 'transcript', label: 'Transcript' },
+  { kind: 'portfolio', label: 'Portfolio' },
+  { kind: 'recommendation', label: 'Recommendation' },
+  { kind: 'certificate', label: 'Certificate' },
+  { kind: 'id', label: 'ID' },
+]
+
+type CoachResult = Awaited<ReturnType<typeof aiApi.coach>>
+
+export function ApplyModal({
+  open,
+  onClose,
+  job,
+  user,
+  onSubmitted,
+}: {
+  open: boolean
+  onClose: () => void
+  job: JobListing | null
+  user: Profile
+  onSubmitted?: (a: Application) => void
+}) {
+  const { toast } = useToast()
+  const [form, setForm] = useState({
+    full_name: user.full_name,
+    email: user.email,
+    phone: '',
+    school: user.school ?? '',
+    year: user.year ? String(user.year) : '',
+    linkedin: user.linkedin ?? '',
+  })
+  const [coverNote, setCoverNote] = useState('')
+  // Pre-fill the CV from the résumé on the student's profile (a real file, so the
+  // company can open it). They can still replace it with a different file.
+  const [docs, setDocs] = useState<Record<string, AppDocument>>(
+    user.cv_url && user.cv_filename
+      ? {
+          cv: {
+            kind: 'cv',
+            name: user.cv_filename,
+            url: user.cv_url,
+            mime: user.cv_url.startsWith('data:') ? user.cv_url.slice(5, user.cv_url.indexOf(';')) || 'application/pdf' : 'application/pdf',
+            size: 0,
+          },
+        }
+      : {},
+  )
+  const [submitting, setSubmitting] = useState(false)
+
+  // AI coach
+  const [coachLoading, setCoachLoading] = useState(false)
+  const [coach, setCoach] = useState<CoachResult | null>(null)
+
+  const valid = useMemo(
+    () => form.full_name && /\S+@\S+\.\S+/.test(form.email) && form.school && form.year && docs.cv,
+    [form, docs],
+  )
+
+  async function setDoc(kind: AppDocument['kind'], file: File | null) {
+    if (!file) {
+      setDocs((d) => { const n = { ...d }; delete n[kind]; return n })
+      return
+    }
+    try {
+      const url = await fileToDataUrl(file)
+      setDocs((d) => ({ ...d, [kind]: { kind, name: file.name, url, mime: file.type || 'application/octet-stream', size: file.size } }))
+    } catch (e) {
+      toast({ title: 'Could not attach that file', description: e instanceof Error ? e.message : undefined, tone: 'error' })
+    }
+  }
+
+  async function runCoach() {
+    if (!job) return
+    setCoachLoading(true)
+    setCoach(null)
+    const res = await aiApi.coach(user, job)
+    setCoach(res)
+    setCoachLoading(false)
+  }
+
+  async function submit() {
+    if (!job || !valid) return
+    const documents = Object.values(docs)
+    // All attachments are sent inline as base64; keep the whole payload under the
+    // server's body limit so the application isn't rejected mid-upload.
+    const totalBytes = documents.reduce((s, d) => s + (d.url?.length ?? 0), 0)
+    if (totalBytes > 22 * 1024 * 1024) {
+      toast({ title: 'Attachments too large', description: `Combined size is ${formatBytes(totalBytes)}. Please remove some files or use smaller ones.`, tone: 'error' })
+      return
+    }
+    setSubmitting(true)
+    try {
+      const app = await applicationsApi.create({
+        student_id: user.id,
+        job_id: job.id,
+        cover_note: coverNote || undefined,
+        documents,
+        full_name: form.full_name,
+        email: form.email,
+        phone: form.phone || undefined,
+        school: form.school,
+        year: form.year ? Number(form.year) : undefined,
+        linkedin: form.linkedin || undefined,
+      })
+      toast({ title: 'Application submitted! 🎉', description: `${job.title} — good luck!`, tone: 'success' })
+      onSubmitted?.(app)
+      onClose()
+    } catch (e) {
+      toast({ title: 'Could not submit application', description: e instanceof Error ? e.message : 'Please try again.', tone: 'error' })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="xl"
+      title={job ? `Apply — ${job.title}` : 'Apply'}
+      description="Takes a couple of minutes. Your profile is pre-filled."
+    >
+      <div className="space-y-6">
+        {/* Form */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label>Full name *</Label>
+            <Input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
+          </div>
+          <div>
+            <Label>Email *</Label>
+            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          </div>
+          <div>
+            <Label>Phone</Label>
+            <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+1 555 0100" />
+          </div>
+          <div>
+            <Label>School / University *</Label>
+            <Input value={form.school} onChange={(e) => setForm({ ...form, school: e.target.value })} />
+          </div>
+          <div>
+            <Label>Year of study *</Label>
+            <Select value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })}>
+              <option value="">Select…</option>
+              <option value="1">Year 1</option>
+              <option value="2">Year 2</option>
+              <option value="3">Year 3</option>
+              <option value="4">Year 4</option>
+            </Select>
+          </div>
+          <div>
+            <Label>LinkedIn</Label>
+            <Input value={form.linkedin} onChange={(e) => setForm({ ...form, linkedin: e.target.value })} placeholder="https://linkedin.com/in/…" />
+          </div>
+        </div>
+
+        {/* Documents */}
+        <div>
+          <Label>Documents</Label>
+          <FileDrop
+            label="CV / Résumé *"
+            doc={docs.cv}
+            required
+            onPick={(f) => setDoc('cv', f)}
+            onRemove={() => setDoc('cv', null)}
+          />
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {OPTIONAL_DOCS.map((d) => (
+              <FileDrop key={d.kind} label={d.label} compact doc={docs[d.kind]} onPick={(f) => setDoc(d.kind, f)} onRemove={() => setDoc(d.kind, null)} />
+            ))}
+          </div>
+        </div>
+
+        {/* AI Application Coach */}
+        <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="flex items-center gap-2 font-semibold">
+                <Sparkles className="h-5 w-5 text-primary" /> AI Application Coach
+              </p>
+              <p className="text-xs text-muted-foreground">Draft a tailored cover paragraph, get it critiqued, then refined.</p>
+            </div>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={runCoach} loading={coachLoading}>
+              <Wand2 className="h-4 w-4 text-primary" /> {coach ? 'Regenerate' : 'Draft with AI'}
+            </Button>
+          </div>
+
+          {coach && (
+            <div className="mt-4 space-y-3 animate-fade-in">
+              <Stage n={1} title="Draft">
+                <p className="text-sm leading-relaxed text-muted-foreground">{coach.draft}</p>
+              </Stage>
+              <Stage n={2} title="Critique" verdict={coach.critique.verdict}>
+                <div className="space-y-1.5 text-sm">
+                  {coach.critique.strengths.map((s, i) => (
+                    <p key={`s${i}`} className="flex gap-2 text-muted-foreground"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />{s}</p>
+                  ))}
+                  {coach.critique.weaknesses.map((w, i) => (
+                    <p key={`w${i}`} className="flex gap-2 text-muted-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />{w}</p>
+                  ))}
+                </div>
+              </Stage>
+              <Stage n={3} title="Final" highlight>
+                <p className="text-sm leading-relaxed">{coach.final}</p>
+                <Button size="sm" className="mt-3 gap-1.5" onClick={() => setCoverNote(coach.final)}>
+                  <ThumbsUp className="h-4 w-4" /> Use this paragraph
+                </Button>
+              </Stage>
+            </div>
+          )}
+        </div>
+
+        {/* Cover note */}
+        <div>
+          <Label>Cover note</Label>
+          <Textarea value={coverNote} onChange={(e) => setCoverNote(e.target.value)} placeholder="Tell them why you're a great fit…" className="min-h-[120px]" />
+        </div>
+
+        {/* Submit */}
+        <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
+          <p className="text-xs text-muted-foreground">{valid ? 'Ready to submit.' : 'Fill required fields (*) and attach a CV.'}</p>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button onClick={submit} disabled={!valid} loading={submitting}>Submit application</Button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function Stage({ n, title, children, verdict, highlight }: { n: number; title: string; children: React.ReactNode; verdict?: string; highlight?: boolean }) {
+  return (
+    <div className={`rounded-xl border p-3 ${highlight ? 'border-success/30 bg-success/5' : 'border-border bg-card'}`}>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">{n}</span>
+        <span className="text-sm font-semibold">{title}</span>
+        {verdict && <Badge tone={verdict === 'ship as-is' ? 'success' : verdict === 'rewrite' ? 'danger' : 'warning'} className="ml-auto capitalize">{verdict}</Badge>}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function FileDrop({
+  label,
+  doc,
+  onPick,
+  onRemove,
+  required,
+  compact,
+}: {
+  label: string
+  doc?: AppDocument
+  onPick: (f: File) => void
+  onRemove: () => void
+  required?: boolean
+  compact?: boolean
+}) {
+  const ref = useRef<HTMLInputElement>(null)
+  const [drag, setDrag] = useState(false)
+  return (
+    <div
+      onClick={() => !doc && ref.current?.click()}
+      onDragOver={(e) => { e.preventDefault(); setDrag(true) }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={(e) => {
+        e.preventDefault()
+        setDrag(false)
+        const f = e.dataTransfer.files?.[0]
+        if (f) onPick(f)
+      }}
+      className={`flex cursor-pointer items-center gap-3 rounded-xl border border-dashed p-3 transition-colors ${
+        drag ? 'border-primary bg-primary/5' : doc ? 'border-success/40 bg-success/5' : 'border-input hover:border-primary/40'
+      } ${compact ? '' : 'py-4'}`}
+    >
+      <input
+        ref={ref}
+        type="file"
+        accept=".pdf,.doc,.docx,image/*"
+        className="hidden"
+        onChange={(e) => e.target.files?.[0] && onPick(e.target.files[0])}
+      />
+      {doc ? <FileText className="h-5 w-5 shrink-0 text-success" /> : <Upload className="h-5 w-5 shrink-0 text-muted-foreground" />}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{doc ? doc.name : label}</p>
+        <p className="text-xs text-muted-foreground">{doc ? `${(doc.size / 1024).toFixed(0)} KB` : required ? 'Required · click or drop' : 'Optional'}</p>
+      </div>
+      {doc && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onRemove() }}
+          className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-danger"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  )
+}
