@@ -3,7 +3,7 @@
   // Cloudflare Pages (optryva.pages.dev) and calls this Worker over HTTPS.
   // Cross-origin → CORS (see app.ts) + a SameSite=None refresh cookie.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "optryva",
+  "name": "optryva-api",
   "main": "server/src/worker.ts",
   "compatibility_date": "2025-09-01",
   // nodejs_compat: Buffer/process/crypto for jsonwebtoken, bcryptjs, the Anthropic
