@@ -1,12 +1,10 @@
 // Shared Hono app — the API surface. Used by both the Cloudflare Worker
 // (worker.ts) and the local Node dev server (index.ts).
 //
-// Only /api/* reaches this Worker in production: wrangler's
-// `assets.run_worker_first: ["/api/*"]` routes API calls here and serves the
-// built client (client/dist) for everything else, with SPA fallback. Because
-// client and API share one origin, there is no CORS in production and the
-// refresh-token cookie is same-site. CORS below only matters for cross-origin
-// local dev (Vite on :5173 → wrangler/node API on another port).
+// Split deploy: the client is a Cloudflare Pages site (optryva.pages.dev) and
+// this Worker serves only /api/*. They're different origins, so the CORS rule
+// below allows the Pages origin (CLIENT_ORIGIN + *.optryva.pages.dev previews)
+// and localhost dev, and the refresh cookie is SameSite=None (see auth.ts).
 
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
@@ -25,6 +23,9 @@ app.use('/api/*', cors({
     if (!origin) return origin // same-origin / curl — nothing to allow
     const allowed = process.env.CLIENT_ORIGIN
     if (allowed && origin === allowed) return origin
+    // Cloudflare Pages: production (optryva.pages.dev) and per-branch previews
+    // (<hash>.optryva.pages.dev) all call this API Worker cross-origin.
+    if (/^https:\/\/([a-z0-9-]+\.)?optryva\.pages\.dev$/.test(origin)) return origin
     if (/^https?:\/\/localhost:\d+$/.test(origin)) return origin
     return null
   },

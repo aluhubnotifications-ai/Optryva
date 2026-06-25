@@ -9,10 +9,15 @@ import { rowToProfile } from '@/lib/serialize'
 export const auth = Router()
 
 const REFRESH_COOKIE = 'optryva_rt'
+// Split deploy (client on Pages, API on a separate Worker) is cross-origin, so
+// the browser only sends the refresh cookie when it's SameSite=None; Secure.
+// Set COOKIE_SAMESITE=none on the API Worker for that. Same-origin deploys keep
+// the simpler Lax cookie. (Secure is implied by None and by production.)
+const CROSS_SITE = process.env.COOKIE_SAMESITE === 'none'
 const cookieOpts = {
   httpOnly: true,
-  sameSite: 'lax' as const,
-  secure: false,
+  sameSite: CROSS_SITE ? ('none' as const) : ('lax' as const),
+  secure: CROSS_SITE || process.env.NODE_ENV === 'production',
   maxAge: 30 * 24 * 60 * 60 * 1000,
   path: '/',
 }

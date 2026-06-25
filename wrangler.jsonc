@@ -1,9 +1,9 @@
 {
-  // Single full-stack Worker: serves the built client (client/dist) as static
-  // assets and the API (/api/*) from server/src/worker.ts. Same origin → no CORS,
-  // same-site auth cookie.
+  // API-only Worker. The frontend (client/dist) is deployed separately to
+  // Cloudflare Pages (optryva.pages.dev) and calls this Worker over HTTPS.
+  // Cross-origin → CORS (see app.ts) + a SameSite=None refresh cookie.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "optryva",
+  "name": "optryva-api",
   "main": "server/src/worker.ts",
   "compatibility_date": "2025-09-01",
   // nodejs_compat: Buffer/process/crypto for jsonwebtoken, bcryptjs, the Anthropic
@@ -13,13 +13,10 @@
   // Resolve the "@/..." path alias when esbuild bundles the Worker.
   "alias": { "@": "./server/src" },
 
-  "assets": {
-    "directory": "./client/dist",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application",
-    // Send API calls to the Worker; everything else is served from client/dist.
-    "run_worker_first": ["/api/*"]
-  },
+  // Cross-origin deploy: the client lives on Pages, not this Worker.
+  // Set CLIENT_ORIGIN (e.g. https://optryva.pages.dev) and COOKIE_SAMESITE=none
+  // as plain vars in the dashboard; secrets stay as secrets.
+  "vars": { "COOKIE_SAMESITE": "none" },
 
   // Weekly honesty calibration (Mon 03:00 UTC). Handled by worker.ts scheduled().
   "triggers": { "crons": ["0 3 * * 1"] },
