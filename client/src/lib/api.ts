@@ -1,5 +1,6 @@
 import * as db from '@/data/mockDb'
 import { dmThreadId, seededScore, sleep, uid } from '@/lib/utils'
+import { trackAi } from '@/lib/aiActivity'
 import type {
   AiMatch,
   AppNotification,
@@ -812,7 +813,7 @@ export const aiApi = {
    *  score it (no API key / unreachable). No local fabricated fallback. */
   async match(_student: Profile, job: JobListing): Promise<AiMatch | null> {
     try {
-      return (await apiFetch(`/ai/match/${job.id}`)) as AiMatch
+      return (await trackAi('Scoring this role against your profile', () => apiFetch(`/ai/match/${job.id}`))) as AiMatch
     } catch {
       return null
     }
@@ -822,7 +823,7 @@ export const aiApi = {
    *  the server is unreachable — there is no local engine. */
   async matchAll(_student: Profile, _jobs: JobListing[]): Promise<AiMatch[]> {
     try {
-      return (await apiFetch('/ai/matches')) as AiMatch[]
+      return (await trackAi('Matching you to open roles', () => apiFetch('/ai/matches'))) as AiMatch[]
     } catch {
       return []
     }
@@ -831,7 +832,7 @@ export const aiApi = {
   /** Aggregate insights (skill gaps, demand, do-next) — server-computed. */
   async insights(_jobs: JobListing[], _student: Profile): Promise<InsightsData> {
     try {
-      return (await apiFetch('/ai/insights')) as InsightsData
+      return (await trackAi('Analyzing your skill gaps & demand', () => apiFetch('/ai/insights'))) as InsightsData
     } catch {
       return EMPTY_INSIGHTS
     }
@@ -839,7 +840,7 @@ export const aiApi = {
 
   async coach(student: Profile, job: JobListing): Promise<CoachResult> {
     try {
-      return (await aiPost('/ai/coach', { job_id: job.id })) as CoachResult
+      return (await trackAi('Preparing coaching tips', () => aiPost('/ai/coach', { job_id: job.id }))) as CoachResult
     } catch {
       return mockAi.coach(student, job)
     }
@@ -847,7 +848,7 @@ export const aiApi = {
 
   async companyResearch(companyName: string, role?: string): Promise<CompanyResearch> {
     try {
-      return (await aiPost('/ai/company', { company: companyName, role })) as CompanyResearch
+      return (await trackAi(`Researching ${companyName}`, () => aiPost('/ai/company', { company: companyName, role }))) as CompanyResearch
     } catch {
       return mockAi.companyResearch(companyName, role)
     }
@@ -855,7 +856,7 @@ export const aiApi = {
 
   async sourceOpportunities(query: string, jobs: JobListing[], student: Profile) {
     try {
-      const r = (await aiPost('/ai/source', { query })) as { summary: string; results: { job: { id: string }; why: string[]; score: number }[] }
+      const r = (await trackAi('Finding opportunities for you', () => aiPost('/ai/source', { query }))) as { summary: string; results: { job: { id: string }; why: string[]; score: number }[] }
       const byId = new Map(jobs.map((j) => [j.id, j]))
       const results = r.results
         .map((x) => ({ job: byId.get(x.job.id), why: x.why, score: x.score }))
@@ -868,7 +869,7 @@ export const aiApi = {
 
   async researchAsk(companyName: string, role: string | undefined, question: string): Promise<string> {
     try {
-      const r = (await aiPost('/ai/research/ask', { company: companyName, role, question })) as { answer: string }
+      const r = (await trackAi('Answering your research question', () => aiPost('/ai/research/ask', { company: companyName, role, question }))) as { answer: string }
       return r.answer
     } catch {
       return mockAi.researchAsk(companyName, role, question)
@@ -877,7 +878,7 @@ export const aiApi = {
 
   async chat(message: string): Promise<string> {
     try {
-      const r = (await aiPost('/ai/chat', { message })) as { text: string }
+      const r = (await trackAi('Thinking…', () => aiPost('/ai/chat', { message }))) as { text: string }
       return r.text
     } catch {
       return mockAi.chat(message)
@@ -886,7 +887,7 @@ export const aiApi = {
 
   async compassInterview(answers: string[]): Promise<{ done: boolean; message: string; question?: string }> {
     try {
-      return (await aiPost('/ai/compass/interview', { answers })) as { done: boolean; message: string; question?: string }
+      return (await trackAi('Career Compass — listening', () => aiPost('/ai/compass/interview', { answers }))) as { done: boolean; message: string; question?: string }
     } catch {
       return mockAi.compassInterview(answers)
     }
@@ -894,7 +895,7 @@ export const aiApi = {
 
   async compassRecommend(answers: string[], jobs: JobListing[], student: Profile): Promise<{ intro: string; signals?: string[]; recs: CompassRec[] }> {
     try {
-      const r = (await aiPost('/ai/compass/recommend', { answers })) as {
+      const r = (await trackAi('Career Compass — finding directions', () => aiPost('/ai/compass/recommend', { answers }))) as {
         intro: string
         signals?: string[]
         recs: { job: { id: string }; score: number; why: string; stretch: string; actions: string[] }[]
@@ -911,7 +912,7 @@ export const aiApi = {
 
   async compassPrep(job: JobListing, student: Profile): Promise<PrepResult> {
     try {
-      return (await aiPost('/ai/compass/prep', { job_id: job.id })) as PrepResult
+      return (await trackAi('Building your prep plan', () => aiPost('/ai/compass/prep', { job_id: job.id }))) as PrepResult
     } catch {
       return mockAi.compassPrep(job, student)
     }
@@ -919,7 +920,7 @@ export const aiApi = {
 
   async cvTips(student: Profile): Promise<string[]> {
     try {
-      return (await aiPost('/ai/cv-tips', {})) as string[]
+      return (await trackAi('Reviewing your CV', () => aiPost('/ai/cv-tips', {}))) as string[]
     } catch {
       return mockAi.cvTips(student)
     }

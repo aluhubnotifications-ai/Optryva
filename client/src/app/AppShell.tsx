@@ -33,6 +33,7 @@ import { Avatar, Input } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { Logo } from '@/components/Logo'
 import { AISourcingPanel } from '@/components/AISourcingPanel'
+import { AiActivityPanel } from '@/components/AiActivityPanel'
 import { NotificationsMenu } from '@/components/NotificationsMenu'
 
 interface NavItem {
@@ -144,6 +145,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Global AI sourcing — opened from the topbar search */}
       <AISourcingPanel />
+
+      {/* Always-on AI activity window (students) — shows what matching/research
+          is doing in real time so it's never a black box. */}
+      {!isCompany && <AiActivityPanel />}
     </div>
   )
 }

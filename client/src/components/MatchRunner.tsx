@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Sparkles, FileSearch, ScanLine, Trophy, CheckCircle2 } from 'lucide-react'
+import { Sparkles, FileSearch, ScanLine, Trophy, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { Card, CardBody, Progress } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { sleep } from '@/lib/utils'
+import { trackAi } from '@/lib/aiActivity'
 
 const STAGES = [
   { icon: FileSearch, label: 'Reading your résumé & profile…' },
@@ -26,19 +27,24 @@ export function MatchRunner({
   title?: string
   subtitle?: string
 }) {
-  const [phase, setPhase] = useState<'idle' | 'running'>('idle')
+  const [phase, setPhase] = useState<'idle' | 'running' | 'error'>('idle')
   const [stage, setStage] = useState(0)
 
   async function go() {
     setPhase('running')
     setStage(0)
-    const work = onRun()
-    for (let i = 0; i < STAGES.length; i++) {
-      setStage(i)
-      await sleep(620)
+    try {
+      // Real work + activity-panel reporting; the staged labels animate over it.
+      const work = trackAi('Running your AI matches', onRun)
+      for (let i = 0; i < STAGES.length; i++) {
+        setStage(i)
+        await sleep(620)
+      }
+      await work // surfaces a real failure instead of faking success
+      onComplete()
+    } catch {
+      setPhase('error')
     }
-    await work
-    onComplete()
   }
 
   if (phase === 'idle') {
@@ -54,6 +60,25 @@ export function MatchRunner({
           </p>
           <Button size="lg" className="mt-2 gap-2" onClick={go}>
             <Sparkles className="h-4 w-4" /> Run AI matching
+          </Button>
+        </CardBody>
+      </Card>
+    )
+  }
+
+  if (phase === 'error') {
+    return (
+      <Card>
+        <CardBody className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-danger/12 text-danger">
+            <AlertTriangle className="h-8 w-8" />
+          </div>
+          <h2 className="text-xl font-bold tracking-tight">Couldn’t run matching</h2>
+          <p className="max-w-md text-sm text-muted-foreground">
+            The AI scorer didn’t respond. This is usually temporary — check your connection and try again.
+          </p>
+          <Button size="lg" variant="outline" className="mt-2 gap-2" onClick={go}>
+            <Sparkles className="h-4 w-4" /> Try again
           </Button>
         </CardBody>
       </Card>
