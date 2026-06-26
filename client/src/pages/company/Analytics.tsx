@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BarChart3, Briefcase, Users, Star, TrendingUp, UserCheck } from 'lucide-react'
+import { BarChart3, Briefcase, Users, Star, TrendingUp, UserCheck, Eye } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
 import { useCurrentUser } from '@/lib/store'
 import { applicationsApi, followsApi, jobsApi } from '@/lib/api'
@@ -10,15 +10,25 @@ export default function Analytics() {
   const user = useCurrentUser()!
   const [jobs, setJobs] = useState<JobListing[]>([])
   const [apps, setApps] = useState<Application[]>([])
+  const [opens, setOpens] = useState<Record<string, number>>({})
   const [followers, setFollowers] = useState(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     ;(async () => {
-      const [j, a, f] = await Promise.all([jobsApi.byCompany(user.id), applicationsApi.byCompany(user.id), followsApi.followerCount(user.id)])
-      setJobs(j); setApps(a); setFollowers(f); setLoading(false)
+      const [j, a, f, o] = await Promise.all([
+        jobsApi.byCompany(user.id),
+        applicationsApi.byCompany(user.id),
+        followsApi.followerCount(user.id),
+        jobsApi.openCounts(),
+      ])
+      setJobs(j); setApps(a); setFollowers(f); setOpens(o); setLoading(false)
     })()
   }, [user])
+
+  // External listings apply off-platform, so their engagement is "views" (opens
+  // of the apply link), not applications received here.
+  const totalViews = jobs.reduce((sum, j) => (j.apply_url ? sum + (opens[j.id] ?? 0) : sum), 0)
 
   const shortlisted = apps.filter((a) => a.status === 'shortlisted' || a.status === 'hired').length
   const hired = apps.filter((a) => a.status === 'hired').length
@@ -29,6 +39,7 @@ export default function Analytics() {
     { label: 'Active listings', value: jobs.filter((j) => j.status === 'active').length, icon: Briefcase },
     { label: 'Followers', value: followers, icon: UserCheck },
     { label: 'Total applications', value: apps.length, icon: Users },
+    { label: 'External views', value: totalViews, icon: Eye },
     { label: 'Shortlist rate', value: `${shortlistRate}%`, icon: Star },
     { label: 'Shortlisted', value: shortlisted, icon: TrendingUp },
   ]
@@ -57,7 +68,7 @@ export default function Analytics() {
     shortlisted: apps.filter((a) => a.job_id === j.id && (a.status === 'shortlisted' || a.status === 'hired')).length,
   }))
 
-  if (loading) return <div className="space-y-4"><Skeleton className="h-8 w-48" /><div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">{Array.from({ length: 5 }).map((_, i) => <Card key={i}><CardBody><Skeleton className="h-10 w-full" /></CardBody></Card>)}</div></div>
+  if (loading) return <div className="space-y-4"><Skeleton className="h-8 w-48" /><div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">{Array.from({ length: 6 }).map((_, i) => <Card key={i}><CardBody><Skeleton className="h-10 w-full" /></CardBody></Card>)}</div></div>
 
   return (
     <div className="space-y-5">
@@ -67,7 +78,7 @@ export default function Analytics() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         {kpis.map((k) => (
           <Card key={k.label}>
             <CardBody>

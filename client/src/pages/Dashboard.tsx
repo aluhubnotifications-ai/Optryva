@@ -471,13 +471,19 @@ function TopPicksEmpty({ hasCv }: { hasCv: boolean }) {
 function CompanyDashboard({ user }: { user: Profile }) {
   const [jobs, setJobs] = useState<JobListing[]>([])
   const [apps, setApps] = useState<Application[]>([])
+  const [opens, setOpens] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     ;(async () => {
-      const [j, a] = await Promise.all([jobsApi.byCompany(user.id), applicationsApi.byCompany(user.id)])
+      const [j, a, o] = await Promise.all([
+        jobsApi.byCompany(user.id),
+        applicationsApi.byCompany(user.id),
+        jobsApi.openCounts(),
+      ])
       setJobs(j)
       setApps(a)
+      setOpens(o)
       setLoading(false)
     })()
   }, [user])
@@ -527,7 +533,10 @@ function CompanyDashboard({ user }: { user: Profile }) {
               <Card><CardBody className="py-10 text-center text-sm text-muted-foreground">No listings yet. Post your first role.</CardBody></Card>
             ) : (
               jobs.map((j) => {
-                const count = apps.filter((a) => a.job_id === j.id).length
+                // External listings apply off-platform → no applications reach us;
+                // show unique people who opened the apply link instead.
+                const external = !!j.apply_url
+                const count = external ? (opens[j.id] ?? 0) : apps.filter((a) => a.job_id === j.id).length
                 return (
                   <Card key={j.id}>
                     <CardBody className="flex items-center justify-between gap-4">
@@ -538,7 +547,7 @@ function CompanyDashboard({ user }: { user: Profile }) {
                       <div className="flex items-center gap-4">
                         <div className="text-center">
                           <p className="text-lg font-bold">{count}</p>
-                          <p className="text-xs text-muted-foreground">applicants</p>
+                          <p className="text-xs text-muted-foreground">{external ? 'views' : 'applicants'}</p>
                         </div>
                         <Badge tone={j.status === 'active' ? 'success' : 'default'} className="capitalize">{j.status}</Badge>
                       </div>

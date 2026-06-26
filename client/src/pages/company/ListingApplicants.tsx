@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Users, ArrowRight, FileText } from 'lucide-react'
+import { ArrowLeft, Users, ArrowRight, FileText, Eye, ExternalLink } from 'lucide-react'
 import { applicationsApi, jobsApi } from '@/lib/api'
 import { useCurrentUser } from '@/lib/store'
 import type { Application, ApplicationStatus, JobListing } from '@/types'
@@ -17,6 +17,7 @@ export default function ListingApplicants() {
   const user = useCurrentUser()!
   const [job, setJob] = useState<JobListing | null>(null)
   const [apps, setApps] = useState<Application[]>([])
+  const [opens, setOpens] = useState(0)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<ApplicationStatus | 'all'>('all')
   const [tab, setTab] = useState<'details' | 'applicants'>(params.get('tab') === 'applicants' ? 'applicants' : 'details')
@@ -24,11 +25,14 @@ export default function ListingApplicants() {
   useEffect(() => {
     ;(async () => {
       if (!id) return
-      const [j, a] = await Promise.all([jobsApi.get(id), applicationsApi.byJob(id)])
-      setJob(j); setApps(a); setLoading(false)
+      const [j, a, o] = await Promise.all([jobsApi.get(id), applicationsApi.byJob(id), jobsApi.openCounts()])
+      setJob(j); setApps(a); setOpens(o[id] ?? 0); setLoading(false)
     })()
   }, [id])
 
+  // External listings apply off-platform, so applications never reach Optryva —
+  // we report unique people who opened the apply link ("views") instead.
+  const external = !!job?.apply_url
   const filtered = useMemo(() => (filter === 'all' ? apps : apps.filter((a) => a.status === filter)), [apps, filter])
   const brand = job?.original_company_name || user.company_name || user.full_name
   const logo = job?.original_company_logo_url || user.avatar_url
@@ -40,7 +44,7 @@ export default function ListingApplicants() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{job?.title ?? 'Listing'}</h1>
           <p className="text-sm text-muted-foreground">
-            {job?.location}{job ? ` · ${job.listing_type}` : ''} · {apps.length} applicant{apps.length === 1 ? '' : 's'}
+            {job?.location}{job ? ` · ${job.listing_type}` : ''} · {external ? `${opens} view${opens === 1 ? '' : 's'}` : `${apps.length} applicant${apps.length === 1 ? '' : 's'}`}
           </p>
         </div>
         {job && <Badge tone={job.status === 'active' ? 'success' : 'default'} className="capitalize">{job.status}</Badge>}
@@ -48,7 +52,7 @@ export default function ListingApplicants() {
 
       {/* Tabs */}
       <div className="flex gap-1.5 border-b border-border">
-        {([['details', 'Job details'], ['applicants', `Applicants (${apps.length})`]] as const).map(([key, label]) => (
+        {([['details', 'Job details'], ['applicants', external ? `Views (${opens})` : `Applicants (${apps.length})`]] as const).map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -57,7 +61,7 @@ export default function ListingApplicants() {
               tab === key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
-            {key === 'details' ? <FileText className="h-4 w-4" /> : <Users className="h-4 w-4" />} {label}
+            {key === 'details' ? <FileText className="h-4 w-4" /> : external ? <Eye className="h-4 w-4" /> : <Users className="h-4 w-4" />} {label}
           </button>
         ))}
       </div>
@@ -66,6 +70,25 @@ export default function ListingApplicants() {
         <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Card key={i}><CardBody><Skeleton className="h-4 w-1/3" /><Skeleton className="mt-2 h-3 w-1/4" /></CardBody></Card>)}</div>
       ) : tab === 'details' ? (
         <Card><CardBody><JobPostingView job={job} brand={brand} logo={logo} /></CardBody></Card>
+      ) : external ? (
+        // External apply: applications happen on the company's own site, so we
+        // can't list applicants — we report how many people opened the apply link.
+        <Card>
+          <CardBody className="flex flex-col items-center gap-3 py-12 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent/12 text-accent"><Eye className="h-7 w-7" /></div>
+            <p className="text-3xl font-bold text-accent">{opens}</p>
+            <p className="text-sm font-medium">{opens === 1 ? 'person' : 'people'} opened the apply link</p>
+            <p className="max-w-sm text-xs text-muted-foreground">
+              This is an external listing — candidates apply on your own site, so Optryva tracks
+              clicks to the apply link instead of receiving applications here.
+            </p>
+            {job.apply_url && (
+              <a href={job.apply_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline">
+                <ExternalLink className="h-4 w-4" /> View apply destination
+              </a>
+            )}
+          </CardBody>
+        </Card>
       ) : (
         <>
           <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1">
