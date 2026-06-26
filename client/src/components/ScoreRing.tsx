@@ -2,8 +2,8 @@ import { cn } from '@/lib/utils'
 
 function band(score: number) {
   if (score >= 85) return { label: 'Excellent', color: 'hsl(var(--success))', tone: 'text-success' }
-  if (score >= 70) return { label: 'Strong', color: 'hsl(var(--accent))', tone: 'text-accent' }
-  if (score >= 50) return { label: 'Possible', color: 'hsl(21 100% 50%)', tone: 'text-[hsl(21_100%_50%)]' }
+  if (score >= 70) return { label: 'Strong', color: 'hsl(256 88% 56%)', tone: 'text-[hsl(256_88%_56%)]' }
+  if (score >= 50) return { label: 'Possible', color: 'hsl(var(--accent))', tone: 'text-accent' }
   if (score >= 30) return { label: 'Weak', color: 'hsl(var(--warning))', tone: 'text-warning' }
   return { label: 'Poor', color: 'hsl(var(--danger))', tone: 'text-danger' }
 }
