@@ -167,7 +167,7 @@ function StudentDashboard({ user }: { user: Profile }) {
                     <s.icon className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-2xl font-bold leading-none">{loading ? '—' : s.value}</p>
+                    <p className="text-2xl font-bold leading-none text-accent">{loading ? '—' : s.value}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{s.label}</p>
                   </div>
                 </CardBody>
@@ -209,7 +209,7 @@ function StudentDashboard({ user }: { user: Profile }) {
                 <div className="grid grid-cols-4 gap-2">
                   {pipeline.map((s) => (
                     <div key={s.key} className="rounded-xl border border-border p-3 text-center">
-                      <p className="text-xl font-bold leading-none">{s.count}</p>
+                      <p className="text-xl font-bold leading-none text-accent">{s.count}</p>
                       <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                         <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} /> {s.label}
                       </p>
@@ -228,7 +228,7 @@ function StudentDashboard({ user }: { user: Profile }) {
             <CardBody>
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="font-semibold">Profile strength</h3>
-                <span className="text-sm font-bold text-primary">{completeness}%</span>
+                <span className="text-sm font-bold text-accent">{completeness}%</span>
               </div>
               <Progress value={completeness} />
               {gaps.length > 0 ? (

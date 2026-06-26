@@ -2,8 +2,8 @@ import { cn } from '@/lib/utils'
 
 function band(score: number) {
   if (score >= 85) return { label: 'Excellent', color: 'hsl(var(--success))', tone: 'text-success' }
-  if (score >= 70) return { label: 'Strong', color: 'hsl(var(--primary))', tone: 'text-primary' }
-  if (score >= 50) return { label: 'Possible', color: 'hsl(var(--accent))', tone: 'text-accent' }
+  if (score >= 70) return { label: 'Strong', color: 'hsl(var(--accent))', tone: 'text-accent' }
+  if (score >= 50) return { label: 'Possible', color: 'hsl(210 90% 52%)', tone: 'text-[hsl(210_90%_52%)]' }
   if (score >= 30) return { label: 'Weak', color: 'hsl(var(--warning))', tone: 'text-warning' }
   return { label: 'Poor', color: 'hsl(var(--danger))', tone: 'text-danger' }
 }
@@ -47,7 +47,7 @@ export function ScoreRing({
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="font-bold leading-none" style={{ fontSize: size * 0.28 }}>
+        <span className={cn('font-bold leading-none', b.tone)} style={{ fontSize: size * 0.28 }}>
           {score}
         </span>
         {showLabel && <span className={cn('mt-0.5 text-[9px] font-medium', b.tone)}>{b.label}</span>}

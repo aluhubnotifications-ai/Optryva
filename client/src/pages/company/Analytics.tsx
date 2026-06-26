@@ -89,8 +89,8 @@ export default function Analytics() {
                 const pct = funnel[0].value ? Math.round((f.value / funnel[0].value) * 100) : 0
                 return (
                   <div key={f.stage}>
-                    <div className="mb-1 flex justify-between text-sm"><span className="text-muted-foreground">{f.stage}</span><span className="font-semibold">{f.value}</span></div>
-                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} /></div>
+                    <div className="mb-1 flex justify-between text-sm"><span className="text-muted-foreground">{f.stage}</span><span className="font-semibold text-accent">{f.value}</span></div>
+                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} /></div>
                   </div>
                 )
               })}

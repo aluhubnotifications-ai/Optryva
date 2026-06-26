@@ -640,11 +640,11 @@ function Bar({ label, value }: { label: string; value: number }) {
     <div>
       <div className="mb-1 flex items-center justify-between text-sm">
         <span className="text-muted-foreground">{label}</span>
-        <span className="font-semibold">{value}%</span>
+        <span className="font-semibold text-accent">{value}%</span>
       </div>
       <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
         <motion.div
-          className="h-full rounded-full bg-primary"
+          className="h-full rounded-full bg-accent"
           initial={{ width: 0 }}
           animate={{ width: `${value}%` }}
           transition={{ duration: 0.7, ease: 'easeOut' }}
