@@ -22,17 +22,23 @@ export default function Listings() {
   const { toast } = useToast()
   const [jobs, setJobs] = useState<JobListing[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
+  const [opens, setOpens] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<JobListing | null>(null)
   const [previewJob, setPreviewJob] = useState<JobListing | null>(null)
 
   async function load() {
-    const [j, apps] = await Promise.all([jobsApi.byCompany(user.id), applicationsApi.byCompany(user.id)])
+    const [j, apps, o] = await Promise.all([
+      jobsApi.byCompany(user.id),
+      applicationsApi.byCompany(user.id),
+      jobsApi.openCounts(), // unique people who opened external apply links
+    ])
     const c: Record<string, number> = {}
     apps.forEach((a) => (c[a.job_id] = (c[a.job_id] ?? 0) + 1))
     setJobs(j)
     setCounts(c)
+    setOpens(o)
     setLoading(false)
   }
   useEffect(() => { load() }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -85,9 +91,21 @@ export default function Listings() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setPreviewJob(j)}><Eye className="h-4 w-4" /> View</Button>
-                    <Link to={`/app/listings/${j.id}?tab=applicants`} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted">
-                      <Users className="h-4 w-4" /> {counts[j.id] ?? 0} applicants
-                    </Link>
+                    {j.apply_url ? (
+                      // External listings apply off-platform, so Optryva never
+                      // receives applications — show unique people who opened the
+                      // apply link instead of a misleading "0 applicants".
+                      <span
+                        className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium"
+                        title="Unique people who opened the external apply link"
+                      >
+                        <Eye className="h-4 w-4" /> {opens[j.id] ?? 0} opened
+                      </span>
+                    ) : (
+                      <Link to={`/app/listings/${j.id}?tab=applicants`} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted">
+                        <Users className="h-4 w-4" /> {counts[j.id] ?? 0} applicants
+                      </Link>
+                    )}
                     <Button variant="ghost" size="icon" onClick={() => { setEditing(j); setOpen(true) }}><Pencil className="h-4 w-4" /></Button>
                     <Button variant="ghost" size="icon" className="text-danger" onClick={() => remove(j.id)}><Trash2 className="h-4 w-4" /></Button>
                   </div>

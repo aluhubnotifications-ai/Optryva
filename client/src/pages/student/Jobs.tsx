@@ -174,8 +174,10 @@ export default function Jobs() {
   }
 
   function handleApply(job: JobListing) {
-    if (job.apply_url) window.open(job.apply_url, '_blank', 'noopener,noreferrer')
-    else setApplyJob(job)
+    if (job.apply_url) {
+      jobsApi.trackOpen(job.id) // count this person as an external apply open
+      window.open(job.apply_url, '_blank', 'noopener,noreferrer')
+    } else setApplyJob(job)
   }
 
   function toggleSave(id: string) {

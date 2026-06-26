@@ -200,6 +200,22 @@ export const jobsApi = {
     await apiFetch(`/jobs/${id}`, { method: 'DELETE' })
     return true
   },
+  // External-apply listings: record that someone opened the apply link. Best-effort.
+  async trackOpen(id: string): Promise<void> {
+    try {
+      await apiFetch(`/jobs/${id}/open`, { method: 'POST' })
+    } catch {
+      /* tracking is non-critical — never block the apply */
+    }
+  },
+  // Unique opens per listing for the current company (job_id -> count).
+  async openCounts(): Promise<Record<string, number>> {
+    try {
+      return (await apiFetch('/jobs/opens/mine')) as Record<string, number>
+    } catch {
+      return {}
+    }
+  },
 }
 
 /* ----------------------------- Applications (real backend) ----------------------------- */

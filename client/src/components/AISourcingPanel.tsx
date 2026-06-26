@@ -76,8 +76,10 @@ export function AISourcingPanel() {
     navigate(`/app/jobs?job=${job.id}`)
   }
   function apply(job: JobListing) {
-    if (job.apply_url) window.open(job.apply_url, '_blank', 'noopener,noreferrer')
-    else {
+    if (job.apply_url) {
+      jobsApi.trackOpen(job.id) // count this person as an external apply open
+      window.open(job.apply_url, '_blank', 'noopener,noreferrer')
+    } else {
       close()
       navigate(`/app/jobs?job=${job.id}&apply=1`)
     }

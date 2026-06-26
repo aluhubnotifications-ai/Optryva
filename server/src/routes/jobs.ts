@@ -30,6 +30,44 @@ async function studentsOnlyColExists(): Promise<boolean> {
   return hasStudentsOnly
 }
 
+// job_opens (migration 0012) records unique people who clicked through to an
+// external listing's apply link. Detect the table so the feature degrades
+// gracefully before the migration is applied.
+let hasJobOpens = false
+async function jobOpensExist(): Promise<boolean> {
+  if (hasJobOpens) return true
+  const { error } = await sb.from('job_opens').select('job_id').limit(1)
+  hasJobOpens = !error
+  return hasJobOpens
+}
+
+// Opens-per-job for the authed company's own listings. The Listings/Analytics
+// views show this instead of "applicants" for EXTERNAL roles, whose applications
+// never reach Optryva. Declared before "/:id" so it isn't shadowed by it.
+jobs.get('/opens/mine', async (req, res) => {
+  const counts: Record<string, number> = {}
+  if (!(await jobOpensExist())) return res.json(counts)
+  const owned = must(await sb.from('job_listings').select('id').eq('company_id', req.user!.id)) as any[]
+  const ids = owned.map((r) => r.id)
+  if (ids.length === 0) return res.json(counts)
+  const rows = must(await sb.from('job_opens').select('job_id').in('job_id', ids)) as any[]
+  for (const r of rows) counts[r.job_id] = (counts[r.job_id] ?? 0) + 1
+  res.json(counts)
+})
+
+// Record that the current user opened a listing's external apply link. Idempotent
+// per (job, user) so the count reflects unique people, not repeat clicks.
+jobs.post('/:id/open', async (req, res) => {
+  if (!(await jobOpensExist())) return res.json({ ok: false })
+  await sb
+    .from('job_opens')
+    .upsert(
+      { job_id: req.params.id, user_id: req.user!.id, created_at: now() },
+      { onConflict: 'job_id,user_id', ignoreDuplicates: true },
+    )
+  res.json({ ok: true })
+})
+
 jobs.get('/', async (req, res) => {
   const viewer = must(await sb.from('profiles').select('*').eq('id', req.user!.id).maybeSingle()) as any
   const rows = must(await sb.from('job_listings').select('*').eq('status', 'active').order('created_at', { ascending: false })) as any[]
