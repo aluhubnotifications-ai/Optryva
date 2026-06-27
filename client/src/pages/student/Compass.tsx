@@ -23,6 +23,7 @@ export default function Compass() {
   const [answers, setAnswers] = useState<string[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [streaming, setStreaming] = useState(false)
   const [intro, setIntro] = useState('')
   const [signals, setSignals] = useState<string[]>([])
   const [recs, setRecs] = useState<Rec[]>([])
@@ -54,10 +55,25 @@ export default function Compass() {
     const next = [...answers, a]
     setAnswers(next)
     setBusy(true)
-    const res = await aiApi.compassInterview(next)
-    setMsgs((m) => [...m, { role: 'ai', text: res.message }])
+    setStreaming(false)
+    // Stream the next question live; the greeting/closing turns fall back to the
+    // plain endpoint (which also tells us when the interview is done).
+    let done = false
+    const pushTok = (t: string) =>
+      setMsgs((m) => {
+        const last = m[m.length - 1]
+        if (last?.role === 'ai') return [...m.slice(0, -1), { role: 'ai', text: last.text + t }]
+        return [...m, { role: 'ai', text: t }]
+      })
+    const streamed = await aiApi.compassInterviewStream(next, (t) => { setStreaming(true); pushTok(t) }, (meta) => { done = !!meta?.done })
+    if (!streamed) {
+      const res = await aiApi.compassInterview(next)
+      setMsgs((m) => [...m, { role: 'ai', text: res.message }])
+      done = res.done
+    }
     setBusy(false)
-    if (res.done) {
+    setStreaming(false)
+    if (done) {
       setPhase('loading')
       const r = await aiApi.compassRecommend(next, jobs, user)
       setIntro(r.intro)
@@ -109,7 +125,7 @@ export default function Compass() {
                   </div>
                 ),
               )}
-              {(busy || phase === 'loading') && (
+              {((busy && !streaming) || phase === 'loading') && (
                 <div className="flex gap-2">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/12 text-primary"><Sparkles className="h-4 w-4 animate-pulse" /></div>
                   <div className="rounded-2xl rounded-tl-sm border border-border bg-card px-4 py-3 text-sm text-muted-foreground">{phase === 'loading' ? 'Finding your matches…' : 'Thinking…'}</div>

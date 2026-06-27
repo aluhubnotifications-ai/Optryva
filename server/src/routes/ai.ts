@@ -271,12 +271,34 @@ ai.get('/insights', async (req, res) => {
 
   const topMatches = rows.slice(0, 5).map(({ job, m }) => ({ job_id: job.id, title: job.title, company_id: job.company_id, listing_type: job.listing_type, location: job.location, score: m.score }))
 
-  const doNext: string[] = []
-  if (!(viewer?.cv_text ?? '').trim()) doNext.push('Upload your CV — without it every match is capped at 60.')
-  if (gaps[0]) doNext.push(`Learn ${gaps[0].name} — it’s asked for in ${gaps[0].count} of your matched roles.`)
-  if (gaps[1]) doNext.push(`Build a small project using ${gaps[1].name} to close your second-biggest gap.`)
-  if (topMatches[0]) doNext.push(`Apply to your strongest match: ${topMatches[0].title} (${topMatches[0].score}% fit).`)
-  if ((j.parse<string[]>(viewer?.skills, []) ?? []).length < 4) doNext.push('Add a few more skills to your profile so the matcher can find more roles for you.')
+  // Honest template fallback (also the no-key path).
+  const noCv = !(viewer?.cv_text ?? '').trim()
+  const fallbackDoNext: string[] = []
+  if (noCv) fallbackDoNext.push('Upload your CV — without it every match is capped at 60.')
+  if (gaps[0]) fallbackDoNext.push(`Learn ${gaps[0].name} — it’s asked for in ${gaps[0].count} of your matched roles.`)
+  if (gaps[1]) fallbackDoNext.push(`Build a small project using ${gaps[1].name} to close your second-biggest gap.`)
+  if (topMatches[0]) fallbackDoNext.push(`Apply to your strongest match: ${topMatches[0].title} (${topMatches[0].score}% fit).`)
+  if ((j.parse<string[]>(viewer?.skills, []) ?? []).length < 4) fallbackDoNext.push('Add a few more skills to your profile so the matcher can find more roles for you.')
+
+  // AI-generated, personalised next steps grounded in the student's REAL match data.
+  let doNext = fallbackDoNext
+  if (hasClaude() && rows.length) {
+    const name = firstNameOf(viewer?.full_name)
+    const ai = await claudeText({
+      model: MODELS.score,
+      maxTokens: 400,
+      system:
+        `You are ${name ? `${name}'s ` : 'a '}honest, encouraging career coach. From the student's REAL match data below, write 3-5 specific, motivating next actions — each short, imperative, and concrete (reference their actual gaps/roles, not generic advice). ${noCv ? 'They have NOT uploaded a CV — make the first action uploading it. ' : ''}Reply ONLY a JSON array of strings.`,
+      user:
+        `Readiness: ${readiness}/100 across ${rows.length} roles.\n` +
+        `Top skill gaps (skill : #roles wanting it): ${gaps.slice(0, 5).map((g) => `${g.name}:${g.count}`).join(', ') || '—'}.\n` +
+        `Evident strengths: ${strengths.slice(0, 5).map((s) => s.name).join(', ') || '—'}.\n` +
+        `Strongest matches: ${topMatches.slice(0, 3).map((t) => `${t.title} (${t.score}%)`).join('; ') || '—'}.\n` +
+        `Résumé summary: ${rp?.summary ?? '—'}.`,
+    })
+    const list = (parseJsonArray<string>(ai)?.filter((x) => typeof x === 'string' && x.trim())) ?? parseList(ai)
+    if (list.length) doNext = list.slice(0, 5)
+  }
 
   res.json({ readiness, total: rows.length, distribution, gaps, strengths, demand, topMatches, doNext })
 })
@@ -314,11 +336,12 @@ ai.post('/chat', async (req, res) => {
   const { message } = req.body ?? {}
   const row = await studentRow(req.user!.id)
   if (hasClaude()) {
+    const rp = await ensureResumeProfile(row) // also extracts cv_text from an uploaded PDF
     const text = await claudeText({
       model: MODELS.chat,
       maxTokens: 1200,
       thinking: true,
-      system: chatSystem(row, asResumeProfile(row?.resume_profile)),
+      system: chatSystem(row, rp),
       user: message ?? '',
     })
     if (text) return res.json({ text })
@@ -332,10 +355,11 @@ ai.post('/chat/stream', async (req, res) => {
   if (!hasClaude()) return res.status(503).json({ error: 'ai_unavailable' })
   const { message } = req.body ?? {}
   const row = await studentRow(req.user!.id)
+  const rp = await ensureResumeProfile(row) // also extracts cv_text from an uploaded PDF
   const stream = streamClaude({
     model: MODELS.chat,
     maxTokens: 1200,
-    system: chatSystem(row, asResumeProfile(row?.resume_profile)),
+    system: chatSystem(row, rp),
     user: message ?? '',
   })
   if (!stream) return res.status(503).json({ error: 'ai_unavailable' })
@@ -369,8 +393,12 @@ ai.post('/coach', async (req, res) => {
 /* ---------- CV Tips ---------- */
 ai.post('/cv-tips', async (req, res) => {
   const row = await studentRow(req.user!.id)
-  const rp = asResumeProfile(row?.resume_profile)
-  const ctx = rp ? `Their résumé shows seniority ${rp.seniority}, skills ${(rp.skills ?? []).map((s) => s.name).join(', ')}, gaps ${(rp.gaps ?? []).join(', ')}.` : 'No parsed résumé yet.'
+  const rp = await ensureResumeProfile(row) // extracts + parses an uploaded résumé if needed
+  const ctx = rp
+    ? `Their résumé shows seniority ${rp.seniority}, skills ${(rp.skills ?? []).map((s) => s.name).join(', ')}, gaps ${(rp.gaps ?? []).join(', ')}. Summary: ${rp.summary ?? '—'}.`
+    : (row?.cv_text ?? '').trim()
+      ? `Their résumé text:\n${String(row.cv_text).slice(0, 3000)}`
+      : 'No résumé on file yet — give general but actionable tips and encourage them to upload one.'
   if (hasClaude()) {
     const text = await claudeText({ model: MODELS.chat, maxTokens: 500, system: 'Give 5-6 concise, personalized CV improvement tips. Reply ONLY JSON array of strings.', user: ctx })
     const parsed = extractJson<string[]>(text ? `{"x":${text}}` : null) as any
@@ -396,6 +424,11 @@ const COMPASS_Q = [
   'Which skills do you most want to build over the next year?',
   'Any real-life constraints I should factor in — location, language, schedule?',
 ]
+const interviewSystem = (name: string, idx: number) =>
+  `You are a warm, friendly Career Compass guide in conversation with ${name || 'a student'} — sound like a real person who genuinely cares, never like a form or interrogation. ` +
+  `In ONE short message (max ~30 words): warmly and specifically acknowledge their most recent answer${name ? `, occasionally using their name (${name}) naturally — don't overuse it` : ''}, then ask the next question conversationally. ` +
+  `The next question MUST cover this exact topic: "${COMPASS_Q[idx]}". Reply with ONLY that message — no preamble, no quotes.`
+
 ai.post('/compass/interview', async (req, res) => {
   const answers: string[] = req.body?.answers ?? []
   const idx = answers.length
@@ -413,18 +446,32 @@ ai.post('/compass/interview', async (req, res) => {
   // warm, contextual follow-up that uses their name. Cheap (Haiku) — once per answer.
   if (hasClaude() && idx > 0) {
     const convo = answers.map((a, i) => `Q${i + 1}: ${COMPASS_Q[i]}\nA: ${a}`).join('\n\n')
-    const text = await claudeText({
-      model: MODELS.score,
-      maxTokens: 150,
-      system:
-        `You are a warm, friendly Career Compass guide in conversation with ${name || 'a student'} — sound like a real person who genuinely cares, never like a form or interrogation. ` +
-        `In ONE short message (max ~30 words): warmly and specifically acknowledge their most recent answer${name ? `, occasionally using their name (${name}) naturally — don't overuse it` : ''}, then ask the next question conversationally. ` +
-        `The next question MUST cover this exact topic: "${COMPASS_Q[idx]}". Reply with ONLY that message — no preamble, no quotes.`,
-      user: convo,
-    })
+    const text = await claudeText({ model: MODELS.score, maxTokens: 150, system: interviewSystem(name, idx), user: convo })
     if (text?.trim()) return res.json({ done: false, message: text.trim(), question: COMPASS_Q[idx] })
   }
   res.json(fallback)
+})
+
+/* Streaming Career Compass question — the warm follow-up types out live. Only
+ * mid-interview turns stream (the greeting + the closing line are fixed text);
+ * 409 tells the client to use the plain endpoint for those. */
+ai.post('/compass/interview/stream', async (req, res) => {
+  if (!hasClaude()) return res.status(503).json({ error: 'ai_unavailable' })
+  const answers: string[] = req.body?.answers ?? []
+  const idx = answers.length
+  if (idx === 0 || idx >= COMPASS_Q.length) return res.status(409).json({ error: 'no_stream' })
+  const row = await studentRow(req.user!.id)
+  const name = firstNameOf(row?.full_name)
+  const convo = answers.map((a, i) => `Q${i + 1}: ${COMPASS_Q[i]}\nA: ${a}`).join('\n\n')
+  const stream = streamClaude({
+    model: MODELS.score,
+    maxTokens: 150,
+    meta: { done: false, question: COMPASS_Q[idx] },
+    system: interviewSystem(name, idx),
+    user: convo,
+  })
+  if (!stream) return res.status(503).json({ error: 'ai_unavailable' })
+  res.sse(stream)
 })
 
 /** Label what the student told us they care about (shown as chips). Purely
@@ -459,17 +506,41 @@ ai.post('/compass/recommend', async (req, res) => {
     .filter((x): x is { job: ReturnType<typeof rowToMatchJob>; m: AiMatch } => !!x)
     .sort((a, b) => b.m.score - a.m.score)
     .slice(0, 3)
-  const recs = top.map(({ job, m }) => {
+  const name = firstNameOf(viewer?.full_name)
+  // Templated narrative (also the no-key path / fallback).
+  const tmplNarrative = (job: ReturnType<typeof rowToMatchJob>, m: AiMatch) => {
     const missing = job.tags.filter((t) => !m.matched_skills.includes(t))
     return {
-      job: { id: job.id, title: job.title, location: job.location, company_id: job.company_id, listing_type: job.listing_type },
-      score: m.score,
       why: `This fits your profile${m.matched_skills.length ? ` in ${m.matched_skills.slice(0, 2).join(', ')}` : ''}${signals.length ? `, weighted toward your priorities (${signals.slice(0, 2).join(', ')})` : ''} — a strong ${job.listing_type.toLowerCase()} match.`,
       stretch: missing.length ? `You'd stretch into ${missing.slice(0, 2).join(' and ')}.` : 'You would deepen your existing strengths here.',
       actions: [`Tailor your CV to highlight ${m.matched_skills[0] ?? job.type}.`, `Build a small project using ${missing[0] ?? job.tags[0] ?? 'a core skill'}.`, 'Use AI Research, then message someone on the team.'],
     }
+  }
+  // AI-written, personal notes for all top picks in ONE call (grounded in the
+  // real Claude scores + matched skills). Falls back to the template per field.
+  let notes: any[] | null = null
+  if (hasClaude() && top.length) {
+    const ai = await claudeText({
+      model: MODELS.score,
+      maxTokens: 700,
+      system:
+        `You are ${name ? `${name}'s ` : 'a '}warm, honest career mentor. For each recommended role (in order), write a short personal note. ` +
+        `Reply ONLY a JSON array of objects {"why":"1 warm sentence on why it genuinely fits THEM","stretch":"1 honest sentence on what they'd grow into","actions":["3 short, concrete prep actions"]}. Be specific to their skills and the role; no clichés ("passionate","leverage").`,
+      user: top.map(({ job, m }, i) => `#${i + 1} ${job.title} (${job.listing_type}), fit ${m.score}%. Matches their skills: ${m.matched_skills.join(', ') || '—'}. Role wants: ${job.tags.join(', ') || '—'}.`).join('\n'),
+    })
+    notes = parseJsonArray(ai)
+  }
+  const recs = top.map(({ job, m }, i) => {
+    const t = tmplNarrative(job, m)
+    const n = notes?.[i]
+    return {
+      job: { id: job.id, title: job.title, location: job.location, company_id: job.company_id, listing_type: job.listing_type },
+      score: m.score,
+      why: typeof n?.why === 'string' && n.why.trim() ? n.why : t.why,
+      stretch: typeof n?.stretch === 'string' && n.stretch.trim() ? n.stretch : t.stretch,
+      actions: Array.isArray(n?.actions) && n.actions.length ? n.actions.slice(0, 3) : t.actions,
+    }
   })
-  const name = firstNameOf(viewer?.full_name)
   res.json({
     intro: recs.length
       ? `Thanks for sharing all that${name ? `, ${name}` : ''} — based on our conversation, here are my top ${recs.length} directions for you, ranked by how well they fit${signals.length ? ` and weighted toward what matters to you (${signals.join(', ')})` : ''}.`
@@ -601,6 +672,21 @@ function rowJobLite(r: any) {
 function parseList(text: string | null): string[] {
   if (!text) return []
   return text.split('\n').map((l) => l.replace(/^[-*\d.\s]+/, '').trim()).filter((l) => l.length > 4).slice(0, 6)
+}
+/** Parse a JSON array from a model reply, tolerating ```json fences / prose. */
+function parseJsonArray<T = any>(text: string | null): T[] | null {
+  if (!text) return null
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+  const body = (fenced ? fenced[1] : text).trim()
+  const start = body.indexOf('[')
+  const end = body.lastIndexOf(']')
+  if (start === -1 || end === -1) return null
+  try {
+    const p = JSON.parse(body.slice(start, end + 1))
+    return Array.isArray(p) ? p : null
+  } catch {
+    return null
+  }
 }
 function canChat(_m: string) {
   return "Here's how I'd approach that:\n\n1. **Sharpen your résumé** around measurable outcomes.\n2. **Target roles** that match your top skills.\n3. **Prepare stories** using the STAR format.\n\nWant me to draft a 30-day prep plan?"

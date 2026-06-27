@@ -6,7 +6,9 @@ import Anthropic from '@anthropic-ai/sdk'
 export const MODELS = {
   chat: 'claude-opus-4-8',
   coach: 'claude-opus-4-8',
-  research: 'claude-opus-4-8',
+  // Research uses live web search and runs interactively — Sonnet is much faster
+  // (and cheaper) than Opus while still strong, so answers feel snappy.
+  research: 'claude-sonnet-4-6',
   score: 'claude-haiku-4-5',
 } as const
 
@@ -16,6 +18,29 @@ export function hasClaude() {
 
 const client = hasClaude() ? new Anthropic() : null
 export { client as anthropic }
+
+/**
+ * messages.create with a small backoff on 429s. The account's Haiku tier is only
+ * 5 req/min, so a brief retry keeps single interactive calls (chat, research,
+ * do-next, compass) from failing under bursty load. Bulk scoring deliberately
+ * does NOT use this (it's cache-backed + nightly-batched) to stay fast.
+ */
+async function createWithRetry(params: any, tries = 3): Promise<any> {
+  let delay = 1500
+  for (let i = 0; ; i++) {
+    try {
+      return await client!.messages.create(params)
+    } catch (e: any) {
+      const status = e?.status ?? e?.response?.status
+      if (status === 429 && i < tries - 1) {
+        await new Promise((r) => setTimeout(r, delay))
+        delay *= 2
+        continue
+      }
+      throw e
+    }
+  }
+}
 
 type SystemBlock = { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }
 
@@ -40,9 +65,9 @@ export async function claudeText(opts: {
       messages: [{ role: 'user', content: opts.user }],
     }
     if (opts.thinking) params.thinking = { type: 'adaptive' }
-    const res = await client.messages.create(params)
+    const res = await createWithRetry(params)
     if (res.stop_reason === 'refusal') return null
-    return res.content
+    return (res.content as Anthropic.ContentBlock[])
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map((b) => b.text)
       .join('')
@@ -114,7 +139,7 @@ export async function claudeTextWithSearch(opts: {
       tools: [{ type: 'web_search_20260209', name: 'web_search' }],
       messages: [{ role: 'user', content: opts.user }],
     }
-    const res: any = await client.messages.create(params)
+    const res: any = await createWithRetry(params)
     if (res.stop_reason === 'refusal') return null
     const text = (res.content ?? [])
       .filter((b: any) => b.type === 'text')
@@ -143,12 +168,15 @@ export function streamClaude(opts: {
   user: string
   maxTokens?: number
   tools?: unknown[]
+  /** Optional metadata emitted as the first SSE frame: `data: {"meta":...}`. */
+  meta?: unknown
 }): ReadableStream<Uint8Array> | null {
   if (!client) return null
   const enc = new TextEncoder()
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (obj: unknown) => controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`))
+      if (opts.meta !== undefined) send({ meta: opts.meta })
       try {
         const params: any = {
           model: opts.model ?? MODELS.chat,
@@ -174,6 +202,51 @@ export function streamClaude(opts: {
       }
     },
   })
+}
+
+/**
+ * Pull the plain text out of an uploaded résumé file stored as a data URL.
+ * PDFs are read by Claude's native document support; text/* files are decoded
+ * directly (no API call). Returns null for unsupported types / no key / failure.
+ * This is what gives the AI access to the candidate's actual résumé.
+ */
+export async function extractDocumentText(dataUrl: string): Promise<string | null> {
+  if (!client || typeof dataUrl !== 'string') return null
+  const m = dataUrl.match(/^data:([^;]+);base64,(.*)$/s)
+  if (!m) return null
+  const mediaType = m[1]
+  const data = m[2]
+  if (mediaType.startsWith('text/')) {
+    try {
+      return Buffer.from(data, 'base64').toString('utf-8').trim() || null
+    } catch {
+      return null
+    }
+  }
+  if (mediaType !== 'application/pdf') return null // only PDF is supported as a document block
+  try {
+    const res: any = await client.messages.create({
+      model: MODELS.score,
+      max_tokens: 4096,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } },
+            { type: 'text', text: 'Output ONLY the full plain text of this résumé/CV — keep section headings and bullet points, omit nothing important. No commentary, no preamble.' },
+          ],
+        },
+      ],
+    })
+    const text = (res.content ?? [])
+      .filter((b: any) => b.type === 'text')
+      .map((b: any) => b.text)
+      .join('')
+      .trim()
+    return text || null
+  } catch {
+    return null
+  }
 }
 
 /** Parse a JSON object out of a model response, tolerating code fences/prose. */

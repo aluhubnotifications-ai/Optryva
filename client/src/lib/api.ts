@@ -806,7 +806,7 @@ async function aiPost(path: string, body: unknown) {
  * up in the AI activity panel via trackAi. Returns true if any text streamed;
  * throws on failure so callers can fall back to the non-streaming endpoint.
  */
-async function streamAi(label: string, path: string, body: unknown, onToken: (t: string) => void): Promise<boolean> {
+async function streamAi(label: string, path: string, body: unknown, onToken: (t: string) => void, onMeta?: (m: any) => void): Promise<boolean> {
   return trackAi(label, async () => {
     const res = await rawFetch(path, { method: 'POST', body: JSON.stringify(body) })
     if (!res.ok || !res.body) throw new Error(`stream_failed_${res.status}`)
@@ -826,6 +826,7 @@ async function streamAi(label: string, path: string, body: unknown, onToken: (t:
         if (!line.startsWith('data:')) continue
         try {
           const obj = JSON.parse(line.slice(5).trim())
+          if (obj.meta !== undefined) onMeta?.(obj.meta)
           if (obj.t) { got = true; onToken(obj.t as string) }
           if (obj.error) errored = true
         } catch { /* ignore partial frames */ }
@@ -952,6 +953,16 @@ export const aiApi = {
       return (await trackAi('Career Compass — listening', () => aiPost('/ai/compass/interview', { answers }))) as { done: boolean; message: string; question?: string }
     } catch {
       return mockAi.compassInterview(answers)
+    }
+  },
+
+  /** Stream the next Compass question live. Returns true if it streamed; the
+   *  greeting / closing turns return false so the caller uses compassInterview. */
+  async compassInterviewStream(answers: string[], onToken: (t: string) => void, onMeta: (m: any) => void): Promise<boolean> {
+    try {
+      return await streamAi('Career Compass — listening', '/ai/compass/interview/stream', { answers }, onToken, onMeta)
+    } catch {
+      return false
     }
   },
 

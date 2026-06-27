@@ -3,6 +3,7 @@ import { sb, must, j } from '@/db'
 import { requireAuth } from '@/lib/auth'
 import { rowToProfile } from '@/lib/serialize'
 import { refreshStudentEnrichment } from '@/lib/enrich'
+import { extractDocumentText } from '@/lib/claude'
 import { schoolHiddenFrom, visibilityColsExist } from '@/lib/visibility'
 
 export const profiles = Router()
@@ -63,6 +64,13 @@ profiles.patch('/:id', async (req, res) => {
   }
   for (const f of ARRAY_FIELDS) if (f in b) { update[f] = j.stringify(b[f] ?? []); if (MATCH_AFFECTING.has(f)) affectsMatch = true }
   for (const f of BOOL_FIELDS) if (f in b) { update[f] = b[f] ? 1 : 0 }
+
+  // A new résumé file arrived but the client didn't send extracted text → pull the
+  // plain text out of the PDF so the AI (chat, matches, insights) can read it.
+  if (cvUrlOk && 'cv_url' in b && b.cv_url && !(b.cv_text ?? '').trim()) {
+    const text = await extractDocumentText(b.cv_url)
+    if (text) { update.cv_text = text; affectsMatch = true }
+  }
 
   // School domain/privacy fields (migration 0011) — only persisted once present.
   if (('student_domains' in b || 'is_private' in b) && (await visibilityColsExist())) {

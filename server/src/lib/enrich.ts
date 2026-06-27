@@ -14,6 +14,7 @@ import { sb, j } from '@/db'
 import { now } from '@/lib/util'
 import { parseResume, heuristicResume, type ResumeProfile } from '@/lib/resume'
 import { embedOne, toVector, hasEmbeddings, studentEmbedText, jobEmbedText } from '@/lib/embeddings'
+import { extractDocumentText, hasClaude } from '@/lib/claude'
 
 // --- one-shot column probes (cached) -------------------------------------------------
 const colCache = new Map<string, boolean>()
@@ -37,12 +38,32 @@ export function asResumeProfile(v: any): ResumeProfile | null {
 }
 
 /**
+ * Make sure the student's résumé TEXT is available. Uploads only store the file
+ * (cv_url) — this pulls the plain text out of it (once) so the whole AI layer
+ * (chat, matches, insights, snapshot) can actually read the candidate's résumé.
+ * Returns the text (possibly ''), and back-fills `row.cv_text` in place.
+ */
+export async function ensureCvText(row: any): Promise<string> {
+  const existing = (row?.cv_text ?? '').trim()
+  if (existing) return existing
+  const url = row?.cv_url
+  if (!url || !hasClaude()) return ''
+  const text = await extractDocumentText(url)
+  if (text) {
+    await sb.from('profiles').update({ cv_text: text }).eq('id', row.id)
+    row.cv_text = text
+    return text
+  }
+  return ''
+}
+
+/**
  * Return the student's structured résumé profile, parsing + persisting it on the
  * first scoring or whenever the CV changed (resume_parsed_at unset). Falls back
  * to a heuristic profile if Claude is unavailable. No-ops without the columns.
  */
 export async function ensureResumeProfile(row: any): Promise<ResumeProfile | null> {
-  const cv = (row?.cv_text ?? '').trim()
+  const cv = await ensureCvText(row)
   if (!cv) return null
   if (!(await hasResumeCols())) return asResumeProfile(row?.resume_profile)
 

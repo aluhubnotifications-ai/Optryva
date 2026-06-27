@@ -1,3 +1,4 @@
+
 -- Track people who clicked through to apply on an EXTERNAL listing.
 --
 -- When a listing applies off-platform (apply_url is set), Optryva never receives
