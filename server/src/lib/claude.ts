@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { unzipSync, strFromU8 } from 'fflate'
 
 // Centralized model config (spec §8): Opus for open-ended chat/coaching/research
 // (with adaptive thinking), a cheap tier for high-volume scoring. Swap here to
@@ -204,11 +205,35 @@ export function streamClaude(opts: {
   })
 }
 
+/** Extract readable text from a .docx (a ZIP of XML) — word/document.xml holds
+ *  the body; text lives in <w:t> runs, paragraphs in <w:p>. No API call. */
+function extractDocxText(data: string): string | null {
+  try {
+    const files = unzipSync(new Uint8Array(Buffer.from(data, 'base64')))
+    const doc = files['word/document.xml']
+    if (!doc) return null
+    const xml = strFromU8(doc)
+    const text = xml
+      .replace(/<w:p\b[^>]*>/g, '\n') // paragraph → newline
+      .replace(/<w:tab\b[^>]*\/?>/g, '\t')
+      .replace(/<[^>]+>/g, '') // drop all tags; only <w:t> runs carry text
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+    return text || null
+  } catch {
+    return null
+  }
+}
+
 /**
- * Pull the plain text out of an uploaded résumé file stored as a data URL.
- * PDFs are read by Claude's native document support; text/* files are decoded
- * directly (no API call). Returns null for unsupported types / no key / failure.
- * This is what gives the AI access to the candidate's actual résumé.
+ * Pull the plain text out of an uploaded résumé file stored as a data URL — so
+ * the whole AI layer can read the candidate's actual CV regardless of format.
+ * PDFs are read by Claude's native document support; .docx (Word) is unzipped
+ * locally; text/* is decoded directly. Word files often arrive with a generic
+ * MIME type, so ZIP-looking bytes (PK header) are treated as .docx too. Returns
+ * null for unsupported types (e.g. legacy binary .doc) / no key / failure.
  */
 export async function extractDocumentText(dataUrl: string): Promise<string | null> {
   if (!client || typeof dataUrl !== 'string') return null
@@ -223,7 +248,11 @@ export async function extractDocumentText(dataUrl: string): Promise<string | nul
       return null
     }
   }
-  if (mediaType !== 'application/pdf') return null // only PDF is supported as a document block
+  // .docx — explicit MIME, or a generic/octet-stream type whose bytes are a ZIP.
+  const isDocxMime = mediaType.includes('officedocument.wordprocessingml') || mediaType === 'application/vnd.ms-word'
+  const looksLikeZip = mediaType !== 'application/pdf' && /^UEsDB/.test(data) // base64 of "PK\x03\x04"
+  if (isDocxMime || looksLikeZip) return extractDocxText(data)
+  if (mediaType !== 'application/pdf') return null // legacy binary .doc and others are unsupported
   try {
     const res: any = await client.messages.create({
       model: MODELS.score,
