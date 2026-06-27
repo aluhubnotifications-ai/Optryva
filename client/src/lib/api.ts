@@ -136,6 +136,20 @@ function handleAuthFailure() {
   }
 }
 
+/** Like rawFetch but refreshes the access token once on a 401 and retries —
+ *  returning the raw Response (used by the streaming paths, which need the
+ *  body stream rather than parsed JSON). Without this, an expired access token
+ *  makes every SSE request 401 and silently fall back to the non-streaming
+ *  endpoint, so progress (e.g. the matching percentage) never shows. */
+async function rawFetchAuthed(path: string, init: RequestInit = {}): Promise<Response> {
+  let res = await rawFetch(path, init)
+  if (res.status === 401) {
+    const ok = await refreshAccessToken()
+    if (ok) res = await rawFetch(path, init)
+  }
+  return res
+}
+
 /** Authenticated fetch against the real server (Bearer token + cookies).
  *  On a 401, transparently refresh the access token once and retry. */
 async function apiFetch(path: string, init: RequestInit = {}) {
@@ -810,7 +824,7 @@ async function aiPost(path: string, body: unknown) {
  *  Lower-level than streamAi (no activity-panel task) — used by the match runner,
  *  which manages its own progress task. Throws on a non-OK response. */
 async function consumeSse(path: string, body: unknown, onFrame: (obj: any) => void): Promise<void> {
-  const res = await rawFetch(path, { method: 'POST', body: JSON.stringify(body) })
+  const res = await rawFetchAuthed(path, { method: 'POST', body: JSON.stringify(body) })
   if (!res.ok || !res.body) throw new Error(`stream_failed_${res.status}`)
   const reader = res.body.getReader()
   const dec = new TextDecoder()
@@ -831,7 +845,7 @@ async function consumeSse(path: string, body: unknown, onFrame: (obj: any) => vo
 
 async function streamAi(label: string, path: string, body: unknown, onToken: (t: string) => void, onMeta?: (m: any) => void): Promise<boolean> {
   return trackAi(label, async () => {
-    const res = await rawFetch(path, { method: 'POST', body: JSON.stringify(body) })
+    const res = await rawFetchAuthed(path, { method: 'POST', body: JSON.stringify(body) })
     if (!res.ok || !res.body) throw new Error(`stream_failed_${res.status}`)
     const reader = res.body.getReader()
     const dec = new TextDecoder()
