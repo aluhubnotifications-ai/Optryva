@@ -92,6 +92,9 @@ export async function claudeJson<T>(opts: {
   schema: unknown
   maxTokens?: number
   thinking?: boolean
+  /** Sampling temperature. Pass 0 for stable, repeatable scores (the matcher
+   *  uses this so the same résumé+job yields the same number on re-score). */
+  temperature?: number
 }): Promise<T | null> {
   if (!client) return null
   try {
@@ -102,6 +105,7 @@ export async function claudeJson<T>(opts: {
       output_config: { format: { type: 'json_schema', schema: opts.schema } },
       messages: [{ role: 'user', content: opts.user }],
     }
+    if (opts.temperature != null) params.temperature = opts.temperature
     if (opts.thinking) params.thinking = { type: 'adaptive' }
     const res: any = await client.messages.create(params)
     if (res.stop_reason === 'refusal') return null

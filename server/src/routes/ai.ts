@@ -142,6 +142,7 @@ async function claudeScore(student: MatchStudent, job: MatchJob, rp: ResumeProfi
   const parsed = await claudeJson<LlmScore>({
     model: MODELS.score,
     maxTokens: 800,
+    temperature: 0, // stable, repeatable scores — same résumé+job → same number
     system: buildScoringSystem(jobBlock, addendum),
     schema: SCORE_SCHEMA,
     user:
