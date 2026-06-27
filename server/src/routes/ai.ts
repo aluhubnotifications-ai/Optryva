@@ -56,7 +56,7 @@ const firstNameOf = (full?: string | null): string => (full ?? '').trim().split(
 /** A warm, personalised, CV-AWARE system prompt for the career chat. The
  *  assistant addresses the student by name and reasons from their actual résumé
  *  so its advice is concrete rather than generic. */
-function chatSystem(row: any, rp: ResumeProfile | null): string {
+function chatSystem(row: any, rp: ResumeProfile | null, matchInfo = ''): string {
   const name = firstNameOf(row?.full_name)
   const major = row?.major ? ` who is studying ${row.major}` : ''
   const cv = rp
@@ -73,7 +73,41 @@ function chatSystem(row: any, rp: ResumeProfile | null): string {
     `Talk like a supportive human mentor — warm, conversational, and on their side${name ? `; address them as ${name}` : ''}. ` +
     `Help with CV, jobs, skills, and interviews. Give direct, truthful advice — be kind but never flatter or over-promise; if something's a real weakness, say so gently and give the next step. ` +
     `You may use markdown tables, lists, and code blocks.` +
-    cv
+    cv +
+    matchInfo
+  )
+}
+
+/** A compact summary of the student's REAL, already-scored job matches (from the
+ *  cache only — no new scoring, so it's instant and rate-limit-safe) to feed the
+ *  chat. Lets the assistant answer "what am I a good fit for?" with real roles. */
+async function matchContext(uid: string): Promise<string> {
+  const cm = await cacheMap(uid)
+  const matches: AiMatch[] = []
+  for (const r of cm.values()) {
+    try { if (r?.payload) matches.push(JSON.parse(r.payload)) } catch { /* skip bad row */ }
+  }
+  if (!matches.length) return '\n\nThey have NO computed job matches yet — if they ask about matches, warmly point them to Opportunities or the Insights tab so the matcher can score roles for them.'
+  const ids = matches.map((m) => m.job_id)
+  const jobs = (must(await sb.from('job_listings').select('id,title,listing_type').in('id', ids)) as any[]) ?? []
+  const jById = new Map(jobs.map((x) => [x.id, x]))
+  const ranked = matches.filter((m) => jById.has(m.job_id)).sort((a, b) => b.score - a.score)
+  if (!ranked.length) return ''
+  const top = ranked.slice(0, 6).map((m) => `${jById.get(m.job_id).title} (${jById.get(m.job_id).listing_type}, ${m.score}% fit)`)
+  const strengthCount = new Map<string, number>()
+  const gapCount = new Map<string, number>()
+  for (const m of ranked) {
+    for (const s of m.matched_skills ?? []) strengthCount.set(s, (strengthCount.get(s) ?? 0) + 1)
+    for (const g of m.mismatch_flags ?? []) gapCount.set(g, (gapCount.get(g) ?? 0) + 1)
+  }
+  const top2 = (mp: Map<string, number>) => Array.from(mp.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([n]) => n).join(', ')
+  const avg = Math.round(ranked.reduce((a, b) => a + b.score, 0) / ranked.length)
+  return (
+    `\n\nTHEIR REAL JOB MATCHES (already scored by the matcher — reference these specifically; do NOT invent other roles or scores):\n` +
+    `• ${ranked.length} scored roles, average fit ${avg}%.\n` +
+    `• Strongest matches: ${top.join('; ')}.\n` +
+    `• Skills helping them match: ${top2(strengthCount) || '—'}.\n` +
+    `• Common gaps flagged across roles: ${top2(gapCount) || '—'}.`
   )
 }
 
@@ -336,12 +370,12 @@ ai.post('/chat', async (req, res) => {
   const { message } = req.body ?? {}
   const row = await studentRow(req.user!.id)
   if (hasClaude()) {
-    const rp = await ensureResumeProfile(row) // also extracts cv_text from an uploaded PDF
+    const [rp, matchInfo] = await Promise.all([ensureResumeProfile(row), matchContext(req.user!.id)])
     const text = await claudeText({
       model: MODELS.chat,
       maxTokens: 1200,
       thinking: true,
-      system: chatSystem(row, rp),
+      system: chatSystem(row, rp, matchInfo),
       user: message ?? '',
     })
     if (text) return res.json({ text })
@@ -350,16 +384,16 @@ ai.post('/chat', async (req, res) => {
   res.json({ text: canChat(message ?? '') }) // no key: safety net
 })
 
-/* Streaming chat — same CV-aware prompt, rendered token-by-token. */
+/* Streaming chat — same CV-aware + match-aware prompt, rendered token-by-token. */
 ai.post('/chat/stream', async (req, res) => {
   if (!hasClaude()) return res.status(503).json({ error: 'ai_unavailable' })
   const { message } = req.body ?? {}
   const row = await studentRow(req.user!.id)
-  const rp = await ensureResumeProfile(row) // also extracts cv_text from an uploaded PDF
+  const [rp, matchInfo] = await Promise.all([ensureResumeProfile(row), matchContext(req.user!.id)])
   const stream = streamClaude({
     model: MODELS.chat,
     maxTokens: 1200,
-    system: chatSystem(row, rp),
+    system: chatSystem(row, rp, matchInfo),
     user: message ?? '',
   })
   if (!stream) return res.status(503).json({ error: 'ai_unavailable' })
