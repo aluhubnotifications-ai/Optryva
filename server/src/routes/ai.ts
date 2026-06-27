@@ -2,7 +2,7 @@ import { Router } from '@/lib/http'
 import { sb, must, j } from '@/db'
 import { requireAuth } from '@/lib/auth'
 import { now } from '@/lib/util'
-import { claudeText, claudeJson, claudeTextWithSearch, extractJson, hasClaude, MODELS } from '@/lib/claude'
+import { claudeText, claudeJson, claudeTextWithSearch, streamClaude, extractJson, hasClaude, MODELS } from '@/lib/claude'
 import { type MatchJob, type MatchStudent, type AiMatch } from '@/lib/matching'
 import type { ResumeProfile } from '@/lib/resume'
 import { ensureResumeProfile, asResumeProfile } from '@/lib/enrich'
@@ -50,6 +50,31 @@ async function loadJob(id: string): Promise<(MatchJob & { company_id: string; de
 async function companyName(companyId: string): Promise<string> {
   const r = must(await sb.from('profiles').select('company_name, full_name').eq('id', companyId).maybeSingle()) as any
   return r?.company_name || r?.full_name || 'this company'
+}
+const firstNameOf = (full?: string | null): string => (full ?? '').trim().split(/\s+/)[0] || ''
+
+/** A warm, personalised, CV-AWARE system prompt for the career chat. The
+ *  assistant addresses the student by name and reasons from their actual résumé
+ *  so its advice is concrete rather than generic. */
+function chatSystem(row: any, rp: ResumeProfile | null): string {
+  const name = firstNameOf(row?.full_name)
+  const major = row?.major ? ` who is studying ${row.major}` : ''
+  const cv = rp
+    ? `\n\nWhat you already know about ${name || 'them'} from their résumé (use it — be specific, reference their real skills/projects):\n` +
+      `• Seniority: ${rp.seniority}, ~${rp.total_years ?? 0} year(s) of experience.\n` +
+      `• Skills: ${(rp.skills ?? []).map((s) => s.name).join(', ') || '—'}.\n` +
+      `• Projects: ${(rp.projects ?? []).map((p) => p.name + (p.impact ? ` (${p.impact})` : '')).join('; ') || '—'}.\n` +
+      `• Domains: ${(rp.domains ?? []).join(', ') || '—'}. Likely gaps: ${(rp.gaps ?? []).join(', ') || '—'}.`
+    : (row?.cv_text ?? '').trim()
+      ? `\n\n${name || 'They'} uploaded this résumé — read it and ground your advice in it:\n${String(row.cv_text).slice(0, 4000)}`
+      : `\n\n${name || 'They'} hasn't uploaded a résumé yet. Warmly encourage them to add one so you can give sharper, personalised help.`
+  return (
+    `You are ${name ? `${name}'s` : 'a'} friendly, encouraging, and HONEST personal career assistant for a student${major}. ` +
+    `Talk like a supportive human mentor — warm, conversational, and on their side${name ? `; address them as ${name}` : ''}. ` +
+    `Help with CV, jobs, skills, and interviews. Give direct, truthful advice — be kind but never flatter or over-promise; if something's a real weakness, say so gently and give the next step. ` +
+    `You may use markdown tables, lists, and code blocks.` +
+    cv
+  )
 }
 
 /* ---------- §8.1 AI Job Matcher (honest rubric, structured + cached) ---------- */
@@ -264,7 +289,8 @@ ai.post('/company', async (req, res) => {
       model: MODELS.research,
       maxTokens: 900,
       system:
-        'You research a company for an early-career African/global student, using current web results. Be honest and balanced — surface REAL risks (layoffs, funding trouble, poor reviews, visa limits) when the evidence shows them; do not write a brochure. ' +
+        'You are a warm, encouraging career guide researching a company for an early-career African/global student, using current web results. Write in a friendly, supportive voice that helps them feel prepared and excited — like a mentor who did the homework for them. ' +
+        'Be genuinely helpful and specific (cite what you actually found), but stay honest and balanced — surface REAL risks (layoffs, funding trouble, poor reviews, visa limits) when the evidence shows them, framed constructively; do not write a brochure and do not sugar-coat. ' +
         'Reply ONLY with JSON: {"overview","culture","opportunity","red_flags","questions":["..","..",".."],"verdict"}.',
       user: `Company: ${company}. Role: ${role ?? 'an early-career role'}. Search for recent, specific information before answering.`,
     })
@@ -283,22 +309,37 @@ ai.post('/company', async (req, res) => {
   })
 })
 
-/* ---------- §8.4 Chat ---------- */
+/* ---------- §8.4 Chat (CV-aware, personalised) ---------- */
 ai.post('/chat', async (req, res) => {
   const { message } = req.body ?? {}
-  const student = await loadStudent(req.user!.id)
+  const row = await studentRow(req.user!.id)
   if (hasClaude()) {
     const text = await claudeText({
       model: MODELS.chat,
       maxTokens: 1200,
       thinking: true,
-      system: `You are a friendly, expert, and HONEST career assistant for ${student?.major ?? 'a student'}. Help with CV, jobs, skills, interviews. Give direct, truthful advice — don't flatter or over-promise. You may use markdown tables, lists, and code blocks.`,
+      system: chatSystem(row, asResumeProfile(row?.resume_profile)),
       user: message ?? '',
     })
     if (text) return res.json({ text })
     return res.status(503).json({ error: 'ai_unavailable' })
   }
   res.json({ text: canChat(message ?? '') }) // no key: safety net
+})
+
+/* Streaming chat — same CV-aware prompt, rendered token-by-token. */
+ai.post('/chat/stream', async (req, res) => {
+  if (!hasClaude()) return res.status(503).json({ error: 'ai_unavailable' })
+  const { message } = req.body ?? {}
+  const row = await studentRow(req.user!.id)
+  const stream = streamClaude({
+    model: MODELS.chat,
+    maxTokens: 1200,
+    system: chatSystem(row, asResumeProfile(row?.resume_profile)),
+    user: message ?? '',
+  })
+  if (!stream) return res.status(503).json({ error: 'ai_unavailable' })
+  res.sse(stream)
 })
 
 /* ---------- §8.5 Application Coach ---------- */
@@ -358,21 +399,26 @@ const COMPASS_Q = [
 ai.post('/compass/interview', async (req, res) => {
   const answers: string[] = req.body?.answers ?? []
   const idx = answers.length
-  if (idx >= COMPASS_Q.length) return res.json({ done: true, message: "Perfect — I have enough to suggest some directions. Let me pull together your matches." })
+  const row = await studentRow(req.user!.id)
+  const name = firstNameOf(row?.full_name)
+  if (idx >= COMPASS_Q.length) return res.json({ done: true, message: `Perfect${name ? `, ${name}` : ''} — I've got a clear picture of you now. Give me a moment to pull together the directions that fit you best…` })
   // Hardcoded conversational fallback (used when Claude is unavailable / errors).
-  const reacts = ['That gives me a strong signal.', 'Love that.', 'Great, noted.', 'Helpful, thank you.']
-  const lead = idx === 0 ? "Let's find a path that fits you. " : `${reacts[(idx - 1) % reacts.length]} `
+  const reacts = ['That really helps me understand you.', 'Love that.', 'Great — noted.', 'Thanks for sharing that.']
+  const lead = idx === 0
+    ? `Hi${name ? ` ${name}` : ' there'}! I'm your Career Compass — think of me as a friend helping you figure out your next step, no pressure. `
+    : `${reacts[(idx - 1) % reacts.length]} `
   const fallback = { done: false as const, message: lead + COMPASS_Q[idx], question: COMPASS_Q[idx] }
 
   // When Claude is available and we have a prior answer to react to, generate a
-  // warm, contextual follow-up. Cheap (Haiku) — this fires once per answer.
+  // warm, contextual follow-up that uses their name. Cheap (Haiku) — once per answer.
   if (hasClaude() && idx > 0) {
     const convo = answers.map((a, i) => `Q${i + 1}: ${COMPASS_Q[i]}\nA: ${a}`).join('\n\n')
     const text = await claudeText({
       model: MODELS.score,
-      maxTokens: 120,
+      maxTokens: 150,
       system:
-        'You are a warm, sharp Career Compass interviewer. In ONE short message (max ~25 words): briefly acknowledge the student\'s most recent answer, then naturally ask the next question. ' +
+        `You are a warm, friendly Career Compass guide in conversation with ${name || 'a student'} — sound like a real person who genuinely cares, never like a form or interrogation. ` +
+        `In ONE short message (max ~30 words): warmly and specifically acknowledge their most recent answer${name ? `, occasionally using their name (${name}) naturally — don't overuse it` : ''}, then ask the next question conversationally. ` +
         `The next question MUST cover this exact topic: "${COMPASS_Q[idx]}". Reply with ONLY that message — no preamble, no quotes.`,
       user: convo,
     })
@@ -423,10 +469,11 @@ ai.post('/compass/recommend', async (req, res) => {
       actions: [`Tailor your CV to highlight ${m.matched_skills[0] ?? job.type}.`, `Build a small project using ${missing[0] ?? job.tags[0] ?? 'a core skill'}.`, 'Use AI Research, then message someone on the team.'],
     }
   })
+  const name = firstNameOf(viewer?.full_name)
   res.json({
     intro: recs.length
-      ? `Based on our conversation, here are my top ${recs.length} recommendations, ranked by fit${signals.length ? ` and weighted toward ${signals.join(', ')}` : ''}.`
-      : "I couldn't find strong matches — broaden your profile.",
+      ? `Thanks for sharing all that${name ? `, ${name}` : ''} — based on our conversation, here are my top ${recs.length} directions for you, ranked by how well they fit${signals.length ? ` and weighted toward what matters to you (${signals.join(', ')})` : ''}.`
+      : `I couldn't find strong matches just yet${name ? `, ${name}` : ''} — try adding a few more skills or broadening your profile, and I'll take another look.`,
     signals,
     recs,
   })
@@ -473,20 +520,41 @@ ai.post('/compass/prep', async (req, res) => {
   res.json(fallback) // no key: safety net
 })
 
+const RESEARCH_ASK_SYSTEM =
+  `You are a warm, supportive career guide answering a student's question about a specific company/role, using current web results. ` +
+  `Be friendly and genuinely helpful — like a mentor who has their back — but stay honest: don't sugar-coat, and if the truthful answer is unfavourable, say so kindly and suggest a constructive next step. Keep it to 2-4 sentences.`
+const researchAskUser = (company: string, role: string | undefined, question: string) =>
+  `Company: ${company}. Role: ${role ?? 'a role'}. Question: ${question}`
+
 ai.post('/research/ask', async (req, res) => {
   const { company, role, question } = req.body ?? {}
   if (hasClaude()) {
     const text = await claudeTextWithSearch({
       model: MODELS.research,
       maxTokens: 600,
-      system: `You answer a student's question about a specific company/role honestly and practically in 2-4 sentences, using current web results. Don't sugar-coat — if the honest answer is unfavourable, say so.`,
-      user: `Company: ${company}. Role: ${role ?? 'a role'}. Question: ${question}`,
+      system: RESEARCH_ASK_SYSTEM,
+      user: researchAskUser(company, role, question),
     })
     if (text) return res.json({ answer: text })
     return res.status(503).json({ error: 'ai_unavailable' })
   }
   // No API key configured — hardcoded safety net only.
   res.json({ answer: `Here's what I found on "${question}" for ${role ?? 'this role'} at ${company}: it's a fast-moving environment where early-career talent gets real responsibility. Raise this exact question with the hiring manager and tie your follow-up to your own goals.` })
+})
+
+/* Streaming research answer — live web-grounded, rendered token-by-token. */
+ai.post('/research/ask/stream', async (req, res) => {
+  if (!hasClaude()) return res.status(503).json({ error: 'ai_unavailable' })
+  const { company, role, question } = req.body ?? {}
+  const stream = streamClaude({
+    model: MODELS.research,
+    maxTokens: 600,
+    system: RESEARCH_ASK_SYSTEM,
+    user: researchAskUser(company, role, question),
+    tools: [{ type: 'web_search_20260209', name: 'web_search' }],
+  })
+  if (!stream) return res.status(503).json({ error: 'ai_unavailable' })
+  res.sse(stream)
 })
 
 /* ---------- AI Sourcing (describe → find) ---------- */

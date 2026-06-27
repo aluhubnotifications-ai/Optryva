@@ -41,11 +41,14 @@ export interface CookieOptions {
 export interface ShimRes {
   status(code: number): ShimRes
   json(body: unknown): ShimRes
+  /** Stream a Server-Sent-Events body (text/event-stream) instead of JSON. */
+  sse(stream: ReadableStream): ShimRes
   cookie(name: string, value: string, opts?: CookieOptions): ShimRes
   clearCookie(name: string, opts?: { path?: string }): ShimRes
   _ended: boolean
   _status: number
   _body: unknown
+  _stream?: ReadableStream
 }
 
 export type Next = () => void
@@ -89,6 +92,11 @@ function buildRes(c: Context): ShimRes {
     },
     json(body: unknown) {
       this._body = body
+      this._ended = true
+      return this
+    },
+    sse(stream: ReadableStream) {
+      this._stream = stream
       this._ended = true
       return this
     },
@@ -148,6 +156,15 @@ class RouterImpl {
         })
         if (res._ended) break
         if (!nexted) break
+      }
+      // Streaming response (SSE): hand Hono the ReadableStream directly. The
+      // cors() middleware still applies its headers after this returns.
+      if (res._stream) {
+        return c.body(res._stream as any, res._status as any, {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          'X-Accel-Buffering': 'no',
+        })
       }
       return c.json(res._body as any, res._status as any)
     })

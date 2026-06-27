@@ -233,9 +233,18 @@ function ChatTab() {
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [streaming, setStreaming] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs, busy])
+
+  // Append a streamed token to the last AI bubble (or start one).
+  const pushToken = (t: string) =>
+    setMsgs((m) => {
+      const last = m[m.length - 1]
+      if (last?.role === 'ai') return [...m.slice(0, -1), { role: 'ai', text: last.text + t }]
+      return [...m, { role: 'ai', text: t }]
+    })
 
   async function send(text: string) {
     const q = text.trim()
@@ -243,9 +252,15 @@ function ChatTab() {
     setInput('')
     setMsgs((m) => [...m, { role: 'user', text: q }])
     setBusy(true)
-    const res = await aiApi.chat(q)
-    setMsgs((m) => [...m, { role: 'ai', text: res }])
+    setStreaming(false)
+    // Stream the answer live; fall back to the non-streaming call if nothing streamed.
+    const streamed = await aiApi.chatStream(q, (t) => { setStreaming(true); pushToken(t) })
+    if (!streamed) {
+      const res = await aiApi.chat(q)
+      setMsgs((m) => [...m, { role: 'ai', text: res }])
+    }
     setBusy(false)
+    setStreaming(false)
   }
 
   return (
@@ -276,7 +291,7 @@ function ChatTab() {
               </div>
             ),
           )}
-          {busy && (
+          {busy && !streaming && (
             <div className="flex gap-2">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/12 text-primary"><Sparkles className="h-4 w-4 animate-pulse" /></div>
               <div className="rounded-2xl rounded-tl-sm border border-border bg-card px-4 py-3 text-sm text-muted-foreground">Thinking…</div>

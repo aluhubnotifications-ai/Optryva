@@ -800,6 +800,42 @@ async function aiPost(path: string, body: unknown) {
   return apiFetch(path, { method: 'POST', body: JSON.stringify(body) })
 }
 
+/**
+ * Consume a Server-Sent-Events stream from an AI endpoint, invoking `onToken`
+ * for each text delta so the UI renders the answer live (token-by-token). Shows
+ * up in the AI activity panel via trackAi. Returns true if any text streamed;
+ * throws on failure so callers can fall back to the non-streaming endpoint.
+ */
+async function streamAi(label: string, path: string, body: unknown, onToken: (t: string) => void): Promise<boolean> {
+  return trackAi(label, async () => {
+    const res = await rawFetch(path, { method: 'POST', body: JSON.stringify(body) })
+    if (!res.ok || !res.body) throw new Error(`stream_failed_${res.status}`)
+    const reader = res.body.getReader()
+    const dec = new TextDecoder()
+    let buf = ''
+    let got = false
+    let errored = false
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += dec.decode(value, { stream: true })
+      const chunks = buf.split('\n\n')
+      buf = chunks.pop() ?? ''
+      for (const chunk of chunks) {
+        const line = chunk.trim()
+        if (!line.startsWith('data:')) continue
+        try {
+          const obj = JSON.parse(line.slice(5).trim())
+          if (obj.t) { got = true; onToken(obj.t as string) }
+          if (obj.error) errored = true
+        } catch { /* ignore partial frames */ }
+      }
+    }
+    if (errored && !got) throw new Error('ai_stream_error')
+    return got
+  })
+}
+
 const EMPTY_INSIGHTS: InsightsData = {
   readiness: 0, total: 0,
   distribution: { excellent: 0, strong: 0, stretch: 0, weak: 0 },
@@ -882,12 +918,32 @@ export const aiApi = {
     }
   },
 
+  /** Streamed research answer (live web-grounded). Returns true if anything
+   *  streamed; on failure returns false so the caller can fall back. */
+  async researchAskStream(companyName: string, role: string | undefined, question: string, onToken: (t: string) => void): Promise<boolean> {
+    try {
+      return await streamAi('Answering your research question', '/ai/research/ask/stream', { company: companyName, role, question }, onToken)
+    } catch {
+      return false
+    }
+  },
+
   async chat(message: string): Promise<string> {
     try {
       const r = (await trackAi('Thinking…', () => aiPost('/ai/chat', { message }))) as { text: string }
       return r.text
     } catch {
       return AI_ERR
+    }
+  },
+
+  /** Streamed, CV-aware chat. Returns true if anything streamed; false on
+   *  failure so the caller can fall back to the non-streaming chat. */
+  async chatStream(message: string, onToken: (t: string) => void): Promise<boolean> {
+    try {
+      return await streamAi('Thinking…', '/ai/chat/stream', { message }, onToken)
+    } catch {
+      return false
     }
   },
 

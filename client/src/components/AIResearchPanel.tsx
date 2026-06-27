@@ -49,6 +49,7 @@ export function AIResearchPanel({
   const [thread, setThread] = useState<QA[]>([])
   const [input, setInput] = useState('')
   const [asking, setAsking] = useState(false)
+  const [streamingAns, setStreamingAns] = useState(false)
   const threadEndRef = useRef<HTMLDivElement>(null)
 
   const companyName = job?.original_company_name || company?.company_name || 'this company'
@@ -86,9 +87,21 @@ export function AIResearchPanel({
     setInput('')
     setThread((t) => [...t, { role: 'user', text: q }])
     setAsking(true)
-    const answer = await aiApi.researchAsk(companyName, job.title, q)
-    setThread((t) => [...t, { role: 'ai', text: answer }])
+    setStreamingAns(false)
+    // Append each streamed token to the last AI bubble (or start one).
+    const push = (tok: string) =>
+      setThread((t) => {
+        const last = t[t.length - 1]
+        if (last?.role === 'ai') return [...t.slice(0, -1), { role: 'ai', text: last.text + tok }]
+        return [...t, { role: 'ai', text: tok }]
+      })
+    const streamed = await aiApi.researchAskStream(companyName, job.title, q, (tok) => { setStreamingAns(true); push(tok) })
+    if (!streamed) {
+      const answer = await aiApi.researchAsk(companyName, job.title, q)
+      setThread((t) => [...t, { role: 'ai', text: answer }])
+    }
     setAsking(false)
+    setStreamingAns(false)
   }
 
   return (
@@ -137,7 +150,7 @@ export function AIResearchPanel({
                     </div>
                   ),
                 )}
-                {asking && (
+                {asking && !streamingAns && (
                   <div className="flex gap-2">
                     <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                       <Sparkles className="h-4 w-4 animate-pulse" />

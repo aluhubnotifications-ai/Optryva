@@ -128,6 +128,54 @@ export async function claudeTextWithSearch(opts: {
   }
 }
 
+/**
+ * Streaming text completion → a Server-Sent-Events ReadableStream so the client
+ * can render the answer token-by-token (it "shows progress like AI" instead of
+ * waiting for the whole reply). Emits `data: {"t":"<delta>"}` per text chunk and
+ * a final `data: {"done":true,"empty":<bool>}`; `data: {"error":true}` on
+ * failure. Returns null when there's no key (caller should 503). Supports the
+ * web_search tool so research streams live. Thinking deltas are intentionally
+ * not forwarded — only the user-facing answer is streamed.
+ */
+export function streamClaude(opts: {
+  model?: string
+  system: string
+  user: string
+  maxTokens?: number
+  tools?: unknown[]
+}): ReadableStream<Uint8Array> | null {
+  if (!client) return null
+  const enc = new TextEncoder()
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (obj: unknown) => controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`))
+      try {
+        const params: any = {
+          model: opts.model ?? MODELS.chat,
+          max_tokens: opts.maxTokens ?? 1024,
+          system: opts.system,
+          messages: [{ role: 'user', content: opts.user }],
+          stream: true,
+        }
+        if (opts.tools) params.tools = opts.tools
+        const stream: any = await client.messages.create(params)
+        let any = false
+        for await (const ev of stream) {
+          if (ev?.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && ev.delta.text) {
+            any = true
+            send({ t: ev.delta.text })
+          }
+        }
+        send({ done: true, empty: !any })
+      } catch {
+        send({ error: true })
+      } finally {
+        controller.close()
+      }
+    },
+  })
+}
+
 /** Parse a JSON object out of a model response, tolerating code fences/prose. */
 export function extractJson<T>(text: string | null): T | null {
   if (!text) return null
