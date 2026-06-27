@@ -265,6 +265,44 @@ ai.get('/matches', async (req, res) => {
   res.json(out.filter(Boolean))
 })
 
+/* Streaming matches: scores roles one-by-one and emits live progress so the UI
+ * can show "scoring X of N: <title>" with a real percentage — and keep updating
+ * even if the user switches tabs (the stream drives a global store, not a view).
+ * Frames: {meta:{total}} · {progress:{done,total,title}, match} per job · {done:true}. */
+ai.post('/matches/stream', async (req, res) => {
+  if (!hasClaude()) return res.status(503).json({ error: 'ai_unavailable' })
+  const uid = req.user!.id
+  const viewer = await studentRow(uid)
+  const rp = await ensureResumeProfile(viewer)
+  const [visible, cm] = await Promise.all([visibleJobs(viewer), cacheMap(uid)])
+  const enc = new TextEncoder()
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (o: unknown) => controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`))
+      try {
+        const total = visible.length
+        send({ meta: { total } })
+        let done = 0
+        // Sequential so progress is granular AND we don't burst past the Haiku
+        // rate limit; cached roles return instantly.
+        for (const r of visible) {
+          const job = rowToMatchJob(r)
+          let m: AiMatch | null = null
+          try { m = await getMatch(uid, job, {}, { row: viewer, rp, cached: cm.get(r.id) ?? null }) } catch { m = null }
+          done++
+          send({ progress: { done, total, title: job.title }, match: m })
+        }
+        send({ done: true })
+      } catch {
+        send({ error: true })
+      } finally {
+        controller.close()
+      }
+    },
+  })
+  res.sse(stream)
+})
+
 /* ---------- §8.2 Insights — one engine, aggregated (skill gaps, demand, do-next) ---------- */
 ai.get('/insights', async (req, res) => {
   const uid = req.user!.id

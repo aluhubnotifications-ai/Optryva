@@ -806,6 +806,29 @@ async function aiPost(path: string, body: unknown) {
  * up in the AI activity panel via trackAi. Returns true if any text streamed;
  * throws on failure so callers can fall back to the non-streaming endpoint.
  */
+/** Read a Server-Sent-Events stream and invoke `onFrame` for each JSON frame.
+ *  Lower-level than streamAi (no activity-panel task) — used by the match runner,
+ *  which manages its own progress task. Throws on a non-OK response. */
+async function consumeSse(path: string, body: unknown, onFrame: (obj: any) => void): Promise<void> {
+  const res = await rawFetch(path, { method: 'POST', body: JSON.stringify(body) })
+  if (!res.ok || !res.body) throw new Error(`stream_failed_${res.status}`)
+  const reader = res.body.getReader()
+  const dec = new TextDecoder()
+  let buf = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += dec.decode(value, { stream: true })
+    const chunks = buf.split('\n\n')
+    buf = chunks.pop() ?? ''
+    for (const chunk of chunks) {
+      const line = chunk.trim()
+      if (!line.startsWith('data:')) continue
+      try { onFrame(JSON.parse(line.slice(5).trim())) } catch { /* ignore partial */ }
+    }
+  }
+}
+
 async function streamAi(label: string, path: string, body: unknown, onToken: (t: string) => void, onMeta?: (m: any) => void): Promise<boolean> {
   return trackAi(label, async () => {
     const res = await rawFetch(path, { method: 'POST', body: JSON.stringify(body) })
@@ -870,6 +893,20 @@ export const aiApi = {
     } catch {
       return []
     }
+  },
+
+  /** Stream matches with live progress. Calls onMeta(total) once, then
+   *  onProgress(done,total,title,match) per scored role. Throws if streaming is
+   *  unavailable so the caller can fall back to matchAll(). */
+  async matchAllStream(handlers: {
+    onMeta?: (total: number) => void
+    onProgress?: (done: number, total: number, title: string, match: AiMatch | null) => void
+  }): Promise<void> {
+    await consumeSse('/ai/matches/stream', {}, (obj) => {
+      if (obj.meta) handlers.onMeta?.(obj.meta.total ?? 0)
+      if (obj.progress) handlers.onProgress?.(obj.progress.done, obj.progress.total, obj.progress.title, obj.match ?? null)
+      if (obj.error) throw new Error('match_stream_error')
+    })
   },
 
   /** Aggregate insights (skill gaps, demand, do-next) — server-computed. */

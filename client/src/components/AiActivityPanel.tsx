@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Activity, Loader2, CheckCircle2, AlertTriangle, X, Sparkles } from 'lucide-react'
-import { useAiActivity, type AiTask } from '@/lib/aiActivity'
+import { useAiActivity, type AiTask, type TaskProgress } from '@/lib/aiActivity'
 import { cn } from '@/lib/utils'
 
 /**
@@ -24,9 +24,13 @@ export function AiActivityPanel() {
   const status: 'busy' | 'error' | 'idle' = running.length ? 'busy' : hasError ? 'error' : 'idle'
   const dot =
     status === 'busy' ? 'bg-accent' : status === 'error' ? 'bg-danger' : 'bg-muted-foreground/50'
+  const runningPct = (() => {
+    const p = running[0]?.progress
+    return p && p.total > 0 ? Math.round((p.done / p.total) * 100) : null
+  })()
   const pillLabel =
     status === 'busy'
-      ? running[0]?.label ?? 'AI working…'
+      ? `${running[0]?.label ?? 'AI working…'}${runningPct != null ? ` · ${runningPct}%` : ''}`
       : status === 'error'
         ? 'AI had an issue'
         : 'AI idle'
@@ -115,6 +119,8 @@ function TaskRow({ task }: { task: AiTask }) {
         <p className="truncate text-sm font-medium">{task.label}</p>
         {task.state === 'error' ? (
           <p className="text-xs text-danger">Couldn’t reach the AI — using a basic fallback.</p>
+        ) : task.state === 'running' && task.progress && task.progress.total > 0 ? (
+          <ProgressLine progress={task.progress} />
         ) : (
           <p className="text-xs text-muted-foreground">
             {task.state === 'running' ? 'Working…' : 'Done'} · <RelTime ts={task.endedAt ?? task.startedAt} />
@@ -122,6 +128,23 @@ function TaskRow({ task }: { task: AiTask }) {
         )}
       </div>
     </li>
+  )
+}
+
+/** Percentage bar + "X of N · <current step>" for a long, multi-step task. */
+function ProgressLine({ progress }: { progress: TaskProgress }) {
+  const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0
+  return (
+    <div className="mt-1">
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>{progress.done} of {progress.total} roles</span>
+        <span className="font-semibold text-accent">{pct}%</span>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-accent transition-all duration-300" style={{ width: `${pct}%` }} />
+      </div>
+      {progress.label && <p className="mt-1 truncate text-xs text-muted-foreground">Scoring: {progress.label}</p>}
+    </div>
   )
 }
 

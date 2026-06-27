@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Sparkles, Send, Lightbulb, ListChecks, MessageSquare, FileText, ArrowRight, RefreshCw, FileSearch, ScanLine, Trophy, CheckCircle2, Gauge, Target, TrendingUp, GraduationCap } from 'lucide-react'
+import { Sparkles, Send, Lightbulb, ListChecks, MessageSquare, FileText, ArrowRight, RefreshCw, Trophy, CheckCircle2, Gauge, Target, TrendingUp, GraduationCap } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
 import { aiApi, jobsApi, profilesApi } from '@/lib/api'
 import type { InsightsData } from '@/lib/api'
@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs'
 import { Markdown } from '@/components/Markdown'
 import { ScoreRing } from '@/components/ScoreRing'
-import { sleep } from '@/lib/utils'
+import { useMatchProgress } from '@/lib/matchProgress'
 
 export default function Insights() {
   const user = useCurrentUser()!
@@ -308,107 +308,74 @@ function ChatTab() {
   )
 }
 
-/* ---------------- Job Matches (click to run) ---------------- */
-const RUN_STAGES = [
-  { icon: FileSearch, label: 'Reading your résumé & profile…' },
-  { icon: ScanLine, label: 'Scanning open opportunities…' },
-  { icon: Sparkles, label: 'Scoring each role against your skills…' },
-  { icon: Trophy, label: 'Ranking your best matches…' },
-]
-
+/* ---------------- Job Matches (live, streamed) ---------------- */
 function MatchesTab({ user }: { user: Profile }) {
-  const [phase, setPhase] = useState<'idle' | 'running' | 'done'>('idle')
-  const [stage, setStage] = useState(0)
-  const [scanned, setScanned] = useState(0)
-  const [rows, setRows] = useState<{ job: JobListing; match: AiMatch; company?: Profile }[]>([])
+  const { phase, done, total, label, matches } = useMatchProgress()
+  const [jobs, setJobs] = useState<JobListing[]>([])
+  const [companies, setCompanies] = useState<Record<string, Profile>>({})
 
-  async function run() {
-    setPhase('running')
-    setStage(0)
-    setScanned(0)
-
-    // kick off the real (mock) matching
-    const dataPromise = (async () => {
-      const [jobs, cs, sc] = await Promise.all([jobsApi.list(user), profilesApi.list('company'), profilesApi.list('school')])
+  // Load jobs + companies once for rendering. Matching itself is driven by the
+  // global store, so it keeps running — and stays visible in the AI activity
+  // panel — even if you switch tabs or leave and come back to this page.
+  useEffect(() => {
+    ;(async () => {
+      const [js, cs, sc] = await Promise.all([jobsApi.list(user), profilesApi.list('company'), profilesApi.list('school')])
       const cmap: Record<string, Profile> = {}
       ;[...cs, ...sc].forEach((c) => (cmap[c.id] = c))
-      const matches = await aiApi.matchAll(user, jobs)
-      setScanned(jobs.length)
-      const byId = new Map(matches.map((m) => [m.job_id, m]))
-      const out: { job: JobListing; match: AiMatch; company?: Profile }[] = []
-      for (const j of jobs) {
-        const match = byId.get(j.id)
-        if (match) out.push({ job: j, match, company: cmap[j.company_id] })
-      }
-      return out.sort((a, b) => b.match.score - a.match.score)
+      setJobs(js)
+      setCompanies(cmap)
     })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.id])
 
-    // animate the stage labels while it runs
-    for (let i = 0; i < RUN_STAGES.length; i++) {
-      setStage(i)
-      await sleep(650)
-    }
-    const merged = await dataPromise
-    setRows(merged)
-    setPhase('done')
-  }
+  const jobsById = new Map(jobs.map((j) => [j.id, j]))
+  const rows = matches
+    .map((m) => ({ job: jobsById.get(m.job_id), match: m }))
+    .filter((r): r is { job: JobListing; match: AiMatch } => !!r.job)
+    .map((r) => ({ ...r, company: companies[r.job.company_id] }))
+    .sort((a, b) => b.match.score - a.match.score)
 
-  // Idle — the click target
-  if (phase === 'idle') {
+  const run = () => useMatchProgress.getState().run(user.id)
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0
+
+  // Idle / first run (or an error with nothing scored yet) — the click target.
+  if (phase === 'idle' || (phase !== 'running' && matches.length === 0)) {
     return (
       <Card>
         <CardBody className="flex flex-col items-center justify-center gap-3 py-14 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/12 text-primary"><Sparkles className="h-7 w-7" /></div>
           <h2 className="text-lg font-semibold">Run AI matching</h2>
           <p className="max-w-sm text-sm text-muted-foreground">
-            We'll read your CV & profile and score every open role 0–99 for fit.
+            We'll read your CV & profile and score every open role 0–99 for fit. You can switch tabs — progress keeps running in the AI activity panel (bottom-right).
             {!user.cv_filename && ' Tip: upload a CV in your profile for stronger, evidence-based scores.'}
           </p>
+          {phase === 'error' && <p className="text-sm text-danger">AI is unavailable right now — please try again.</p>}
           <Button size="lg" className="mt-1 gap-2" onClick={run}><Sparkles className="h-4 w-4" /> Run AI matching</Button>
         </CardBody>
       </Card>
     )
   }
 
-  // Running — visible staged loader
-  if (phase === 'running') {
-    const pct = Math.round(((stage + 1) / RUN_STAGES.length) * 100)
-    return (
-      <Card>
-        <CardBody className="py-12">
-          <div className="mx-auto max-w-md">
-            <div className="mb-6 flex justify-center">
-              <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/12 text-primary">
-                <Sparkles className="h-8 w-8 animate-pulse" />
-              </div>
-            </div>
-            <Progress value={pct} />
-            <div className="mt-6 space-y-2.5">
-              {RUN_STAGES.map((s, i) => {
-                const state = i < stage ? 'done' : i === stage ? 'active' : 'pending'
-                return (
-                  <div key={i} className={`flex items-center gap-2.5 text-sm transition-opacity ${state === 'pending' ? 'opacity-40' : ''}`}>
-                    <span className={`flex h-6 w-6 items-center justify-center rounded-full ${state === 'done' ? 'bg-success/15 text-success' : state === 'active' ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                      {state === 'done' ? <CheckCircle2 className="h-4 w-4" /> : <s.icon className={`h-3.5 w-3.5 ${state === 'active' ? 'animate-pulse' : ''}`} />}
-                    </span>
-                    <span className={state === 'active' ? 'font-medium' : 'text-muted-foreground'}>{s.label}</span>
-                  </div>
-                )
-              })}
-            </div>
-            <p className="mt-5 text-center text-xs text-muted-foreground">Scored {scanned} roles…</p>
-          </div>
-        </CardBody>
-      </Card>
-    )
-  }
-
-  // Done — results
+  // Running or done — live progress; results stream in as each role is scored.
   return (
     <div className="space-y-3">
+      {phase === 'running' && (
+        <Card>
+          <CardBody className="py-6">
+            <div className="mx-auto max-w-md">
+              <div className="mb-2 flex items-center justify-between text-sm">
+                <span className="flex items-center gap-2 font-medium"><Sparkles className="h-4 w-4 animate-pulse text-primary" /> Scoring your matches…</span>
+                <span className="font-semibold text-primary">{pct}%</span>
+              </div>
+              <Progress value={pct} />
+              <p className="mt-2 truncate text-xs text-muted-foreground">{done} of {total} roles{label ? ` · ${label}` : ''}</p>
+            </div>
+          </CardBody>
+        </Card>
+      )}
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{rows.length} roles scored · sorted by fit</p>
-        <Button variant="outline" size="sm" className="gap-1.5" onClick={run}><RefreshCw className="h-4 w-4" /> Re-run</Button>
+        <p className="text-sm text-muted-foreground">{rows.length} role{rows.length === 1 ? '' : 's'} scored{phase === 'running' ? ' so far' : ' · sorted by fit'}</p>
+        <Button variant="outline" size="sm" className="gap-1.5" onClick={run} disabled={phase === 'running'}><RefreshCw className="h-4 w-4" /> {phase === 'running' ? 'Running…' : 'Re-run'}</Button>
       </div>
       {rows.map(({ job, match, company }) => {
         const brand = job.original_company_name || company?.company_name

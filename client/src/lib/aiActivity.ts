@@ -9,6 +9,13 @@ import { create } from 'zustand'
 
 export type TaskState = 'running' | 'done' | 'error'
 
+/** Optional fine-grained progress for long, multi-step tasks (e.g. matching). */
+export interface TaskProgress {
+  done: number
+  total: number
+  label?: string
+}
+
 export interface AiTask {
   id: string
   label: string
@@ -16,6 +23,7 @@ export interface AiTask {
   startedAt: number
   endedAt?: number
   error?: string
+  progress?: TaskProgress
 }
 
 interface AiActivityState {
@@ -23,6 +31,7 @@ interface AiActivityState {
   open: boolean
   start: (label: string) => string
   finish: (id: string, error?: string) => void
+  update: (id: string, progress: TaskProgress) => void
   toggle: () => void
   setOpen: (open: boolean) => void
   clear: () => void
@@ -46,6 +55,8 @@ export const useAiActivity = create<AiActivityState>((set) => ({
         t.id === id ? { ...t, state: error ? 'error' : 'done', endedAt: Date.now(), error } : t,
       ),
     })),
+  update: (id, progress) =>
+    set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? { ...t, progress } : t)) })),
   toggle: () => set((s) => ({ open: !s.open })),
   setOpen: (open) => set({ open }),
   clear: () => set((s) => ({ tasks: s.tasks.filter((t) => t.state === 'running') })),
