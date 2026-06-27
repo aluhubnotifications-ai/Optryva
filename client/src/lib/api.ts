@@ -806,6 +806,12 @@ const EMPTY_INSIGHTS: InsightsData = {
   gaps: [], strengths: [], demand: [], topMatches: [], doNext: [],
 }
 
+// Honest error surfaced when a real Claude call fails WITH a key present. The
+// server returns its hardcoded safety-net (HTTP 200) only when there is no API
+// key, so reaching these catch blocks means a genuine failure — never mask it
+// with fabricated content.
+const AI_ERR = 'AI is temporarily unavailable — please try again in a moment.'
+
 export const aiApi = {
   compassQuestions: mockAi.compassQuestions,
 
@@ -842,7 +848,7 @@ export const aiApi = {
     try {
       return (await trackAi('Preparing coaching tips', () => aiPost('/ai/coach', { job_id: job.id }))) as CoachResult
     } catch {
-      return mockAi.coach(student, job)
+      return { draft: AI_ERR, critique: { strengths: [], weaknesses: [], missing: [], verdict: 'refine' }, final: '' }
     }
   },
 
@@ -850,7 +856,7 @@ export const aiApi = {
     try {
       return (await trackAi(`Researching ${companyName}`, () => aiPost('/ai/company', { company: companyName, role }))) as CompanyResearch
     } catch {
-      return mockAi.companyResearch(companyName, role)
+      return { overview: AI_ERR, culture: '', opportunity: '', red_flags: '', questions: [], verdict: '' }
     }
   },
 
@@ -863,7 +869,7 @@ export const aiApi = {
         .filter((x): x is { job: JobListing; why: string[]; score: number } => !!x.job)
       return { summary: r.summary, results }
     } catch {
-      return mockAi.sourceOpportunities(query, jobs, student)
+      return { summary: AI_ERR, results: [] as { job: JobListing; why: string[]; score: number }[] }
     }
   },
 
@@ -872,7 +878,7 @@ export const aiApi = {
       const r = (await trackAi('Answering your research question', () => aiPost('/ai/research/ask', { company: companyName, role, question }))) as { answer: string }
       return r.answer
     } catch {
-      return mockAi.researchAsk(companyName, role, question)
+      return AI_ERR
     }
   },
 
@@ -881,7 +887,7 @@ export const aiApi = {
       const r = (await trackAi('Thinking…', () => aiPost('/ai/chat', { message }))) as { text: string }
       return r.text
     } catch {
-      return mockAi.chat(message)
+      return AI_ERR
     }
   },
 
@@ -906,7 +912,7 @@ export const aiApi = {
         .filter((x): x is CompassRec => !!x.job)
       return { intro: r.intro, signals: r.signals, recs }
     } catch {
-      return mockAi.compassRecommend(answers, jobs, student)
+      return { intro: AI_ERR, recs: [] as CompassRec[] }
     }
   },
 
@@ -914,7 +920,7 @@ export const aiApi = {
     try {
       return (await trackAi('Building your prep plan', () => aiPost('/ai/compass/prep', { job_id: job.id }))) as PrepResult
     } catch {
-      return mockAi.compassPrep(job, student)
+      return { fit: AI_ERR, gap: '', skills: [], talkingPoints: [], questions: [], actions: [] }
     }
   },
 
@@ -922,7 +928,7 @@ export const aiApi = {
     try {
       return (await trackAi('Reviewing your CV', () => aiPost('/ai/cv-tips', {}))) as string[]
     } catch {
-      return mockAi.cvTips(student)
+      return [AI_ERR]
     }
   },
 }

@@ -259,16 +259,20 @@ ai.get('/insights', async (req, res) => {
 /* ---------- §8.3 Company research ---------- */
 ai.post('/company', async (req, res) => {
   const { company, role } = req.body ?? {}
-  const text = await claudeTextWithSearch({
-    model: MODELS.research,
-    maxTokens: 900,
-    system:
-      'You research a company for an early-career African/global student, using current web results. Be honest and balanced — surface REAL risks (layoffs, funding trouble, poor reviews, visa limits) when the evidence shows them; do not write a brochure. ' +
-      'Reply ONLY with JSON: {"overview","culture","opportunity","red_flags","questions":["..","..",".."],"verdict"}.',
-    user: `Company: ${company}. Role: ${role ?? 'an early-career role'}. Search for recent, specific information before answering.`,
-  })
-  const parsed = extractJson<any>(text)
-  if (parsed) return res.json(parsed)
+  if (hasClaude()) {
+    const text = await claudeTextWithSearch({
+      model: MODELS.research,
+      maxTokens: 900,
+      system:
+        'You research a company for an early-career African/global student, using current web results. Be honest and balanced — surface REAL risks (layoffs, funding trouble, poor reviews, visa limits) when the evidence shows them; do not write a brochure. ' +
+        'Reply ONLY with JSON: {"overview","culture","opportunity","red_flags","questions":["..","..",".."],"verdict"}.',
+      user: `Company: ${company}. Role: ${role ?? 'an early-career role'}. Search for recent, specific information before answering.`,
+    })
+    const parsed = extractJson<any>(text)
+    if (parsed) return res.json(parsed)
+    return res.status(503).json({ error: 'ai_unavailable' })
+  }
+  // No API key configured — hardcoded safety net only.
   res.json({
     overview: `${company} is a fast-growing company building products with real traction. It invests in early-career talent.`,
     culture: `Interns report genuine ownership and supportive mentorship in an outcomes-focused environment.`,
@@ -283,14 +287,18 @@ ai.post('/company', async (req, res) => {
 ai.post('/chat', async (req, res) => {
   const { message } = req.body ?? {}
   const student = await loadStudent(req.user!.id)
-  const text = await claudeText({
-    model: MODELS.chat,
-    maxTokens: 1200,
-    thinking: true,
-    system: `You are a friendly, expert, and HONEST career assistant for ${student?.major ?? 'a student'}. Help with CV, jobs, skills, interviews. Give direct, truthful advice — don't flatter or over-promise. You may use markdown tables, lists, and code blocks.`,
-    user: message ?? '',
-  })
-  res.json({ text: text ?? canChat(message ?? '') })
+  if (hasClaude()) {
+    const text = await claudeText({
+      model: MODELS.chat,
+      maxTokens: 1200,
+      thinking: true,
+      system: `You are a friendly, expert, and HONEST career assistant for ${student?.major ?? 'a student'}. Help with CV, jobs, skills, interviews. Give direct, truthful advice — don't flatter or over-promise. You may use markdown tables, lists, and code blocks.`,
+      user: message ?? '',
+    })
+    if (text) return res.json({ text })
+    return res.status(503).json({ error: 'ai_unavailable' })
+  }
+  res.json({ text: canChat(message ?? '') }) // no key: safety net
 })
 
 /* ---------- §8.5 Application Coach ---------- */
@@ -301,17 +309,20 @@ ai.post('/coach', async (req, res) => {
   const rp = asResumeProfile(row.resume_profile)
   const student = toMatchStudent(row, rp)
   const evidence = rp ? `Parsed skills: ${(rp.skills ?? []).map((s) => s.name).join(', ')}. Projects: ${(rp.projects ?? []).map((p) => p.name).join(', ')}.` : student.cv_text ?? ''
-  const text = await claudeText({
-    model: MODELS.coach,
-    maxTokens: 1100,
-    thinking: true,
-    system:
-      'You are an honest application coach. Produce JSON: {"draft":"<180-word first-person paragraph","critique":{"strengths":[],"weaknesses":[],"missing":[],"verdict":"ship as-is|refine|rewrite"},"final":"refined paragraph"}. Never invent qualifications the candidate does not have; give a candid critique (real weaknesses, not token ones); ban clichés ("passionate about","leverage").',
-    user: `STUDENT: ${student.major ?? ''}, skills ${(student.skills ?? []).join(', ')}. ${evidence}\nJOB: ${job.title} — ${job.description}`,
-  })
-  const parsed = extractJson<any>(text)
-  if (parsed?.draft && parsed?.final) return res.json(parsed)
-  res.json(canCoach(student, job))
+  if (hasClaude()) {
+    const text = await claudeText({
+      model: MODELS.coach,
+      maxTokens: 1100,
+      thinking: true,
+      system:
+        'You are an honest application coach. Produce JSON: {"draft":"<180-word first-person paragraph","critique":{"strengths":[],"weaknesses":[],"missing":[],"verdict":"ship as-is|refine|rewrite"},"final":"refined paragraph"}. Never invent qualifications the candidate does not have; give a candid critique (real weaknesses, not token ones); ban clichés ("passionate about","leverage").',
+      user: `STUDENT: ${student.major ?? ''}, skills ${(student.skills ?? []).join(', ')}. ${evidence}\nJOB: ${job.title} — ${job.description}`,
+    })
+    const parsed = extractJson<any>(text)
+    if (parsed?.draft && parsed?.final) return res.json(parsed)
+    return res.status(503).json({ error: 'ai_unavailable' })
+  }
+  res.json(canCoach(student, job)) // no key: safety net
 })
 
 /* ---------- CV Tips ---------- */
@@ -319,10 +330,14 @@ ai.post('/cv-tips', async (req, res) => {
   const row = await studentRow(req.user!.id)
   const rp = asResumeProfile(row?.resume_profile)
   const ctx = rp ? `Their résumé shows seniority ${rp.seniority}, skills ${(rp.skills ?? []).map((s) => s.name).join(', ')}, gaps ${(rp.gaps ?? []).join(', ')}.` : 'No parsed résumé yet.'
-  const text = await claudeText({ model: MODELS.chat, maxTokens: 500, system: 'Give 5-6 concise, personalized CV improvement tips. Reply ONLY JSON array of strings.', user: ctx })
-  const parsed = extractJson<string[]>(text ? `{"x":${text}}` : null) as any
-  const tips = Array.isArray(parsed) ? parsed : parseList(text)
-  res.json(tips.length ? tips : [
+  if (hasClaude()) {
+    const text = await claudeText({ model: MODELS.chat, maxTokens: 500, system: 'Give 5-6 concise, personalized CV improvement tips. Reply ONLY JSON array of strings.', user: ctx })
+    const parsed = extractJson<string[]>(text ? `{"x":${text}}` : null) as any
+    const tips = Array.isArray(parsed) ? parsed : parseList(text)
+    if (tips.length) return res.json(tips)
+    return res.status(503).json({ error: 'ai_unavailable' })
+  }
+  res.json([ // no key: safety net
     'Lead each bullet with a strong verb and a measurable result.',
     'Move your most relevant project to the top of the page.',
     'Add the specific tools/frameworks recruiters search for.',
@@ -437,32 +452,41 @@ ai.post('/compass/prep', async (req, res) => {
   }
 
   // Real, candid prep grounded in this candidate's actual résumé when Claude is up.
-  const evidence = rp
-    ? `Parsed skills: ${(rp.skills ?? []).map((s) => s.name).join(', ') || '—'}. Projects: ${(rp.projects ?? []).map((p) => p.name).join(', ') || '—'}. Seniority: ${rp.seniority}.`
-    : student.cv_text ?? 'No résumé on file.'
-  const text = await claudeText({
-    model: MODELS.coach,
-    maxTokens: 1000,
-    thinking: true,
-    system:
-      'You are an HONEST interview-prep coach for an early-career candidate. Reply with ONLY JSON: ' +
-      '{"fit":"1-2 candid sentences on how well they actually fit","gap":"the real gap stated plainly","skills":["3-4 specific things to brush up"],"talkingPoints":["3 first-person points grounded in their REAL experience"],"questions":["4 sharp questions to ask the interviewer"],"actions":["3 concrete prep actions"]}. ' +
-      'Be specific to THIS candidate and role; never invent qualifications they lack; no clichés ("passionate","leverage").',
-    user: `STUDENT: ${student.major ?? '—'}, self-reported skills ${(student.skills ?? []).join(', ') || '—'}. ${evidence}\nJOB: ${job.title} (${job.type}) — ${job.description}\nRequired skills: ${job.tags.join(', ') || '—'}`,
-  })
-  const parsed = extractJson<typeof fallback>(text)
-  res.json(parsed?.fit && Array.isArray(parsed.skills) ? { ...fallback, ...parsed } : fallback)
+  if (hasClaude()) {
+    const evidence = rp
+      ? `Parsed skills: ${(rp.skills ?? []).map((s) => s.name).join(', ') || '—'}. Projects: ${(rp.projects ?? []).map((p) => p.name).join(', ') || '—'}. Seniority: ${rp.seniority}.`
+      : student.cv_text ?? 'No résumé on file.'
+    const text = await claudeText({
+      model: MODELS.coach,
+      maxTokens: 1000,
+      thinking: true,
+      system:
+        'You are an HONEST interview-prep coach for an early-career candidate. Reply with ONLY JSON: ' +
+        '{"fit":"1-2 candid sentences on how well they actually fit","gap":"the real gap stated plainly","skills":["3-4 specific things to brush up"],"talkingPoints":["3 first-person points grounded in their REAL experience"],"questions":["4 sharp questions to ask the interviewer"],"actions":["3 concrete prep actions"]}. ' +
+        'Be specific to THIS candidate and role; never invent qualifications they lack; no clichés ("passionate","leverage").',
+      user: `STUDENT: ${student.major ?? '—'}, self-reported skills ${(student.skills ?? []).join(', ') || '—'}. ${evidence}\nJOB: ${job.title} (${job.type}) — ${job.description}\nRequired skills: ${job.tags.join(', ') || '—'}`,
+    })
+    const parsed = extractJson<typeof fallback>(text)
+    if (parsed?.fit && Array.isArray(parsed.skills)) return res.json({ ...fallback, ...parsed })
+    return res.status(503).json({ error: 'ai_unavailable' })
+  }
+  res.json(fallback) // no key: safety net
 })
 
 ai.post('/research/ask', async (req, res) => {
   const { company, role, question } = req.body ?? {}
-  const text = await claudeTextWithSearch({
-    model: MODELS.research,
-    maxTokens: 600,
-    system: `You answer a student's question about a specific company/role honestly and practically in 2-4 sentences, using current web results. Don't sugar-coat — if the honest answer is unfavourable, say so.`,
-    user: `Company: ${company}. Role: ${role ?? 'a role'}. Question: ${question}`,
-  })
-  res.json({ answer: text ?? `Here's what I found on "${question}" for ${role ?? 'this role'} at ${company}: it's a fast-moving environment where early-career talent gets real responsibility. Raise this exact question with the hiring manager and tie your follow-up to your own goals.` })
+  if (hasClaude()) {
+    const text = await claudeTextWithSearch({
+      model: MODELS.research,
+      maxTokens: 600,
+      system: `You answer a student's question about a specific company/role honestly and practically in 2-4 sentences, using current web results. Don't sugar-coat — if the honest answer is unfavourable, say so.`,
+      user: `Company: ${company}. Role: ${role ?? 'a role'}. Question: ${question}`,
+    })
+    if (text) return res.json({ answer: text })
+    return res.status(503).json({ error: 'ai_unavailable' })
+  }
+  // No API key configured — hardcoded safety net only.
+  res.json({ answer: `Here's what I found on "${question}" for ${role ?? 'this role'} at ${company}: it's a fast-moving environment where early-career talent gets real responsibility. Raise this exact question with the hiring manager and tie your follow-up to your own goals.` })
 })
 
 /* ---------- AI Sourcing (describe → find) ---------- */
