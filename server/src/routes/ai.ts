@@ -340,13 +340,30 @@ const COMPASS_Q = [
   'Which skills do you most want to build over the next year?',
   'Any real-life constraints I should factor in — location, language, schedule?',
 ]
-ai.post('/compass/interview', (req, res) => {
+ai.post('/compass/interview', async (req, res) => {
   const answers: string[] = req.body?.answers ?? []
   const idx = answers.length
   if (idx >= COMPASS_Q.length) return res.json({ done: true, message: "Perfect — I have enough to suggest some directions. Let me pull together your matches." })
+  // Hardcoded conversational fallback (used when Claude is unavailable / errors).
   const reacts = ['That gives me a strong signal.', 'Love that.', 'Great, noted.', 'Helpful, thank you.']
   const lead = idx === 0 ? "Let's find a path that fits you. " : `${reacts[(idx - 1) % reacts.length]} `
-  res.json({ done: false, message: lead + COMPASS_Q[idx], question: COMPASS_Q[idx] })
+  const fallback = { done: false as const, message: lead + COMPASS_Q[idx], question: COMPASS_Q[idx] }
+
+  // When Claude is available and we have a prior answer to react to, generate a
+  // warm, contextual follow-up. Cheap (Haiku) — this fires once per answer.
+  if (hasClaude() && idx > 0) {
+    const convo = answers.map((a, i) => `Q${i + 1}: ${COMPASS_Q[i]}\nA: ${a}`).join('\n\n')
+    const text = await claudeText({
+      model: MODELS.score,
+      maxTokens: 120,
+      system:
+        'You are a warm, sharp Career Compass interviewer. In ONE short message (max ~25 words): briefly acknowledge the student\'s most recent answer, then naturally ask the next question. ' +
+        `The next question MUST cover this exact topic: "${COMPASS_Q[idx]}". Reply with ONLY that message — no preamble, no quotes.`,
+      user: convo,
+    })
+    if (text?.trim()) return res.json({ done: false, message: text.trim(), question: COMPASS_Q[idx] })
+  }
+  res.json(fallback)
 })
 
 /** Label what the student told us they care about (shown as chips). Purely
@@ -402,18 +419,39 @@ ai.post('/compass/recommend', async (req, res) => {
 
 ai.post('/compass/prep', async (req, res) => {
   const job = await loadJob(req.body?.job_id)
-  const student = await loadStudent(req.user!.id)
-  if (!job || !student) return res.status(404).json({ error: 'not_found' })
+  const row = await studentRow(req.user!.id)
+  if (!job || !row) return res.status(404).json({ error: 'not_found' })
+  const rp = asResumeProfile(row.resume_profile)
+  const student = toMatchStudent(row, rp)
   const matched = job.tags.filter((t) => (student.skills ?? []).some((s) => s.toLowerCase().includes(t.toLowerCase()) || t.toLowerCase().includes(s.toLowerCase())))
   const missing = job.tags.filter((t) => !matched.includes(t))
-  res.json({
+  // Hardcoded fallback — used verbatim when Claude is unavailable / errors, and
+  // merged under any partial Claude response so every field is always present.
+  const fallback = {
     fit: `You're a solid candidate for ${job.title}${matched.length ? `: your strengths in ${matched.join(', ')} are directly relevant.` : '.'}`,
     gap: missing.length ? `The main gap is ${missing.slice(0, 2).join(' and ')} — address it head-on.` : 'No major gaps — focus on storytelling.',
     skills: (missing.length ? missing : job.tags).slice(0, 4).map((t) => `Brush up on ${t}`),
     talkingPoints: [`I've worked hands-on with ${(student.skills ?? [job.type]).slice(0, 2).join(' and ')}.`, `I'm drawn to this role because it combines ${job.tags.slice(0, 2).join(' and ')}.`, `As a ${student.major ?? 'student'}, I learn fast and take ownership.`],
     questions: [`What does success look like in the first 90 days of ${job.title}?`, 'How is feedback and mentorship structured here?', `What's the team's tooling for ${job.type}?`, 'What are the biggest challenges the team faces right now?'],
     actions: [`Do a 2-hour refresher on ${missing[0] ?? job.tags[0] ?? job.type}.`, 'Rewrite your top CV bullet to show impact.', 'Prepare 2 STAR stories about ownership.'],
+  }
+
+  // Real, candid prep grounded in this candidate's actual résumé when Claude is up.
+  const evidence = rp
+    ? `Parsed skills: ${(rp.skills ?? []).map((s) => s.name).join(', ') || '—'}. Projects: ${(rp.projects ?? []).map((p) => p.name).join(', ') || '—'}. Seniority: ${rp.seniority}.`
+    : student.cv_text ?? 'No résumé on file.'
+  const text = await claudeText({
+    model: MODELS.coach,
+    maxTokens: 1000,
+    thinking: true,
+    system:
+      'You are an HONEST interview-prep coach for an early-career candidate. Reply with ONLY JSON: ' +
+      '{"fit":"1-2 candid sentences on how well they actually fit","gap":"the real gap stated plainly","skills":["3-4 specific things to brush up"],"talkingPoints":["3 first-person points grounded in their REAL experience"],"questions":["4 sharp questions to ask the interviewer"],"actions":["3 concrete prep actions"]}. ' +
+      'Be specific to THIS candidate and role; never invent qualifications they lack; no clichés ("passionate","leverage").',
+    user: `STUDENT: ${student.major ?? '—'}, self-reported skills ${(student.skills ?? []).join(', ') || '—'}. ${evidence}\nJOB: ${job.title} (${job.type}) — ${job.description}\nRequired skills: ${job.tags.join(', ') || '—'}`,
   })
+  const parsed = extractJson<typeof fallback>(text)
+  res.json(parsed?.fit && Array.isArray(parsed.skills) ? { ...fallback, ...parsed } : fallback)
 })
 
 ai.post('/research/ask', async (req, res) => {
