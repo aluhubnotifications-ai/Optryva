@@ -3,6 +3,8 @@ import type { AiMatch, JobListing } from '@/types'
 import { aiApi } from '@/lib/api'
 import { useAiActivity } from '@/lib/aiActivity'
 import { useMatchRun } from '@/lib/matchRun'
+import { useSession } from '@/lib/store'
+import { matchReadiness } from '@/lib/matchReady'
 
 // ----------------------------------------------------------------------------
 // Global match-run progress. Lives outside any component so matching keeps going
@@ -65,6 +67,17 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
   run: async (userId, force = false) => {
     const s = get()
     if (!force && s.userId === userId && (s.phase === 'running' || (s.phase === 'done' && s.matches.length > 0))) return
+
+    // Don't start a run for a student without a résumé + preferences — the funnel
+    // has nothing to rank a top-40 against. Surface what's missing so the UI can
+    // prompt them instead. (The server enforces the same gate as a backstop.)
+    const profile = useSession.getState().profile
+    const readiness = matchReadiness(profile)
+    if (!readiness.ready) {
+      set({ userId, phase: 'notReady', missing: readiness.missing, matches: [], done: 0, total: 0, label: '', scoring: [] })
+      return
+    }
+
     set({ userId, phase: 'running', done: 0, total: 0, label: 'Reading your profile…', matches: [], missing: [], scoring: [] })
 
     const act = useAiActivity.getState()

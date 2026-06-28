@@ -32,6 +32,7 @@ import { ApplyModal } from '@/components/ApplyModal'
 import { MatchRunner } from '@/components/MatchRunner'
 import { useMatchRun, needsMatchRun } from '@/lib/matchRun'
 import { useMatchProgress } from '@/lib/matchProgress'
+import { matchReadiness } from '@/lib/matchReady'
 import { Drawer } from '@/components/ui/Drawer'
 import { Input, Badge, Avatar, Skeleton } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
@@ -98,10 +99,13 @@ export default function Jobs() {
   const [saved, setSaved] = useState<Set<string>>(new Set())
   const [params, setParams] = useSearchParams()
 
-  // Daily "run AI matching" gate
+  // Daily "run AI matching" gate. We also hold the gate OPEN (and never auto-run)
+  // until the student has a résumé + preferences — the funnel can't pick a top-40
+  // without them, so MatchRunner shows a "complete your profile" prompt instead.
   const lastRun = useMatchRun((s) => s.lastRun[user.id])
   const markRun = useMatchRun((s) => s.markRun)
-  const [gateOpen, setGateOpen] = useState(() => needsMatchRun(lastRun))
+  const matchReady = matchReadiness(user).ready
+  const [gateOpen, setGateOpen] = useState(() => !matchReady || needsMatchRun(lastRun))
 
   useEffect(() => {
     let active = true
@@ -132,14 +136,17 @@ export default function Jobs() {
   // global runner is idempotent (reuses cached results, no duplicate activity
   // task), and streams a live percentage if anything needs re-scoring.
   useEffect(() => {
-    if (!gateOpen) void useMatchProgress.getState().run(user.id)
+    // Never auto-run for a student who isn't ready — keep the gate open so they
+    // get the "add your résumé / preferences" prompt instead of a 40-job run.
+    if (!gateOpen && matchReady) void useMatchProgress.getState().run(user.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gateOpen, user.id])
+  }, [gateOpen, matchReady, user.id])
 
-  // Re-open the gate if matching was invalidated (e.g. CV upload) or a new day.
+  // Re-open the gate if matching was invalidated (e.g. CV upload), a new day, or
+  // the profile is missing the résumé/preferences the matcher needs.
   useEffect(() => {
-    if (needsMatchRun(lastRun)) setGateOpen(true)
-  }, [lastRun])
+    if (!matchReady || needsMatchRun(lastRun)) setGateOpen(true)
+  }, [lastRun, matchReady])
 
   const filtered = useMemo(() => {
     let list = jobs.filter((j) => {
