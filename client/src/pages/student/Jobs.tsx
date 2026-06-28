@@ -210,8 +210,10 @@ export default function Jobs() {
       params.delete('apply')
       setParams(params, { replace: true })
     }
+    // Depend on `params` too, so clicking "View" from AI Sourcing while already
+    // on this page (jobs already loaded) still opens the selected role.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobs])
+  }, [jobs, params])
 
   return (
     <div>

@@ -725,15 +725,18 @@ ai.post('/source', async (req, res) => {
     // Honest Claude score (cached or scored now). Jobs Claude can't score are dropped.
     const m = await getMatch(uid, rowToMatchJob(r), {}, { row: viewer, rp, cached: cm.get(r.id) ?? null })
     if (!m) return null
-    let score = m.score / 2
+    // DISPLAY the real match score (same number as everywhere else). The keyword
+    // constraints only RANK (relevance) and surface "why" chips — they don't
+    // distort the shown fit %.
+    let relevance = m.score
     let fail = false
-    if (wantRemote) { if (r.remote === 1) { score += 18; why.push('Remote ✓') } else fail = true }
-    if (wantType) { if (r.listing_type === wantType) { score += 16; why.push(`${wantType} ✓`) } else fail = true }
-    if (wantCountry) { if (r.country === wantCountry) { score += 16; why.push(`${wantCountry} ✓`) } else fail = true }
-    if (m.matched_skills.length) { score += m.matched_skills.length * 4; why.push(`Uses your ${m.matched_skills.slice(0, 2).join(' & ')}`) }
-    return { job: rowJobLite(r), why, score: Math.min(99, Math.round(score)), fail }
+    if (wantRemote) { if (r.remote === 1) { relevance += 18; why.push('Remote ✓') } else fail = true }
+    if (wantType) { if (r.listing_type === wantType) { relevance += 16; why.push(`${wantType} ✓`) } else fail = true }
+    if (wantCountry) { if (r.country === wantCountry) { relevance += 16; why.push(`${wantCountry} ✓`) } else fail = true }
+    if (m.matched_skills.length) { relevance += m.matched_skills.length * 4; why.push(`Uses your ${m.matched_skills.slice(0, 2).join(' & ')}`) }
+    return { job: rowJobLite(r), why, score: m.score, relevance, fail }
   }))
-  const scored = scoredAll.filter((r): r is NonNullable<typeof r> => !!r && !r.fail).sort((a, b) => b.score - a.score).slice(0, 8)
+  const scored = scoredAll.filter((r): r is NonNullable<typeof r> => !!r && !r.fail).sort((a, b) => b.relevance - a.relevance).slice(0, 8)
 
   res.json({ summary: scored.length ? `I found ${scored.length} matching opportunities for you, ranked by fit.` : 'No strong matches — try relaxing a constraint.', results: scored })
 })
