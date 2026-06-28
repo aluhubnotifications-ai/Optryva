@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -25,12 +25,13 @@ import {
 } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
 import { useGeo } from '@/lib/geo'
-import { aiApi, jobsApi, profilesApi } from '@/lib/api'
+import { jobsApi, profilesApi } from '@/lib/api'
 import type { AiMatch, JobListing, Profile } from '@/types'
 import { AIResearchPanel } from '@/components/AIResearchPanel'
 import { ApplyModal } from '@/components/ApplyModal'
 import { MatchRunner } from '@/components/MatchRunner'
 import { useMatchRun, needsMatchRun } from '@/lib/matchRun'
+import { useMatchProgress } from '@/lib/matchProgress'
 import { Drawer } from '@/components/ui/Drawer'
 import { Input, Badge, Avatar, Skeleton } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
@@ -76,8 +77,16 @@ export default function Jobs() {
   const { country } = useGeo()
   const [jobs, setJobs] = useState<JobListing[]>([])
   const [companies, setCompanies] = useState<Record<string, Profile>>({})
-  const [matches, setMatches] = useState<Record<string, AiMatch>>({})
   const [loading, setLoading] = useState(true)
+
+  // Match scores come from the global live-progress store (single shared run,
+  // same numbers as the Dashboard & Insights, real percentage in the activity panel).
+  const storeMatches = useMatchProgress((s) => s.matches)
+  const matches = useMemo(() => {
+    const m: Record<string, AiMatch> = {}
+    storeMatches.forEach((x) => (m[x.job_id] = x))
+    return m
+  }, [storeMatches])
 
   const [tab, setTab] = useState<TabKey>('for-you')
   const [typeKey, setTypeKey] = useState<TypeKey>('all')
@@ -93,43 +102,39 @@ export default function Jobs() {
   const lastRun = useMatchRun((s) => s.lastRun[user.id])
   const markRun = useMatchRun((s) => s.markRun)
   const [gateOpen, setGateOpen] = useState(() => needsMatchRun(lastRun))
-  const loadPromiseRef = useRef<Promise<void> | null>(null)
 
   useEffect(() => {
     let active = true
-    loadPromiseRef.current = (async () => {
+    ;(async () => {
       // Show the listings as soon as they (and their companies) arrive — the
-      // list is fully usable without AI scores. We don't block rendering on the
-      // matching engine, which is slow and returns nothing when no AI key is set.
-      let j: JobListing[] = []
+      // list is fully usable without AI scores.
       try {
-        const [jobs, cs, sc] = await Promise.all([
+        const [js, cs, sc] = await Promise.all([
           jobsApi.list(user),
           profilesApi.list('company'),
           profilesApi.list('school'),
         ])
-        j = jobs
         if (!active) return
         const map: Record<string, Profile> = {}
         ;[...cs, ...sc].forEach((c) => (map[c.id] = c))
-        setJobs(j)
+        setJobs(js)
         setCompanies(map)
       } finally {
-        // Always drop the skeletons, even if the fetch failed (e.g. no backend).
         if (active) setLoading(false)
       }
-
-      // Score matches in the background and merge them in when they're ready.
-      const ms = await aiApi.matchAll(user, j)
-      if (!active) return
-      const mmap: Record<string, AiMatch> = {}
-      ms.forEach((m) => (mmap[m.job_id] = m))
-      setMatches(mmap)
     })()
     return () => {
       active = false
     }
   }, [user])
+
+  // When the daily gate is already closed, make sure scores are loaded — the
+  // global runner is idempotent (reuses cached results, no duplicate activity
+  // task), and streams a live percentage if anything needs re-scoring.
+  useEffect(() => {
+    if (!gateOpen) void useMatchProgress.getState().run(user.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gateOpen, user.id])
 
   // Re-open the gate if matching was invalidated (e.g. CV upload) or a new day.
   useEffect(() => {
@@ -246,10 +251,10 @@ export default function Jobs() {
       {gateOpen ? (
         <div className="mt-2">
           <MatchRunner
-            onRun={() => loadPromiseRef.current ?? Promise.resolve()}
+            userId={user.id}
             onComplete={() => { markRun(user.id); setGateOpen(false) }}
             title="Today's AI matches"
-            subtitle={`Welcome back, ${user.full_name.split(' ')[0]} — let's score today's opportunities against your profile and show your best fits first.`}
+            subtitle={`Welcome back, ${user.full_name.split(' ')[0]} — let's score today's opportunities against your profile and show your best fits first. You can switch tabs while it runs.`}
           />
         </div>
       ) : (

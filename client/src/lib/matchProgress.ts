@@ -20,8 +20,10 @@ interface MatchProgressState {
   total: number
   label: string // the role currently being scored
   matches: AiMatch[] // accumulated, by arrival
-  /** Start (or resume) a run. No-op if a run is already in flight for this user. */
-  run: (userId: string) => Promise<void>
+  /** Start a run. Idempotent: no-op if a run is already in flight for this user,
+   *  or already finished with results (so navigating between pages reuses the
+   *  same matches instead of re-scoring). Pass force=true to re-run. */
+  run: (userId: string, force?: boolean) => Promise<void>
   /** Drop results (e.g. on logout) so a fresh user starts clean. */
   reset: () => void
 }
@@ -34,9 +36,9 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
   label: '',
   matches: [],
 
-  run: async (userId) => {
+  run: async (userId, force = false) => {
     const s = get()
-    if (s.phase === 'running' && s.userId === userId) return // already running — don't restart
+    if (!force && s.userId === userId && (s.phase === 'running' || (s.phase === 'done' && s.matches.length > 0))) return
     set({ userId, phase: 'running', done: 0, total: 0, label: 'Reading your profile…', matches: [] })
 
     const act = useAiActivity.getState()

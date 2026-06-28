@@ -16,7 +16,8 @@ import {
   GraduationCap,
 } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
-import { aiApi, applicationsApi, followsApi, jobsApi, profilesApi } from '@/lib/api'
+import { applicationsApi, followsApi, jobsApi, profilesApi } from '@/lib/api'
+import { useMatchProgress } from '@/lib/matchProgress'
 import type { AiMatch, Application, JobListing, Profile } from '@/types'
 import { Card, CardBody, Badge, Avatar, Progress, Skeleton } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
@@ -43,7 +44,6 @@ const statusTone = {
 function StudentDashboard({ user }: { user: Profile }) {
   const [jobs, setJobs] = useState<JobListing[]>([])
   const [apps, setApps] = useState<Application[]>([])
-  const [matches, setMatches] = useState<AiMatch[]>([])
   const [companies, setCompanies] = useState<Record<string, Profile>>({})
   const [following, setFollowing] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
@@ -61,19 +61,24 @@ function StudentDashboard({ user }: { user: Profile }) {
       const schoolList = await profilesApi.list('school')
       const map: Record<string, Profile> = {}
       ;[...cs, ...schoolList].forEach((c) => (map[c.id] = c))
-      const all = await aiApi.matchAll(user, j)
       if (!active) return
       setJobs(j)
       setApps(a)
       setCompanies(map)
       setFollowing(new Set(myFollows.map((f) => f.company_id)))
-      setMatches(all.sort((x, y) => y.score - x.score).slice(0, 6))
       setLoading(false)
     })()
+    // Matching runs through the shared global runner — same scores everywhere,
+    // a single activity-panel task with a real percentage. Idempotent.
+    void useMatchProgress.getState().run(user.id)
     return () => {
       active = false
     }
   }, [user])
+
+  // Match scores from the shared store (same source as Jobs & Insights).
+  const storeMatches = useMatchProgress((s) => s.matches)
+  const matches = useMemo(() => [...storeMatches].sort((a, b) => b.score - a.score), [storeMatches])
 
   const completeness = useMemo(() => profileCompleteness(user), [user])
   const gaps = useMemo(() => profileGaps(user), [user])

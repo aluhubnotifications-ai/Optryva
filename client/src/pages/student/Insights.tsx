@@ -335,7 +335,7 @@ function MatchesTab({ user }: { user: Profile }) {
     .map((r) => ({ ...r, company: companies[r.job.company_id] }))
     .sort((a, b) => b.match.score - a.match.score)
 
-  const run = () => useMatchProgress.getState().run(user.id)
+  const run = () => useMatchProgress.getState().run(user.id, true)
   const pct = total > 0 ? Math.round((done / total) * 100) : 0
 
   // Idle / first run (or an error with nothing scored yet) — the click target.
