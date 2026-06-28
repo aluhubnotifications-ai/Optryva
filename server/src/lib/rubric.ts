@@ -33,21 +33,29 @@ HARD RULES
 7. Seniority honesty: do not score an entry-level candidate as ready for a senior role, or vice versa, regardless of keyword overlap.
 8. Reasons must cite SPECIFIC evidence ("built a Django REST API serving 10k users"), never generic praise ("great candidate", "passionate"). Flags must name EXACTLY what is missing. The tip must be truthful and actionable.
 
+SCORE COMPONENTS — fill "breakdown" with four 0-100 sub-scores that MUST justify the overall score (a breakdown that contradicts the headline is an error):
+- skills:       depth and RELEVANCE of evidenced skills against the role's core requirements.
+- experience:   seniority, years, and DEMONSTRATED impact against what the role needs.
+- location:     fit of the candidate's location / remote preference with the role's location (use ~70 when location is irrelevant or unstated, not 0).
+- compensation: fit of the candidate's apparent level with the role's pay/level band (use ~60 when pay is unstated, not 0).
+The overall score is a HOLISTIC judgment weighted roughly skills 45% / experience 35% / location 10% / compensation 10%. You MAY deviate when one factor is decisive (e.g. a hard location/seniority blocker), but if you do, a flag must say why.
+
 Set "confidence" to how much real evidence you had: "high" (detailed résumé with projects), "medium" (some detail), "low" (thin/keyword-only/no résumé). Low confidence must pair with a capped, cautious score.`
 
 /** JSON schema for the structured score (Anthropic output_config.format). */
 export const SCORE_SCHEMA = {
   type: 'object',
   properties: {
-    score: { type: 'integer' },
+    score: { type: 'integer', description: 'Overall 1-99 holistic fit. Must be consistent with breakdown.' },
     confidence: { type: 'string', enum: ['low', 'medium', 'high'] },
     breakdown: {
       type: 'object',
+      description: 'Four 0-100 sub-scores that justify the overall score (skills 45% / experience 35% / location 10% / compensation 10%).',
       properties: {
-        skills: { type: 'integer' },
-        experience: { type: 'integer' },
-        location: { type: 'integer' },
-        compensation: { type: 'integer' },
+        skills: { type: 'integer', description: 'Relevance + depth of evidenced skills vs core requirements (0-100).' },
+        experience: { type: 'integer', description: 'Seniority, years, demonstrated impact vs the role (0-100).' },
+        location: { type: 'integer', description: 'Location/remote fit (0-100; ~70 if irrelevant/unstated).' },
+        compensation: { type: 'integer', description: 'Level vs pay band fit (0-100; ~60 if pay unstated).' },
       },
       required: ['skills', 'experience', 'location', 'compensation'],
       additionalProperties: false,

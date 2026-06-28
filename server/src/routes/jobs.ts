@@ -41,6 +41,39 @@ async function jobOpensExist(): Promise<boolean> {
   return hasJobOpens
 }
 
+// match_outcomes (migration 0014) — the outcome-tracking loop. Detect once so the
+// intent write degrades gracefully before the migration is applied.
+let hasOutcomes = false
+async function outcomesExist(): Promise<boolean> {
+  if (hasOutcomes) return true
+  const { error } = await sb.from('match_outcomes').select('student_id').limit(1)
+  hasOutcomes = !error
+  return hasOutcomes
+}
+
+const OUTCOME_CHECK_DAYS = 14
+
+/** Record an intent-to-apply for outcome tracking: snapshot the score we gave and
+ *  schedule the first background check ~14 days out. Idempotent per (student, job)
+ *  so repeat clicks don't reset the monitoring clock. Best-effort & fast. */
+async function recordIntent(studentId: string, jobId: string): Promise<void> {
+  if (!(await outcomesExist())) return
+  let score: number | null = null
+  try {
+    const c = (await sb.from('ai_match_cache').select('payload').eq('student_id', studentId).eq('job_id', jobId).maybeSingle()).data as any
+    if (c?.payload) score = JSON.parse(c.payload).score ?? null
+  } catch { /* no cached score — leave null */ }
+  const ts = now()
+  const checkAt = new Date(Date.now() + OUTCOME_CHECK_DAYS * 86_400_000).toISOString()
+  await sb.from('match_outcomes').upsert(
+    {
+      student_id: studentId, job_id: jobId, source: 'external_link', score_at_intent: score,
+      first_intent_at: ts, status: 'monitoring', check_at: checkAt, check_count: 0, created_at: ts, updated_at: ts,
+    },
+    { onConflict: 'student_id,job_id', ignoreDuplicates: true }, // first intent wins; keep its clock
+  )
+}
+
 // Opens-per-job for the authed company's own listings. The Listings/Analytics
 // views show this instead of "applicants" for EXTERNAL roles, whose applications
 // never reach Optryva. Declared before "/:id" so it isn't shadowed by it.
@@ -65,6 +98,9 @@ jobs.post('/:id/open', async (req, res) => {
       { job_id: req.params.id, user_id: req.user!.id, created_at: now() },
       { onConflict: 'job_id,user_id', ignoreDuplicates: true },
     )
+  // Also open an outcome-tracking record (intent-to-apply). Don't block the
+  // response on it — the click should feel instant.
+  recordIntent(req.user!.id, req.params.id).catch(() => {})
   res.json({ ok: true })
 })
 

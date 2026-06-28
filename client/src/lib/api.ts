@@ -808,6 +808,9 @@ export interface InsightsData {
   demand: { name: string; count: number }[]
   topMatches: { job_id: string; title: string; company_id: string; listing_type: string; location: string; score: number }[]
   doNext: string[]
+  outcomeNudges?: { title: string; message: string; status: string }[]
+  reachable?: { job_id: string; title: string; company_id: string; listing_type: string; location: string; score: number; missing: string[]; bridge: string }[]
+  unlocks?: { skill: string; count: number; roles: string[] }[]
 }
 
 async function aiPost(path: string, body: unknown) {

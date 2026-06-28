@@ -5,7 +5,11 @@ import { now } from '@/lib/util'
 import { claudeText, claudeJson, claudeTextWithSearch, streamClaude, extractJson, hasClaude, MODELS } from '@/lib/claude'
 import { type MatchJob, type MatchStudent, type AiMatch } from '@/lib/matching'
 import type { ResumeProfile } from '@/lib/resume'
-import { ensureResumeProfile, asResumeProfile } from '@/lib/enrich'
+import { ensureResumeProfile, asResumeProfile, retrieveCandidateJobs, retrieveJobsByVector } from '@/lib/enrich'
+import { rerank, studentEmbedText, jobEmbedText, embedOne } from '@/lib/embeddings'
+import { extractFeatures } from '@/lib/features'
+import { loadRanker, rankerProb } from '@/lib/ranker'
+import { loadDistill, distillScore } from '@/lib/distill'
 import { buildScoringSystem, SCORE_SCHEMA, type LlmScore } from '@/lib/rubric'
 import { jobVisibleTo, schoolGates } from '@/lib/visibility'
 
@@ -23,6 +27,114 @@ async function calibration(): Promise<{ addendum: string | null }> {
   return calCache
 }
 const clampInt = (n: any, lo = 0, hi = 99) => Math.max(lo, Math.min(hi, Math.round(Number(n) || 0)))
+
+// Stamped into every cached score. Bump this whenever the rubric, the scoring
+// model, or the cap logic changes — old cached scores then auto-miss and get
+// re-scored under the new engine instead of being served stale. (v2: Sonnet
+// scorer + honest breakdown + smooth caps.)
+const ENGINE_VERSION = 'v2-sonnet-2026-06'
+
+// ---- Match funnel: turn up to 1M live jobs into the few the LLM actually scores.
+const RETRIEVE_K = 600 // Stage 1 — ANN candidates pulled from Postgres per student.
+const SCORE_K = 40 // Stage 3 — final set the LLM scores, after the rerank narrows.
+
+const parsePrefTypes = (viewer: any): string[] => j.parse<string[]>(viewer?.pref_listing_types, [])
+const parsePrefCountries = (viewer: any): string[] => j.parse<string[]>(viewer?.pref_countries, [])
+
+/** Does this job pass the student's stated preferences? An empty preference means
+ *  "no restriction". A job in a listing type or country the student doesn't want
+ *  is NOT a weak match — it's out of scope, so we never spend a Claude call on it.
+ *  Remote roles always clear the country gate (location is irrelevant remote). */
+function prefAllowsJob(job: any, prefTypes: string[], prefCountries: string[]): boolean {
+  if (prefTypes.length && !prefTypes.includes(job.listing_type)) return false
+  if (prefCountries.length && job.remote !== 1 && !prefCountries.includes(job.country)) return false
+  return true
+}
+
+// Unambiguous senior-role markers (avoid 'lead'/'manager' — "Lead Generation",
+// "Community Manager" are common entry roles) and an explicit years requirement.
+const SENIOR_TITLE = /\b(senior|sr|staff|principal|director|chief|vp|head\s+of|architect)\b/i
+const YEARS_REQ = /(\d{1,2})\s*\+?\s*(?:years|yrs)\b/i
+
+/** A cheap, conservative qualification guardrail run BEFORE the LLM (LinkedIn's
+ *  lesson: embeddings alone surface "completely off-target" roles). Only fires on
+ *  a seniority mismatch we can defend — an entry-level / <1yr candidate against an
+ *  explicitly senior, non-internship role — so it trims absurd matches without
+ *  hurting recall. Skipped when there's no parsed résumé (we can't judge level). */
+function isOffTarget(job: any, rp: ResumeProfile | null): boolean {
+  if (!rp) return false
+  const junior = rp.seniority === 'student' || rp.seniority === 'entry' || rp.total_years < 1
+  if (!junior) return false
+  if (job.listing_type === 'Internship' || job.listing_type === 'Fellowship') return false // open to all levels
+  if (SENIOR_TITLE.test(job.title ?? '')) return true
+  const text = `${(j.parse<string[]>(job.qualifications, [])).join('\n')}\n${job.description ?? ''}`
+  const m = text.match(YEARS_REQ)
+  return m ? Number(m[1]) >= 5 : false
+}
+
+/** The match FUNNEL. Reduces the whole live-jobs corpus to the ~SCORE_K best
+ *  candidates the LLM will score — cheaply and at scale:
+ *    0+1) Postgres hard-filters by the student's preferences (type/country) AND
+ *         ranks by vector similarity, returning the top RETRIEVE_K (one indexed
+ *         query — this is what makes 1M jobs tractable; we never load them all).
+ *    2)   a cross-encoder rerank sharpens that down to the best SCORE_K.
+ *    3)   the caller LLM-scores only those.
+ *  Visibility gates (school/year/privacy) that can't live in SQL are applied in JS
+ *  over the small candidate set. Degrades gracefully: no embeddings/RPC → an
+ *  in-memory scan (fine for a small catalog); no reranker → similarity order. */
+async function candidateJobs(viewer: any, rp: ResumeProfile | null): Promise<any[]> {
+  const prefTypes = parsePrefTypes(viewer)
+  const prefCountries = parsePrefCountries(viewer)
+
+  const ann = await retrieveCandidateJobs(viewer.id, prefTypes, prefCountries, RETRIEVE_K)
+  const sim = new Map<string, number>()
+  let rows: any[]
+  if (ann) {
+    for (const a of ann) if (a.similarity != null) sim.set(a.job_id, a.similarity)
+    const ids = ann.map((a) => a.job_id)
+    rows = ids.length ? (must(await sb.from('job_listings').select('*').in('id', ids)) as any[]) : []
+  } else {
+    rows = await visibleJobs(viewer) // fallback: in-memory scan (small catalog only)
+  }
+
+  // Visibility + preference hard gates over the (now small) candidate set.
+  const gates = await schoolGates(rows.map((r) => r.company_id))
+  rows = rows.filter((r) => jobVisibleTo(r, viewer, gates) && prefAllowsJob(r, prefTypes, prefCountries) && !isOffTarget(r, rp))
+  const bySim = (xs: any[]) => [...xs].sort((a, b) => (sim.get(b.id) ?? 0) - (sim.get(a.id) ?? 0))
+  if (rows.length <= SCORE_K) return bySim(rows)
+
+  // Stage 2a — learned ranker (Phase 2). When an ACTIVE model exists it orders the
+  // candidates from cheap pre-LLM features (trained on OUR engagement), choosing
+  // which get an LLM call. Falls through to Voyage rerank when there's no model yet.
+  const ranker = await loadRanker()
+  if (ranker) {
+    const student = {
+      skills: j.parse<string[]>(viewer.skills, []), seniority: rp?.seniority ?? null,
+      totalYears: rp?.total_years ?? 0, country: viewer.location,
+      cvLen: (viewer.cv_text ?? '').length, desiredRoles: j.parse<string[]>(viewer.desired_roles, []),
+    }
+    return rows
+      .map((r) => ({
+        r,
+        p: rankerProb(ranker, extractFeatures({
+          predScore: null, breakdown: null, cosine: sim.get(r.id) ?? null, student,
+          job: { tags: j.parse<string[]>(r.tags, []), listing_type: r.listing_type, country: r.country, remote: r.remote === 1, createdAt: r.created_at, title: r.title, type: r.type },
+        })),
+      }))
+      .sort((a, b) => b.p - a.p)
+      .slice(0, SCORE_K)
+      .map((s) => s.r)
+  }
+
+  // Stage 2b — cross-encoder rerank to the final LLM set (fallback until a ranker trains).
+  const query = studentEmbedText({
+    major: viewer.major, skills: j.parse(viewer.skills, []), desired_roles: j.parse(viewer.desired_roles, []),
+    preferred_industries: j.parse(viewer.preferred_industries, []), cv_text: viewer.cv_text, resume_summary: rp?.summary ?? null,
+  })
+  const docs = rows.map((r) => jobEmbedText({ title: r.title, type: r.type, listing_type: r.listing_type, tags: j.parse(r.tags, []), description: r.description }))
+  const order = await rerank(query, docs, SCORE_K)
+  return order ? order.map((i) => rows[i]) : bySim(rows).slice(0, SCORE_K)
+}
 
 export const ai = Router()
 ai.use(requireAuth)
@@ -140,7 +252,7 @@ async function claudeScore(student: MatchStudent, job: MatchJob, rp: ResumeProfi
   const { addendum } = await calibration()
 
   const parsed = await claudeJson<LlmScore>({
-    model: MODELS.score,
+    model: MODELS.match,
     maxTokens: 800,
     temperature: 0, // stable, repeatable scores — same résumé+job → same number
     system: buildScoringSystem(jobBlock, addendum),
@@ -154,10 +266,10 @@ async function claudeScore(student: MatchStudent, job: MatchJob, rp: ResumeProfi
     score: Math.max(1, Math.min(99, Math.round(parsed.score))),
     confidence: (['low', 'medium', 'high'] as const).includes(parsed.confidence) ? parsed.confidence : 'low',
     breakdown: {
-      skills: clampInt(parsed.breakdown?.skills),
-      experience: clampInt(parsed.breakdown?.experience),
-      location: clampInt(parsed.breakdown?.location),
-      compensation: clampInt(parsed.breakdown?.compensation),
+      skills: clampInt(parsed.breakdown?.skills, 0, 100),
+      experience: clampInt(parsed.breakdown?.experience, 0, 100),
+      location: clampInt(parsed.breakdown?.location, 0, 100),
+      compensation: clampInt(parsed.breakdown?.compensation, 0, 100),
     },
     matched_skills: parsed.matched_skills ?? [],
     reasons: parsed.reasons ?? [],
@@ -175,8 +287,16 @@ interface MatchCtx { row?: any; rp?: ResumeProfile | null; cached?: any | null }
 /** Apply the honest caps to a raw LLM score → final AiMatch. Claude is the only
  *  source of the number; no deterministic component. */
 function finalize(cs: LlmScore, student: MatchStudent, job: MatchJob, rp: ResumeProfile | null): AiMatch {
+  // Competence ceiling, ramped smoothly (no hard cliffs): we can only score as
+  // high as the evidence lets us trust. No CV → unverifiable (cap 50). Raw CV
+  // text → ramp 55→92 as it gets more substantial. A parsed, evidence-linked
+  // résumé profile → ramp 75→99. The ceiling moves with evidence, not a single
+  // arbitrary character threshold.
   const cvLen = (student.cv_text ?? '').length
-  const cap = rp && cvLen >= 300 ? 99 : cvLen === 0 ? 50 : cvLen < 300 ? 75 : 92
+  const cap =
+    cvLen === 0 ? 50
+    : !rp ? Math.round(55 + (Math.min(cvLen, 1500) / 1500) * 37)
+    : Math.round(75 + (Math.min(Math.max(cvLen - 300, 0), 1200) / 1200) * 24)
   let score = cs.score
   if (cs.confidence === 'low') score = Math.min(score, 60)
   else if (cs.confidence === 'medium') score = Math.min(score, 88)
@@ -194,8 +314,30 @@ function finalize(cs: LlmScore, student: MatchStudent, job: MatchJob, rp: Resume
   }
 }
 
-/** Claude-only score for one (student, job). Returns null when Claude is
- *  unavailable (no key / error) — there is no deterministic fallback. */
+/** When Claude can't score (no key / transient error) but a distilled model exists,
+ *  return a clearly-labelled ESTIMATE instead of nothing — so a hiccup doesn't empty
+ *  a student's matches. Never cached (the real score should replace it next time). */
+async function distilledFallback(student: MatchStudent, job: MatchJob, rp: ResumeProfile | null): Promise<AiMatch | null> {
+  const model = await loadDistill()
+  if (!model) return null
+  const feats = extractFeatures({
+    predScore: null, breakdown: null, cosine: null,
+    student: { skills: student.skills ?? [], seniority: rp?.seniority ?? null, totalYears: rp?.total_years ?? 0, country: student.location, cvLen: (student.cv_text ?? '').length, desiredRoles: student.desired_roles ?? [] },
+    job: { tags: job.tags ?? [], listing_type: job.listing_type, country: job.country, remote: job.remote, createdAt: null, title: job.title, type: job.type },
+  })
+  const lc = (student.skills ?? []).map((s) => s.toLowerCase())
+  return {
+    student_id: student.id, job_id: job.id, score: distillScore(model, feats),
+    breakdown: { skills: 0, experience: 0, location: 0, compensation: 0 },
+    matched_skills: (job.tags ?? []).filter((t) => lc.includes(t.toLowerCase())).slice(0, 6),
+    reasons: ['Estimated match — the AI scorer was briefly unavailable, so this is a fast approximation.'],
+    mismatch_flags: [], tip: 'This is an estimate; reopen later for the full, evidence-backed score.',
+    created_at: new Date().toISOString(),
+  }
+}
+
+/** Honest Claude score for one (student, job), with a distilled estimate as a
+ *  fallback when Claude is unavailable. Returns null only when neither is available. */
 async function getMatch(studentId: string, job: MatchJob, opts: MatchOpts = {}, ctx: MatchCtx = {}): Promise<AiMatch | null> {
   const useCache = opts.cache !== false
   if (useCache) {
@@ -203,19 +345,26 @@ async function getMatch(studentId: string, job: MatchJob, opts: MatchOpts = {}, 
     if (cached === undefined) {
       cached = (await sb.from('ai_match_cache').select('payload, stale').eq('student_id', studentId).eq('job_id', job.id).maybeSingle()).data as any
     }
-    if (cached && cached.stale === 0) return JSON.parse(cached.payload)
+    if (cached && cached.stale === 0) {
+      const p = JSON.parse(cached.payload)
+      // Only trust a cached score computed by the CURRENT engine; otherwise fall
+      // through and re-score (handles rubric/model/cap changes automatically).
+      if (p.v === ENGINE_VERSION) return p
+    }
   }
 
   const row = ctx.row ?? (await studentRow(studentId))
   const rp = ctx.row ? (ctx.rp ?? null) : await ensureResumeProfile(row)
   const student = toMatchStudent(row, rp)
   const cs = await claudeScore(student, job, rp)
-  if (!cs) return null
-  const result = finalize(cs, student, job, rp)
+  const result = cs ? finalize(cs, student, job, rp) : await distilledFallback(student, job, rp)
+  if (!result) return null
 
-  if (useCache) {
+  // Cache only REAL Claude scores — never the distilled estimate, so the genuine
+  // score replaces it as soon as Claude is back.
+  if (useCache && cs) {
     must(await sb.from('ai_match_cache').upsert(
-      { student_id: studentId, job_id: job.id, payload: JSON.stringify(result), stale: 0, created_at: now() },
+      { student_id: studentId, job_id: job.id, payload: JSON.stringify({ ...result, v: ENGINE_VERSION }), stale: 0, created_at: now() },
       { onConflict: 'student_id,job_id' },
     ))
   }
@@ -257,7 +406,7 @@ ai.get('/matches', async (req, res) => {
   const uid = req.user!.id
   const viewer = await studentRow(uid)
   const rp = await ensureResumeProfile(viewer)
-  const [visible, cm] = await Promise.all([visibleJobs(viewer), cacheMap(uid)])
+  const [visible, cm] = await Promise.all([candidateJobs(viewer, rp), cacheMap(uid)])
   // Parallel: cached jobs return instantly; uncached ones score concurrently.
   // Jobs Claude couldn't score (no key / error) are simply omitted.
   const out = await Promise.all(
@@ -275,7 +424,7 @@ ai.post('/matches/stream', async (req, res) => {
   const uid = req.user!.id
   const viewer = await studentRow(uid)
   const rp = await ensureResumeProfile(viewer)
-  const [visible, cm] = await Promise.all([visibleJobs(viewer), cacheMap(uid)])
+  const [visible, cm] = await Promise.all([candidateJobs(viewer, rp), cacheMap(uid)])
   const enc = new TextEncoder()
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -304,12 +453,34 @@ ai.post('/matches/stream', async (req, res) => {
   res.sse(stream)
 })
 
+/** Turn what the outcome-tracking worker learned (migration 0014) into concrete,
+ *  honest nudges for the student. Only emits a nudge when there's something real to
+ *  say — a confirmed hire, detected progress, or a worker-recommended next step — so
+ *  we never invent noise. Empty until the worker writes signals / the migration runs. */
+async function outcomeNudges(uid: string): Promise<{ title: string; message: string; status: string }[]> {
+  let rows: any[] = []
+  try { rows = ((await sb.from('match_outcomes').select('job_id, status, signals').eq('student_id', uid)).data as any[]) ?? [] } catch { return [] }
+  if (!rows.length) return []
+  const jobs = (must(await sb.from('job_listings').select('id, title').in('id', rows.map((r) => r.job_id))) as any[]) ?? []
+  const titleOf = new Map<string, string>(jobs.map((jr) => [jr.id, jr.title]))
+  const out: { title: string; message: string; status: string }[] = []
+  for (const r of rows) {
+    const title = titleOf.get(r.job_id) ?? 'a role you applied to'
+    const sig = (r.signals ?? {}) as any
+    const next = typeof sig.recommended === 'string' ? sig.recommended : typeof sig.next === 'string' ? sig.next : null
+    if (r.status === 'likely_hired') out.push({ status: r.status, title, message: `It looks like things moved forward with ${title} — congrats! Keep your profile updated so we can find your next step.` })
+    else if (r.status === 'profile_updated') out.push({ status: r.status, title, message: next ? `You're making progress since applying to ${title}. Next: ${next}.` : `Nice progress since you applied to ${title} — keep building on it.` })
+    else if (r.status === 'monitoring' && next) out.push({ status: r.status, title, message: `While ${title} reviews applicants, ${next}.` })
+  }
+  return out.slice(0, 4)
+}
+
 /* ---------- §8.2 Insights — one engine, aggregated (skill gaps, demand, do-next) ---------- */
 ai.get('/insights', async (req, res) => {
   const uid = req.user!.id
   const viewer = await studentRow(uid)
   const rp = await ensureResumeProfile(viewer)
-  const [visible, cm] = await Promise.all([visibleJobs(viewer), cacheMap(uid)])
+  const [visible, cm] = await Promise.all([candidateJobs(viewer, rp), cacheMap(uid)])
   const scoredRows = await Promise.all(
     visible.map(async (r) => {
       const job = rowToMatchJob(r)
@@ -343,6 +514,26 @@ ai.get('/insights', async (req, res) => {
   const demand = rank(demandCount, 10)
 
   const topMatches = rows.slice(0, 5).map(({ job, m }) => ({ job_id: job.id, title: job.title, company_id: job.company_id, listing_type: job.listing_type, location: job.location, score: m.score }))
+  const nudges = await outcomeNudges(uid)
+
+  // Career-trajectory ("reachable roles"): stretch matches the student is only a few
+  // LEARNABLE skills away from — forward-looking, not just current fit. From the
+  // already-scored rows, so no extra LLM calls.
+  const reachableAll = rows
+    .filter(({ m }) => m.score >= 52 && m.score < 80)
+    .map(({ job, m }) => ({ job, score: m.score, missing: (job.tags ?? []).filter((t: string) => !m.matched_skills.includes(t)) }))
+    .filter((r) => r.missing.length >= 1 && r.missing.length <= 3)
+  const reachable = reachableAll
+    .sort((a, b) => a.missing.length - b.missing.length || b.score - a.score)
+    .slice(0, 6)
+    .map((r) => ({ job_id: r.job.id, title: r.job.title, company_id: r.job.company_id, listing_type: r.job.listing_type, location: r.job.location, score: r.score, missing: r.missing, bridge: `Add ${r.missing.join(' & ')} to qualify.` }))
+  // Highest-leverage skills: which single skill unlocks the most reachable roles.
+  const unlockMap = new Map<string, string[]>()
+  for (const r of reachableAll) for (const s of r.missing) (unlockMap.get(s) ?? unlockMap.set(s, []).get(s)!).push(r.job.title)
+  const unlocks = Array.from(unlockMap.entries())
+    .map(([skill, titles]) => ({ skill, count: titles.length, roles: titles.slice(0, 4) }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5)
 
   // Honest template fallback (also the no-key path).
   const noCv = !(viewer?.cv_text ?? '').trim()
@@ -367,13 +558,16 @@ ai.get('/insights', async (req, res) => {
         `Top skill gaps (skill : #roles wanting it): ${gaps.slice(0, 5).map((g) => `${g.name}:${g.count}`).join(', ') || '—'}.\n` +
         `Evident strengths: ${strengths.slice(0, 5).map((s) => s.name).join(', ') || '—'}.\n` +
         `Strongest matches: ${topMatches.slice(0, 3).map((t) => `${t.title} (${t.score}%)`).join('; ') || '—'}.\n` +
+        `Post-application signals (from tracking their real outcomes — reference if present): ${nudges.map((n) => n.message).join(' | ') || '—'}.\n` +
+        `Roles within reach (a few skills away — great for "do next"): ${reachable.slice(0, 3).map((r) => `${r.title} (needs ${r.missing.join(', ')})`).join('; ') || '—'}.\n` +
+        `Highest-leverage skill to learn (unlocks the most reachable roles): ${unlocks[0] ? `${unlocks[0].skill} → ${unlocks[0].count} roles` : '—'}.\n` +
         `Résumé summary: ${rp?.summary ?? '—'}.`,
     })
     const list = (parseJsonArray<string>(ai)?.filter((x) => typeof x === 'string' && x.trim())) ?? parseList(ai)
     if (list.length) doNext = list.slice(0, 5)
   }
 
-  res.json({ readiness, total: rows.length, distribution, gaps, strengths, demand, topMatches, doNext })
+  res.json({ readiness, total: rows.length, distribution, gaps, strengths, demand, topMatches, doNext, outcomeNudges: nudges, reachable, unlocks })
 })
 
 /* ---------- §8.3 Company research ---------- */
@@ -565,7 +759,7 @@ ai.post('/compass/recommend', async (req, res) => {
   const uid = req.user!.id
   const viewer = await studentRow(uid)
   const rp = await ensureResumeProfile(viewer)
-  const [visible, cm] = await Promise.all([visibleJobs(viewer), cacheMap(uid)])
+  const [visible, cm] = await Promise.all([candidateJobs(viewer, rp), cacheMap(uid)])
   const signals = deriveSignals(answers)
 
   // Rank by the honest Claude score: cached when present, else score now.
@@ -702,32 +896,68 @@ ai.post('/research/ask/stream', async (req, res) => {
 })
 
 /* ---------- AI Sourcing (describe → find) ---------- */
+// Natural-language job search ("remote Python internship in Kenya"). A QUERY-driven
+// funnel: embed the query → ANN-retrieve the closest jobs (hard filters in SQL) →
+// Voyage-rerank by the query → Claude-score a bounded set for the honest fit %.
+// Never scans/scores the whole catalog. Falls back to a keyword-bounded scan when
+// embeddings are off, so it stays bounded regardless.
+const SOURCE_RERANK_K = 24 // candidates that reach the LLM score
+const SOURCE_SHOW = 8
 ai.post('/source', async (req, res) => {
-  const query: string = (req.body?.query ?? '').toLowerCase()
+  const query: string = (req.body?.query ?? '').trim()
+  const qLower = query.toLowerCase()
   const uid = req.user!.id
   const viewer = await studentRow(uid)
   const rp = await ensureResumeProfile(viewer)
   const cm = await cacheMap(uid)
-  const allRows = must(await sb.from('job_listings').select('*').eq('status', 'active')) as any[]
-  // Respect the same visibility gates as /jobs — never source a restricted listing.
-  const srcGates = await schoolGates(allRows.map((r) => r.company_id))
-  const rows = allRows.filter((r) => jobVisibleTo(r, viewer, srcGates))
-  const wantRemote = /\bremote\b|anywhere/.test(query)
-  let wantType: string | null = null
-  if (/intern/.test(query)) wantType = 'Internship'
-  else if (/full[- ]?time|new grad|permanent/.test(query)) wantType = 'Full-time'
-  else if (/fellow/.test(query)) wantType = 'Fellowship'
-  const countries = Array.from(new Set(rows.map((r) => r.country)))
-  const wantCountry = countries.find((c) => c !== 'Remote' && query.includes(c.toLowerCase())) ?? null
 
+  // Parse the query into hard filters (these also become the "why" chips).
+  const wantRemote = /\bremote\b|anywhere/.test(qLower)
+  let wantType: string | null = null
+  if (/intern/.test(qLower)) wantType = 'Internship'
+  else if (/full[- ]?time|new grad|permanent/.test(qLower)) wantType = 'Full-time'
+  else if (/fellow/.test(qLower)) wantType = 'Fellowship'
+
+  // Stage 1 — retrieve a bounded candidate set. Query-driven via embeddings when
+  // available; otherwise a filtered scan.
+  const qVec = query ? await embedOne(query, 'query') : null
+  let rows: any[]
+  const ann = qVec ? await retrieveJobsByVector(qVec, wantType ? [wantType] : [], [], wantRemote, 200) : null
+  if (ann) {
+    const ids = ann.map((a) => a.job_id)
+    rows = ids.length ? (must(await sb.from('job_listings').select('*').in('id', ids)) as any[]) : []
+  } else {
+    rows = must(await sb.from('job_listings').select('*').eq('status', 'active')) as any[]
+  }
+
+  // Visibility gates (same as /jobs — never source a restricted listing).
+  const srcGates = await schoolGates(rows.map((r) => r.company_id))
+  rows = rows.filter((r) => jobVisibleTo(r, viewer, srcGates))
+  const countries = Array.from(new Set(rows.map((r) => r.country)))
+  const wantCountry = countries.find((c) => c !== 'Remote' && qLower.includes(c.toLowerCase())) ?? null
+
+  // Stage 2 — narrow to the LLM set. Voyage rerank by the query when we can;
+  // otherwise a cheap keyword overlap, so the scored set is always bounded.
+  if (rows.length > SOURCE_RERANK_K) {
+    const docs = rows.map((r) => jobEmbedText({ title: r.title, type: r.type, listing_type: r.listing_type, tags: j.parse(r.tags, []), description: r.description }))
+    const order = query ? await rerank(query, docs, SOURCE_RERANK_K) : null
+    if (order) {
+      rows = order.map((i) => rows[i])
+    } else if (query) {
+      const terms = qLower.split(/\W+/).filter((t) => t.length > 2)
+      const kw = (r: any) => { const hay = `${r.title} ${j.parse<string[]>(r.tags, []).join(' ')} ${r.description ?? ''}`.toLowerCase(); return terms.filter((t) => hay.includes(t)).length }
+      rows = [...rows].sort((a, b) => kw(b) - kw(a)).slice(0, SOURCE_RERANK_K)
+    } else {
+      rows = rows.slice(0, SOURCE_RERANK_K)
+    }
+  }
+
+  // Stage 3 — honest Claude score + relevance chips. The shown fit % is the real
+  // match score; the query constraints only RANK and surface "why".
   const scoredAll = await Promise.all(rows.map(async (r) => {
     const why: string[] = []
-    // Honest Claude score (cached or scored now). Jobs Claude can't score are dropped.
     const m = await getMatch(uid, rowToMatchJob(r), {}, { row: viewer, rp, cached: cm.get(r.id) ?? null })
     if (!m) return null
-    // DISPLAY the real match score (same number as everywhere else). The keyword
-    // constraints only RANK (relevance) and surface "why" chips — they don't
-    // distort the shown fit %.
     let relevance = m.score
     let fail = false
     if (wantRemote) { if (r.remote === 1) { relevance += 18; why.push('Remote ✓') } else fail = true }
@@ -736,7 +966,7 @@ ai.post('/source', async (req, res) => {
     if (m.matched_skills.length) { relevance += m.matched_skills.length * 4; why.push(`Uses your ${m.matched_skills.slice(0, 2).join(' & ')}`) }
     return { job: rowJobLite(r), why, score: m.score, relevance, fail }
   }))
-  const scored = scoredAll.filter((r): r is NonNullable<typeof r> => !!r && !r.fail).sort((a, b) => b.relevance - a.relevance).slice(0, 8)
+  const scored = scoredAll.filter((r): r is NonNullable<typeof r> => !!r && !r.fail).sort((a, b) => b.relevance - a.relevance).slice(0, SOURCE_SHOW)
 
   res.json({ summary: scored.length ? `I found ${scored.length} matching opportunities for you, ranked by fit.` : 'No strong matches — try relaxing a constraint.', results: scored })
 })

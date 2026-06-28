@@ -20,7 +20,7 @@ import { useNavigate } from 'react-router-dom'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { useMatchRun } from '@/lib/matchRun'
 import { profilesApi } from '@/lib/api'
-import type { Profile as ProfileT, WorkType } from '@/types'
+import type { Profile as ProfileT, WorkType, ListingType } from '@/types'
 import { Card, CardBody, Badge, Avatar, Input, Label, Textarea, Select } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -30,6 +30,8 @@ import { formatDate, cn, fileToDataUrl } from '@/lib/utils'
 
 const ROLES = ['Software Engineering', 'Data Science', 'Product Management', 'Marketing', 'Operations', 'Finance', 'Design', 'Consulting']
 const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Agriculture', 'Education', 'E-commerce', 'Consulting', 'Nonprofit']
+const LISTING_TYPES: ListingType[] = ['Internship', 'Full-time', 'Part-time', 'Fellowship']
+const COUNTRIES = ['Rwanda', 'Kenya', 'Nigeria', 'Ghana', 'Uganda', 'Tanzania', 'Ethiopia', 'South Africa', 'Egypt', 'Senegal', 'Morocco', "Côte d'Ivoire"]
 
 export default function Profile() {
   const user = useCurrentUser()!
@@ -58,12 +60,13 @@ export default function Profile() {
     twitter: user.twitter ?? '',
     website: user.website ?? '',
     work_type: (user.work_type ?? 'any') as WorkType,
-    open_to_internship: user.open_to_internship ?? true,
-    open_to_fulltime: user.open_to_fulltime ?? true,
   })
   const [roles, setRoles] = useState<string[]>(user.desired_roles ?? [])
   const [industries, setIndustries] = useState<string[]>(user.preferred_industries ?? [])
   const [skills, setSkills] = useState<string[]>(user.skills ?? [])
+  const [prefTypes, setPrefTypes] = useState<string[]>(user.pref_listing_types ?? [])
+  const [prefCountries, setPrefCountries] = useState<string[]>(user.pref_countries ?? [])
+  const [monitorConsent, setMonitorConsent] = useState<boolean>(user.monitoring_consent ?? false)
 
   function toggle(list: string[], set: (v: string[]) => void, v: string) {
     set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v])
@@ -83,8 +86,13 @@ export default function Profile() {
       twitter: form.twitter,
       website: form.website,
       work_type: form.work_type,
-      open_to_internship: form.open_to_internship,
-      open_to_fulltime: form.open_to_fulltime,
+      // Keep the legacy flags in sync with the richer type preferences below
+      // (empty selection = open to everything) so anything still reading them works.
+      open_to_internship: prefTypes.length === 0 || prefTypes.includes('Internship'),
+      open_to_fulltime: prefTypes.length === 0 || prefTypes.some((t) => t !== 'Internship'),
+      pref_listing_types: prefTypes as ListingType[],
+      pref_countries: prefCountries,
+      monitoring_consent: monitorConsent,
       desired_roles: roles,
       preferred_industries: industries,
       skills,
@@ -201,21 +209,38 @@ export default function Profile() {
         <Label className="mt-4">Industries</Label>
         <ChipGroup options={INDUSTRIES} selected={industries} onToggle={(v) => toggle(industries, setIndustries, v)} />
 
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <div>
-            <Label>Work type</Label>
-            <Select value={form.work_type} onChange={(e) => setForm({ ...form, work_type: e.target.value as WorkType })}>
-              <option value="any">Any</option>
-              <option value="remote">Remote</option>
-              <option value="hybrid">Hybrid</option>
-              <option value="onsite">On-site</option>
-            </Select>
-          </div>
-          <div className="flex items-end gap-4">
-            <Toggle label="Open to internships" checked={form.open_to_internship} onChange={(v) => setForm({ ...form, open_to_internship: v })} />
-            <Toggle label="Open to full-time" checked={form.open_to_fulltime} onChange={(v) => setForm({ ...form, open_to_fulltime: v })} />
-          </div>
+        <Label className="mt-4">Opportunity types I want</Label>
+        <p className="mb-1.5 text-xs text-muted-foreground">We'll only match these. Leave empty to consider every type.</p>
+        <ChipGroup options={LISTING_TYPES} selected={prefTypes} onToggle={(v) => toggle(prefTypes, setPrefTypes, v)} />
+
+        <Label className="mt-4">Countries I'd work in</Label>
+        <p className="mb-1.5 text-xs text-muted-foreground">We won't match roles outside these. Remote roles always count. Leave empty for anywhere.</p>
+        <ChipGroup options={COUNTRIES} selected={prefCountries} onToggle={(v) => toggle(prefCountries, setPrefCountries, v)} />
+
+        <div className="mt-4">
+          <Label>Work type</Label>
+          <Select value={form.work_type} onChange={(e) => setForm({ ...form, work_type: e.target.value as WorkType })} className="max-w-xs">
+            <option value="any">Any</option>
+            <option value="remote">Remote</option>
+            <option value="hybrid">Hybrid</option>
+            <option value="onsite">On-site</option>
+          </Select>
         </div>
+
+        <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3">
+          <input
+            type="checkbox"
+            checked={monitorConsent}
+            onChange={(e) => setMonitorConsent(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-primary"
+          />
+          <span className="text-sm">
+            <span className="font-medium text-foreground">Track my application outcomes</span>
+            <span className="block text-xs text-muted-foreground">
+              After you apply to an external role, let Optryva check your linked public profiles (e.g. GitHub) for progress, so our AI can nudge you on exactly what to add next to land the offer. Off by default — you can turn this off anytime.
+            </span>
+          </span>
+        </label>
 
         <Label className="mt-4">Skills</Label>
         <div className="flex flex-wrap gap-1.5">
@@ -277,17 +302,6 @@ function ChipGroup({ options, selected, onToggle }: { options: string[]; selecte
         )
       })}
     </div>
-  )
-}
-
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button onClick={() => onChange(!checked)} className="flex items-center gap-2 text-sm">
-      <span className={cn('relative h-5 w-9 rounded-full transition-colors', checked ? 'bg-primary' : 'bg-muted')}>
-        <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all', checked ? 'left-[18px]' : 'left-0.5')} />
-      </span>
-      <span className="text-muted-foreground">{label}</span>
-    </button>
   )
 }
 
