@@ -11,7 +11,7 @@ import { useMatchRun } from '@/lib/matchRun'
 // role being scored, and mirrors that into the AI activity panel.
 // ----------------------------------------------------------------------------
 
-export type MatchPhase = 'idle' | 'running' | 'done' | 'error'
+export type MatchPhase = 'idle' | 'running' | 'done' | 'error' | 'notReady'
 
 interface MatchProgressState {
   userId: string | null
@@ -20,6 +20,7 @@ interface MatchProgressState {
   total: number
   label: string // the role currently being scored
   matches: AiMatch[] // accumulated, by arrival
+  missing: string[] // what's blocking matching when phase==='notReady' (resume/preferences)
   scoring: string[] // job ids being scored on demand right now
   /** Start a run. Idempotent: no-op if a run is already in flight for this user,
    *  or already finished with results (so navigating between pages reuses the
@@ -40,6 +41,7 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
   total: 0,
   label: '',
   matches: [],
+  missing: [],
   scoring: [],
 
   scoreOne: async (job) => {
@@ -63,14 +65,20 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
   run: async (userId, force = false) => {
     const s = get()
     if (!force && s.userId === userId && (s.phase === 'running' || (s.phase === 'done' && s.matches.length > 0))) return
-    set({ userId, phase: 'running', done: 0, total: 0, label: 'Reading your profile…', matches: [], scoring: [] })
+    set({ userId, phase: 'running', done: 0, total: 0, label: 'Reading your profile…', matches: [], missing: [], scoring: [] })
 
     const act = useAiActivity.getState()
     const taskId = act.start('Matching you to open roles')
     act.update(taskId, { done: 0, total: 0, label: 'Reading your profile…' })
 
+    let notReady = false
     try {
       await aiApi.matchAllStream({
+        onNotReady: (missing) => {
+          notReady = true
+          set({ phase: 'notReady', missing, label: '', done: 0, total: 0 })
+          act.finish(taskId, 'complete your profile first')
+        },
         onMeta: (total) => {
           set({ total })
           act.update(taskId, { done: 0, total, label: 'Scoring open roles…' })
@@ -85,6 +93,7 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
           act.update(taskId, { done, total, label: title })
         },
       })
+      if (notReady) return // server refused — leave phase==='notReady' for the UI to prompt.
       act.finish(taskId)
       set({ phase: 'done', label: '' })
       useMatchRun.getState().markRun(userId)
@@ -103,5 +112,5 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
     }
   },
 
-  reset: () => set({ userId: null, phase: 'idle', done: 0, total: 0, label: '', matches: [], scoring: [] }),
+  reset: () => set({ userId: null, phase: 'idle', done: 0, total: 0, label: '', matches: [], missing: [], scoring: [] }),
 }))

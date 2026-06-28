@@ -42,6 +42,28 @@ const SCORE_K = 40 // Stage 3 — final set the LLM scores, after the rerank nar
 const parsePrefTypes = (viewer: any): string[] => j.parse<string[]>(viewer?.pref_listing_types, [])
 const parsePrefCountries = (viewer: any): string[] => j.parse<string[]>(viewer?.pref_countries, [])
 
+/** Can we run the funnel for this student yet? The retrieval funnel ranks the whole
+ *  catalog by similarity to the student's embedding — built from their résumé and
+ *  preferences. With NEITHER there's nothing to rank against, so the "top 40" would
+ *  be arbitrary. We refuse to run and tell the client what's missing instead.
+ *    - résumé: a parsed CV (cv_text) or a structured resume_profile.
+ *    - preferences: any signal that shapes retrieval — wanted types/countries, or
+ *      profile signals (skills, desired roles, industries). */
+type MatchReadiness = { ready: boolean; missing: ('resume' | 'preferences')[] }
+function matchReadiness(viewer: any): MatchReadiness {
+  const hasResume = !!((viewer?.cv_text ?? '').trim() || viewer?.resume_profile)
+  const hasPreferences =
+    parsePrefTypes(viewer).length > 0 ||
+    parsePrefCountries(viewer).length > 0 ||
+    j.parse<string[]>(viewer?.skills, []).length > 0 ||
+    j.parse<string[]>(viewer?.desired_roles, []).length > 0 ||
+    j.parse<string[]>(viewer?.preferred_industries, []).length > 0
+  const missing: ('resume' | 'preferences')[] = []
+  if (!hasResume) missing.push('resume')
+  if (!hasPreferences) missing.push('preferences')
+  return { ready: missing.length === 0, missing }
+}
+
 /** Does this job pass the student's stated preferences? An empty preference means
  *  "no restriction". A job in a listing type or country the student doesn't want
  *  is NOT a weak match — it's out of scope, so we never spend a Claude call on it.
@@ -411,6 +433,8 @@ ai.get('/match/:jobId', async (req, res) => {
 ai.get('/matches', async (req, res) => {
   const uid = req.user!.id
   const viewer = await studentRow(uid)
+  const ready = matchReadiness(viewer)
+  if (!ready.ready) return res.status(409).json({ error: 'profile_incomplete', missing: ready.missing })
   const rp = await ensureResumeProfile(viewer)
   const [visible, cm] = await Promise.all([candidateJobs(viewer, rp), cacheMap(uid)])
   // Parallel: cached jobs return instantly; uncached ones score concurrently.
@@ -429,13 +453,17 @@ ai.post('/matches/stream', async (req, res) => {
   if (!hasClaude()) return res.status(503).json({ error: 'ai_unavailable' })
   const uid = req.user!.id
   const viewer = await studentRow(uid)
-  const rp = await ensureResumeProfile(viewer)
-  const [visible, cm] = await Promise.all([candidateJobs(viewer, rp), cacheMap(uid)])
+  const ready = matchReadiness(viewer)
+  const rp = ready.ready ? await ensureResumeProfile(viewer) : null
+  const [visible, cm] = ready.ready
+    ? await Promise.all([candidateJobs(viewer, rp), cacheMap(uid)])
+    : [[] as any[], new Map<string, AiMatch>()]
   const enc = new TextEncoder()
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (o: unknown) => controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`))
       try {
+        if (!ready.ready) { send({ notReady: { missing: ready.missing } }); send({ done: true }); return }
         const total = visible.length
         send({ meta: { total } })
         let done = 0
@@ -485,6 +513,8 @@ async function outcomeNudges(uid: string): Promise<{ title: string; message: str
 ai.get('/insights', async (req, res) => {
   const uid = req.user!.id
   const viewer = await studentRow(uid)
+  const ready = matchReadiness(viewer)
+  if (!ready.ready) return res.status(409).json({ error: 'profile_incomplete', missing: ready.missing })
   const rp = await ensureResumeProfile(viewer)
   const [visible, cm] = await Promise.all([candidateJobs(viewer, rp), cacheMap(uid)])
   const scoredRows = await Promise.all(

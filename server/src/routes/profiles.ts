@@ -2,7 +2,7 @@ import { Router } from '@/lib/http'
 import { sb, must, j } from '@/db'
 import { requireAuth } from '@/lib/auth'
 import { rowToProfile } from '@/lib/serialize'
-import { refreshStudentEnrichment } from '@/lib/enrich'
+import { refreshStudentEnrichment, hasResumeCols } from '@/lib/enrich'
 import { extractDocumentText } from '@/lib/claude'
 import { schoolHiddenFrom, visibilityColsExist } from '@/lib/visibility'
 
@@ -89,6 +89,16 @@ profiles.patch('/:id', async (req, res) => {
   if (cvUrlOk && 'cv_url' in b && b.cv_url && !(b.cv_text ?? '').trim()) {
     const text = await extractDocumentText(b.cv_url)
     if (text) { update.cv_text = text; affectsMatch = true }
+  }
+
+  // Removing the résumé (client clears cv_url / cv_text) → also drop the derived
+  // resume_profile + extracted text, so the AI doesn't keep matching on a CV the
+  // student deleted (and the "needs a résumé" gate fires again).
+  const clearingCv = ('cv_url' in b && !b.cv_url) || ('cv_text' in b && !(b.cv_text ?? '').trim())
+  if (clearingCv) {
+    update.cv_text = null
+    affectsMatch = true
+    if (await hasResumeCols()) update.resume_profile = null
   }
 
   // Opportunity-type / country preferences (migration 0013) — these change WHICH

@@ -1,14 +1,22 @@
 import { useEffect } from 'react'
-import { Sparkles, AlertTriangle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Sparkles, AlertTriangle, FileText, SlidersHorizontal } from 'lucide-react'
 import { Card, CardBody, Progress } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { useMatchProgress } from '@/lib/matchProgress'
+import { useCurrentUser } from '@/lib/store'
+import { matchReadiness, type MatchMissing } from '@/lib/matchReady'
 
 /**
  * The "Run AI matching" gate + REAL progress. Driven by the global match-progress
  * store, so it shows an honest percentage and the role being scored right now —
  * and the run keeps going (and stays visible in the AI activity panel) even if
  * you switch tabs. `onComplete` fires once the run finishes.
+ *
+ * Before anything runs we check the student has a résumé AND preferences — the
+ * funnel ranks the whole catalog by similarity to their profile, so with neither
+ * there's nothing to rank against. When they're missing we prompt to complete the
+ * profile instead of running (the server enforces the same gate).
  */
 export function MatchRunner({
   userId,
@@ -21,7 +29,9 @@ export function MatchRunner({
   title?: string
   subtitle?: string
 }) {
-  const { phase, done, total, label } = useMatchProgress()
+  const { phase, done, total, label, missing } = useMatchProgress()
+  const user = useCurrentUser()
+  const navigate = useNavigate()
   const pct = total > 0 ? Math.round((done / total) * 100) : 0
 
   // Advance the page once the run completes.
@@ -31,6 +41,43 @@ export function MatchRunner({
   }, [phase])
 
   const go = () => useMatchProgress.getState().run(userId, true)
+
+  // Profile completeness gate — checked client-side up front, and again via the
+  // server's `notReady` signal (phase === 'notReady') as the source of truth.
+  const local = matchReadiness(user)
+  const blocked = phase === 'notReady' || !local.ready
+  if (blocked && phase !== 'running') {
+    const need = (phase === 'notReady' ? (missing as MatchMissing[]) : local.missing) ?? []
+    const needsResume = need.includes('resume')
+    const needsPrefs = need.includes('preferences')
+    return (
+      <Card>
+        <CardBody className="mesh-bg flex flex-col items-center justify-center gap-3 rounded-2xl py-16 text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/12 text-primary shadow-glow">
+            <Sparkles className="h-8 w-8" />
+          </div>
+          <h2 className="text-xl font-bold tracking-tight">Let’s set up your matches first</h2>
+          <p className="max-w-md text-sm text-muted-foreground">
+            To score the best opportunities for you, we match your{' '}
+            {needsResume && needsPrefs ? 'résumé and preferences' : needsResume ? 'résumé' : 'preferences'} against open
+            roles. Add {needsResume && needsPrefs ? 'them' : 'it'} below and we’ll find your top fits.
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            {needsResume && (
+              <Button variant="default" className="gap-2" onClick={() => navigate('/app/profile')}>
+                <FileText className="h-4 w-4" /> Upload your résumé
+              </Button>
+            )}
+            {needsPrefs && (
+              <Button variant={needsResume ? 'outline' : 'default'} className="gap-2" onClick={() => navigate('/app/profile')}>
+                <SlidersHorizontal className="h-4 w-4" /> Set your preferences
+              </Button>
+            )}
+          </div>
+        </CardBody>
+      </Card>
+    )
+  }
 
   if (phase === 'idle' || phase === 'error') {
     const errored = phase === 'error'

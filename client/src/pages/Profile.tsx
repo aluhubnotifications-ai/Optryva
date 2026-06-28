@@ -15,6 +15,8 @@ import {
   Plus,
   Save,
   Camera,
+  Eye,
+  MapPin,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useCurrentUser, useSession } from '@/lib/store'
@@ -40,6 +42,8 @@ export default function Profile() {
   const [, force] = useState(0)
   const [saving, setSaving] = useState(false)
   const [skillInput, setSkillInput] = useState('')
+  const [countryInput, setCountryInput] = useState('')
+  const [confirmRemoveCv, setConfirmRemoveCv] = useState(false)
 
   async function changePicture(avatar_url: string) {
     const updated = await profilesApi.update(user.id, { avatar_url })
@@ -136,10 +140,30 @@ export default function Profile() {
     }
   }
 
+  async function removeCv() {
+    const updated = await profilesApi.update(user.id, {
+      cv_filename: '',
+      cv_url: '',
+      cv_text: '',
+      cv_uploaded_at: '',
+    })
+    if (updated) useSession.getState().setProfile(updated)
+    // No résumé → matches must re-run once a new one is added.
+    useMatchRun.getState().invalidate(user.id)
+    toast({ title: 'CV removed', description: 'Upload a new one anytime to refresh your AI matches.', tone: 'info' })
+    force((n) => n + 1)
+  }
+
   function addSkill() {
     const s = skillInput.trim()
     if (s && !skills.includes(s)) setSkills([...skills, s])
     setSkillInput('')
+  }
+
+  function addCountry() {
+    const c = countryInput.trim()
+    if (c && !prefCountries.includes(c)) setPrefCountries([...prefCountries, c])
+    setCountryInput('')
   }
 
   return (
@@ -181,25 +205,47 @@ export default function Profile() {
       </Section>
 
       {/* CV */}
-      <Section icon={FileText} title="CV / Résumé">
+      <Section icon={FileText} title="CV / Résumé" hint="Powers AI matching">
         <input ref={cvRef} type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => uploadCv(e.target.files?.[0])} />
         {user.cv_filename ? (
-          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-success/30 bg-success/5 p-3">
-            <FileText className="h-5 w-5 text-success" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{user.cv_filename}</p>
-              <p className="text-xs text-muted-foreground">Uploaded {user.cv_uploaded_at ? formatDate(user.cv_uploaded_at) : ''}</p>
+          <div className="rounded-xl border border-success/30 bg-success/5 p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/15 text-success">
+                <FileText className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{user.cv_filename}</p>
+                <p className="text-xs text-muted-foreground">
+                  {user.cv_uploaded_at ? `Uploaded ${formatDate(user.cv_uploaded_at)} · ` : ''}You’re all set ✨
+                </p>
+              </div>
             </div>
-            {user.cv_url && <Button variant="ghost" size="sm" onClick={() => viewCv()}>View</Button>}
-            <Button variant="outline" size="sm" onClick={() => cvRef.current?.click()}>Replace</Button>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {user.cv_url && (
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => viewCv()}>
+                  <Eye className="h-3.5 w-3.5" /> View
+                </Button>
+              )}
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => cvRef.current?.click()}>
+                <Upload className="h-3.5 w-3.5" /> Replace
+              </Button>
+              <Button variant="ghost" size="sm" className="gap-1.5 text-danger hover:bg-danger/10" onClick={() => setConfirmRemoveCv(true)}>
+                <Trash2 className="h-3.5 w-3.5" /> Remove
+              </Button>
+            </div>
           </div>
         ) : (
-          <button onClick={() => cvRef.current?.click()} className="flex w-full items-center gap-3 rounded-xl border border-dashed border-input p-4 text-left hover:border-primary/40">
-            <Upload className="h-5 w-5 text-muted-foreground" />
-            <div><p className="text-sm font-medium">Upload your CV</p><p className="text-xs text-muted-foreground">PDF or Word — powers your AI matches</p></div>
+          <button onClick={() => cvRef.current?.click()} className="flex w-full items-center gap-3 rounded-xl border-2 border-dashed border-input p-5 text-left transition-colors hover:border-primary/50 hover:bg-primary/5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Upload className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm font-medium">Upload your CV</p>
+              <p className="text-xs text-muted-foreground">PDF or Word — this is what powers your AI matches</p>
+            </div>
           </button>
         )}
-        <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"><Sparkles className="h-3.5 w-3.5 text-primary" /> Your CV is the primary signal the AI matcher uses.</p>
+        <p className="mt-2.5 flex items-center gap-1.5 text-xs text-muted-foreground"><Sparkles className="h-3.5 w-3.5 text-primary" /> Your CV is the #1 signal our AI uses to find your best-fit roles.</p>
       </Section>
 
       {/* Career preferences */}
@@ -214,8 +260,19 @@ export default function Profile() {
         <ChipGroup options={LISTING_TYPES} selected={prefTypes} onToggle={(v) => toggle(prefTypes, setPrefTypes, v)} />
 
         <Label className="mt-4">Countries I'd work in</Label>
-        <p className="mb-1.5 text-xs text-muted-foreground">We won't match roles outside these. Remote roles always count. Leave empty for anywhere.</p>
-        <ChipGroup options={COUNTRIES} selected={prefCountries} onToggle={(v) => toggle(prefCountries, setPrefCountries, v)} />
+        <p className="mb-1.5 text-xs text-muted-foreground">Pick where you'd like to work — we won't match roles outside these. Remote roles always count, and leaving this empty means anywhere.</p>
+        <ChipGroup
+          options={Array.from(new Set([...COUNTRIES, ...prefCountries]))}
+          selected={prefCountries}
+          onToggle={(v) => toggle(prefCountries, setPrefCountries, v)}
+        />
+        <form onSubmit={(e) => { e.preventDefault(); addCountry() }} className="mt-2 flex gap-2">
+          <div className="relative max-w-xs flex-1">
+            <MapPin className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={countryInput} onChange={(e) => setCountryInput(e.target.value)} placeholder="Add another country…" className="pl-8" />
+          </div>
+          <Button type="submit" variant="outline" size="icon" aria-label="Add country"><Plus className="h-4 w-4" /></Button>
+        </form>
 
         <div className="mt-4">
           <Label>Work type</Label>
@@ -271,6 +328,22 @@ export default function Profile() {
       </div>
 
       <AccountSecurity />
+
+      {/* Remove CV confirmation */}
+      <Modal
+        open={confirmRemoveCv}
+        onClose={() => setConfirmRemoveCv(false)}
+        size="sm"
+        title="Remove your CV?"
+        description="Your AI matches rely on your CV. You can upload a new one anytime."
+      >
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setConfirmRemoveCv(false)}>Keep it</Button>
+          <Button variant="danger" className="gap-1.5" onClick={() => { setConfirmRemoveCv(false); void removeCv() }}>
+            <Trash2 className="h-4 w-4" /> Remove CV
+          </Button>
+        </div>
+      </Modal>
     </div>
   )
 }
