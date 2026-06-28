@@ -124,3 +124,54 @@ export async function semanticSimilarities(studentId: string): Promise<Map<strin
   if (error || !Array.isArray(data)) return new Map()
   return new Map(data.map((d: any) => [d.job_id as string, Number(d.similarity) || 0]))
 }
+
+/**
+ * Stage 0+1 of the match funnel: hard-filter active jobs by the student's
+ * opportunity-type and country preferences AND rank them by embedding similarity,
+ * all in one indexed Postgres query (the `match_candidate_jobs` RPC). Returns up
+ * to `limit` candidates best-first, or null when the RPC isn't available yet
+ * (migration 0013 not run / older schema) so the caller can fall back to a scan.
+ * Empty preference arrays mean "no restriction" on that axis.
+ */
+export async function retrieveCandidateJobs(
+  studentId: string,
+  listingTypes: string[],
+  countries: string[],
+  limit = 600,
+): Promise<{ job_id: string; similarity: number | null }[] | null> {
+  const { data, error } = await sb.rpc('match_candidate_jobs', {
+    p_student_id: studentId,
+    p_listing_types: listingTypes.length ? listingTypes : null,
+    p_countries: countries.length ? countries : null,
+    p_limit: limit,
+  })
+  if (error || !Array.isArray(data)) return null
+  return data.map((d: any) => ({
+    job_id: d.job_id as string,
+    similarity: d.similarity == null ? null : Number(d.similarity),
+  }))
+}
+
+/**
+ * Query-driven retrieval for AI Sourcing / search: ANN-rank active jobs by an
+ * arbitrary QUERY embedding (+ hard filters) via match_jobs_by_vector (migration
+ * 0018). Returns top candidates best-first, or null when the RPC isn't available
+ * so the caller can fall back to a scan.
+ */
+export async function retrieveJobsByVector(
+  vec: number[],
+  listingTypes: string[],
+  countries: string[],
+  remote: boolean,
+  limit = 200,
+): Promise<{ job_id: string; similarity: number }[] | null> {
+  const { data, error } = await sb.rpc('match_jobs_by_vector', {
+    p_embedding: toVector(vec),
+    p_listing_types: listingTypes.length ? listingTypes : null,
+    p_countries: countries.length ? countries : null,
+    p_remote: remote,
+    p_limit: limit,
+  })
+  if (error || !Array.isArray(data)) return null
+  return data.map((d: any) => ({ job_id: d.job_id as string, similarity: Number(d.similarity) || 0 }))
+}

@@ -9,12 +9,28 @@
 
 import { app } from '@/app'
 import { runCalibration } from '@/scripts/calibrate'
+import { runEval } from '@/scripts/eval-matching'
+import { buildFeatures } from '@/scripts/build-features'
+import { trainRanker } from '@/scripts/train-ranker'
+import { trainDistill } from '@/scripts/train-distill'
 
 export default {
   fetch: app.fetch,
-  // Cron: tighten the scoring rubric from real hiring outcomes (see wrangler
-  // triggers). One Opus call + a DB write — safely inside a Worker invocation.
+  // Nightly cron (see wrangler triggers): the whole self-improving loop, in order.
+  //   1. calibrate     — tighten the LLM rubric from real outcomes
+  //   2. features      — refresh the (student,job) training set + labels
+  //   3. train-ranker  — refit the engagement ranker (auto-activates when data is enough)
+  //   4. train-distill — refit the model that mimics Claude's score (teacher = cached scores)
+  //   5. eval          — log match-quality metrics so we can watch it move
+  // Every step self-gates on data, so this is a safe no-op until data exists.
+  // All cheap (≤1 Opus call + read-only queries + in-memory training).
   async scheduled(_event: unknown, _env: unknown, ctx: { waitUntil: (p: Promise<unknown>) => void }) {
-    ctx.waitUntil(runCalibration())
+    ctx.waitUntil((async () => {
+      for (const [label, step] of [
+        ['calibration', runCalibration], ['features', buildFeatures], ['train-ranker', trainRanker], ['train-distill', trainDistill], ['eval', runEval],
+      ] as const) {
+        try { await step() } catch (e) { console.error(`${label} failed`, e) }
+      }
+    })())
   },
 }

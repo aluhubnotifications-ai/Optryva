@@ -11,9 +11,44 @@
 const VOYAGE_KEY = process.env.VOYAGE_API_KEY
 const MODEL = process.env.VOYAGE_MODEL ?? 'voyage-3'
 const ENDPOINT = 'https://api.voyageai.com/v1/embeddings'
+const RERANK_MODEL = process.env.VOYAGE_RERANK_MODEL ?? 'rerank-2'
+const RERANK_ENDPOINT = 'https://api.voyageai.com/v1/rerank'
 
 export function hasEmbeddings(): boolean {
   return !!VOYAGE_KEY
+}
+
+/**
+ * Cross-encoder rerank — the middle stage of the match funnel. Scores every
+ * document against the query jointly (far sharper than the bi-encoder cosine that
+ * produced the candidate set) and returns the indices of the best `topK`,
+ * best-first. ~100× cheaper and faster than an LLM, so it safely narrows hundreds
+ * of ANN candidates down to the handful the LLM actually scores. Null on any
+ * failure (no key, network, rate limit) → caller keeps its existing order.
+ */
+export async function rerank(query: string, documents: string[], topK: number): Promise<number[] | null> {
+  if (!VOYAGE_KEY || documents.length === 0) return null
+  try {
+    const res = await fetch(RERANK_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VOYAGE_KEY}` },
+      body: JSON.stringify({
+        query: query.slice(0, 8000),
+        documents: documents.map((d) => d.slice(0, 8000)),
+        model: RERANK_MODEL,
+        top_k: Math.min(topK, documents.length),
+      }),
+    })
+    if (!res.ok) return null
+    const data: any = await res.json()
+    const results = data?.data // already sorted by relevance desc, limited to top_k
+    if (!Array.isArray(results)) return null
+    return results
+      .map((r: any) => Number(r.index))
+      .filter((i: number) => Number.isInteger(i) && i >= 0 && i < documents.length)
+  } catch {
+    return null
+  }
 }
 
 /**

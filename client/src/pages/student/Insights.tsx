@@ -101,6 +101,58 @@ function SnapshotTab({ user }: { user: Profile }) {
         </CardBody>
       </Card>
 
+      {/* Application progress — what we learned after you applied (outcome tracking) */}
+      {(data.outcomeNudges?.length ?? 0) > 0 && (
+        <Card>
+          <CardBody>
+            <h2 className="flex items-center gap-2 font-semibold"><TrendingUp className="h-5 w-5 text-success" /> Your application progress</h2>
+            <p className="text-sm text-muted-foreground">What we’re seeing since you applied — and how to keep moving toward the offer.</p>
+            <ul className="mt-3 space-y-2.5">
+              {data.outcomeNudges!.map((n, i) => (
+                <li key={i} className="flex gap-2.5 text-sm">
+                  {n.status === 'likely_hired'
+                    ? <Trophy className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                    : <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-primary" />}
+                  <span className="text-muted-foreground">{n.message}</span>
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* Roles within reach — trajectory: stretch roles a few learnable skills away */}
+      {(data.reachable?.length ?? 0) > 0 && (
+        <Card>
+          <CardBody>
+            <h2 className="flex items-center gap-2 font-semibold"><Lightbulb className="h-5 w-5 text-warning" /> Roles within reach</h2>
+            <p className="text-sm text-muted-foreground">You’re close on these — a few learnable skills away from qualifying.</p>
+            {(data.unlocks?.[0]?.count ?? 0) > 1 && (
+              <p className="mt-3 rounded-lg bg-warning/10 px-3 py-2 text-sm">
+                <span className="font-medium text-foreground">Highest-leverage move:</span> learning{' '}
+                <span className="font-semibold text-warning">{data.unlocks![0].skill}</span> unlocks {data.unlocks![0].count} of these roles.
+              </p>
+            )}
+            <ul className="mt-3 space-y-3">
+              {data.reachable!.map((r) => (
+                <li key={r.job_id} className="rounded-lg border border-border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm font-medium">{r.title}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">{r.score}% now</span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs text-muted-foreground">Add</span>
+                    {r.missing.map((s) => (
+                      <span key={s} className="rounded-full bg-warning/12 px-2 py-0.5 text-xs font-medium text-warning">{s}</span>
+                    ))}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+      )}
+
       {/* Do next */}
       {data.doNext.length > 0 && (
         <Card>

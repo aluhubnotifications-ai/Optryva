@@ -18,8 +18,9 @@
   // as plain vars in the dashboard; secrets stay as secrets.
   "vars": { "COOKIE_SAMESITE": "none" },
 
-  // Weekly honesty calibration (Mon 03:00 UTC). Handled by worker.ts scheduled().
-  "triggers": { "crons": ["0 3 * * 1"] },
+  // Nightly (02:00 UTC) honesty calibration + match-quality eval log. Handled by
+  // worker.ts scheduled(). Calibration self-gates until enough outcomes exist.
+  "triggers": { "crons": ["0 2 * * *"] },
 
   "observability": { "enabled": true }
 }

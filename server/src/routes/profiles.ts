@@ -49,6 +49,25 @@ async function cvUrlColExists(): Promise<boolean> {
   return hasCvUrlCol
 }
 
+// pref_listing_types / pref_countries arrive with migration 0013 — detect once so
+// saves don't 500 on a schema that hasn't been migrated yet.
+let hasPrefCols = false
+async function prefColsExist(): Promise<boolean> {
+  if (hasPrefCols) return true
+  const { error } = await sb.from('profiles').select('pref_listing_types').limit(1)
+  hasPrefCols = !error
+  return hasPrefCols
+}
+
+// monitoring_consent arrives with migration 0014 (opt-in outcome tracking).
+let hasConsentCol = false
+async function consentColExists(): Promise<boolean> {
+  if (hasConsentCol) return true
+  const { error } = await sb.from('profiles').select('monitoring_consent').limit(1)
+  hasConsentCol = !error
+  return hasConsentCol
+}
+
 profiles.patch('/:id', async (req, res) => {
   if (req.params.id !== req.user!.id) return res.status(403).json({ error: 'forbidden' })
   const b = req.body ?? {}
@@ -70,6 +89,18 @@ profiles.patch('/:id', async (req, res) => {
   if (cvUrlOk && 'cv_url' in b && b.cv_url && !(b.cv_text ?? '').trim()) {
     const text = await extractDocumentText(b.cv_url)
     if (text) { update.cv_text = text; affectsMatch = true }
+  }
+
+  // Opportunity-type / country preferences (migration 0013) — these change WHICH
+  // jobs the matcher considers, not any single job's score, so no cache bust.
+  if (('pref_listing_types' in b || 'pref_countries' in b) && (await prefColsExist())) {
+    if ('pref_listing_types' in b) update.pref_listing_types = j.stringify(b.pref_listing_types ?? [])
+    if ('pref_countries' in b) update.pref_countries = j.stringify(b.pref_countries ?? [])
+  }
+
+  // Opt-in outcome monitoring (migration 0014). Default off; the student controls it.
+  if ('monitoring_consent' in b && (await consentColExists())) {
+    update.monitoring_consent = b.monitoring_consent ? 1 : 0
   }
 
   // School domain/privacy fields (migration 0011) — only persisted once present.

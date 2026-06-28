@@ -10,6 +10,11 @@ export const MODELS = {
   // Research uses live web search and runs interactively — Sonnet is much faster
   // (and cheaper) than Opus while still strong, so answers feel snappy.
   research: 'claude-sonnet-4-6',
+  // The match score is the most consequential judgment in the product (it decides
+  // who applies where), so it runs on Sonnet — strong evidence-weighing reasoning,
+  // still fast. Caching + temperature 0 keep it cheap on repeat.
+  match: 'claude-sonnet-4-6',
+  // Cheap tier for high-volume, low-stakes generation (do-next, interview turns).
   score: 'claude-haiku-4-5',
 } as const
 

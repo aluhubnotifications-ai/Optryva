@@ -34,6 +34,9 @@ export interface Profile {
   location_pref?: string
   open_to_internship?: boolean
   open_to_fulltime?: boolean
+  pref_listing_types?: ListingType[] // opportunity types the student wants (empty = all)
+  pref_countries?: string[] // countries the student will work in (empty = all; remote always allowed)
+  monitoring_consent?: boolean // opt-in: let Optryva track outcomes after an external apply
   skills?: string[]
   // company / school
   company_name?: string
