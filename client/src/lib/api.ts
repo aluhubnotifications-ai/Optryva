@@ -10,6 +10,7 @@ import type {
   JobListing,
   Message,
   Payment,
+  Plan,
   Profile,
   Rating,
   Resource,
@@ -58,6 +59,15 @@ export const authApi = {
       await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
     } catch {
       /* ignore network errors on logout */
+    }
+  },
+  /** Fresh profile for the current token — used to refresh a persisted session
+   *  (e.g. so is_admin / plan changes show up without re-logging-in). */
+  async me(): Promise<Profile | null> {
+    try {
+      return (await apiFetch('/auth/me')) as Profile
+    } catch {
+      return null
     }
   },
 }
@@ -776,6 +786,20 @@ export interface CoachResult {
   critique: { strengths: string[]; weaknesses: string[]; missing: string[]; verdict: string }
   final: string
 }
+export interface ModelUsage {
+  model: string
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  calls: number
+  cost_usd: number
+  credits: number
+}
+export interface UsageSummary {
+  available: boolean
+  models: ModelUsage[]
+  totals: { input_tokens: number; output_tokens: number; calls: number; cost_usd: number; credits: number }
+}
 export interface PrepResult {
   fit: string
   gap: string
@@ -935,6 +959,16 @@ export const aiApi = {
     }
   },
 
+  /** AI usage metering — per-model token totals + estimated credits for the
+   *  current user. Used by the Usage page. Returns an empty summary on failure. */
+  async usage(): Promise<UsageSummary> {
+    try {
+      return (await apiFetch('/ai/usage')) as UsageSummary
+    } catch {
+      return { available: false, models: [], totals: { input_tokens: 0, output_tokens: 0, calls: 0, cost_usd: 0, credits: 0 } }
+    }
+  },
+
   async coach(student: Profile, job: JobListing): Promise<CoachResult> {
     try {
       return (await trackAi('Preparing coaching tips', () => aiPost('/ai/coach', { job_id: job.id }))) as CoachResult
@@ -1051,5 +1085,60 @@ export const aiApi = {
     } catch {
       return [AI_ERR]
     }
+  },
+}
+
+// ---- Admin (gated server-side by ADMIN_EMAILS; UI also hidden from non-admins) ----
+export interface AdminUserRow {
+  id: string
+  full_name: string
+  email: string
+  user_type: 'student' | 'company' | 'school'
+  plan: Plan
+  avatar_url: string | null
+  company_name: string | null
+  created_at: string
+  jobs: number
+  applications: number
+  input_tokens: number
+  output_tokens: number
+  calls: number
+  credits: number
+}
+export interface AdminData {
+  usageAvailable: boolean
+  counts: { total: number; students: number; companies: number; schools: number; applications: number }
+  totals: UsageSummary['totals']
+  models: ModelUsage[]
+  users: AdminUserRow[]
+}
+export interface AdminApplication {
+  id: string
+  student_id: string
+  applicant_name: string
+  applicant_email: string
+  avatar_url: string | null
+  job_id: string
+  job_title: string
+  org_id: string | null
+  org_name: string
+  org_type: 'company' | 'school' | null
+  status: string
+  created_at: string
+}
+
+export const adminApi = {
+  async data(): Promise<AdminData> {
+    return (await apiFetch('/admin/data')) as AdminData
+  },
+  async applications(): Promise<AdminApplication[]> {
+    const r = (await apiFetch('/admin/applications')) as { applications: AdminApplication[] }
+    return r.applications
+  },
+  async setPlan(userId: string, plan: Plan): Promise<void> {
+    await apiFetch(`/admin/users/${userId}/plan`, { method: 'POST', body: JSON.stringify({ plan }) })
+  },
+  async clearUsage(userId: string): Promise<void> {
+    await apiFetch(`/admin/users/${userId}/clear-usage`, { method: 'POST' })
   },
 }

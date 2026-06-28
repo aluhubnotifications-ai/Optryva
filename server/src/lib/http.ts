@@ -15,6 +15,7 @@
 import { Hono, type Context } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import type { AuthUser } from '@/lib/auth'
+import { runWithUsageContext } from '@/lib/usage'
 
 export interface ShimReq {
   params: Record<string, string>
@@ -149,14 +150,18 @@ class RouterImpl {
       const res = buildRes(c)
       // Run router-level middleware, then the route's handlers, Express-style:
       // a fn either ends the response (short-circuit) or calls next() to continue.
-      for (const fn of [...this.mws, ...handlers]) {
-        let nexted = false
-        await fn(req, res, () => {
-          nexted = true
-        })
-        if (res._ended) break
-        if (!nexted) break
-      }
+      // The whole chain runs inside a usage context so AI calls can be attributed
+      // to the authenticated user (set by requireAuth) for usage metering.
+      await runWithUsageContext(async () => {
+        for (const fn of [...this.mws, ...handlers]) {
+          let nexted = false
+          await fn(req, res, () => {
+            nexted = true
+          })
+          if (res._ended) break
+          if (!nexted) break
+        }
+      })
       // Streaming response (SSE): hand Hono the ReadableStream directly. The
       // cors() middleware still applies its headers after this returns.
       if (res._stream) {

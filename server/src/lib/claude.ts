@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { unzipSync, strFromU8 } from 'fflate'
+import { recordUsage, currentUsageUserId } from '@/lib/usage'
 
 // Centralized model config (spec §8): Opus for open-ended chat/coaching/research
 // (with adaptive thinking), a cheap tier for high-volume scoring. Swap here to
@@ -72,6 +73,7 @@ export async function claudeText(opts: {
     }
     if (opts.thinking) params.thinking = { type: 'adaptive' }
     const res = await createWithRetry(params)
+    recordUsage(params.model, res.usage)
     if (res.stop_reason === 'refusal') return null
     return (res.content as Anthropic.ContentBlock[])
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -113,6 +115,7 @@ export async function claudeJson<T>(opts: {
     if (opts.temperature != null) params.temperature = opts.temperature
     if (opts.thinking) params.thinking = { type: 'adaptive' }
     const res: any = await client.messages.create(params)
+    recordUsage(params.model, res.usage)
     if (res.stop_reason === 'refusal') return null
     const text = (res.content ?? [])
       .filter((b: any) => b.type === 'text')
@@ -150,6 +153,7 @@ export async function claudeTextWithSearch(opts: {
       messages: [{ role: 'user', content: opts.user }],
     }
     const res: any = await createWithRetry(params)
+    recordUsage(params.model, res.usage)
     if (res.stop_reason === 'refusal') return null
     const text = (res.content ?? [])
       .filter((b: any) => b.type === 'text')
@@ -183,13 +187,18 @@ export function streamClaude(opts: {
 }): ReadableStream<Uint8Array> | null {
   if (!client) return null
   const enc = new TextEncoder()
+  const model = opts.model ?? MODELS.chat
+  // The stream body runs after the request handler returns (outside the usage
+  // context), so capture the attributed user id now and pass it explicitly.
+  const usageUser = currentUsageUserId()
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (obj: unknown) => controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`))
       if (opts.meta !== undefined) send({ meta: opts.meta })
+      const usage: any = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
       try {
         const params: any = {
-          model: opts.model ?? MODELS.chat,
+          model,
           max_tokens: opts.maxTokens ?? 1024,
           system: opts.system,
           messages: [{ role: 'user', content: opts.user }],
@@ -199,6 +208,8 @@ export function streamClaude(opts: {
         const stream: any = await client.messages.create(params)
         let any = false
         for await (const ev of stream) {
+          if (ev?.type === 'message_start' && ev.message?.usage) Object.assign(usage, ev.message.usage)
+          if (ev?.type === 'message_delta' && ev.usage?.output_tokens != null) usage.output_tokens = ev.usage.output_tokens
           if (ev?.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && ev.delta.text) {
             any = true
             send({ t: ev.delta.text })
@@ -208,6 +219,7 @@ export function streamClaude(opts: {
       } catch {
         send({ error: true })
       } finally {
+        recordUsage(model, usage, usageUser)
         controller.close()
       }
     },
@@ -276,6 +288,7 @@ export async function extractDocumentText(dataUrl: string): Promise<string | nul
         },
       ],
     })
+    recordUsage(MODELS.score, res.usage)
     const text = (res.content ?? [])
       .filter((b: any) => b.type === 'text')
       .map((b: any) => b.text)

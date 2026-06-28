@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -13,12 +13,14 @@ import {
   MapPin,
   MessageSquare,
   Moon,
+  Search,
   Sparkles,
   Sun,
   Users,
   GraduationCap,
   BookOpen,
-  CreditCard,
+  Gauge,
+  ShieldCheck,
   Menu,
   X,
 } from 'lucide-react'
@@ -27,12 +29,10 @@ import { cn } from '@/lib/utils'
 import { useTheme } from '@/lib/theme'
 import { useSession, useCurrentUser } from '@/lib/store'
 import { useGeo, COUNTRIES } from '@/lib/geo'
-import { useSourcing } from '@/lib/sourcing'
 import { messagesApi, jobsApi, applicationsApi } from '@/lib/api'
 import { Avatar, Input } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { Logo } from '@/components/Logo'
-import { AISourcingPanel } from '@/components/AISourcingPanel'
 import { AiActivityPanel } from '@/components/AiActivityPanel'
 import { NotificationsMenu } from '@/components/NotificationsMenu'
 
@@ -81,6 +81,7 @@ function useNavBadges(userId: string | null, isCompany: boolean): NavBadges {
 const studentNav: NavItem[] = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/app/jobs', label: 'Opportunities', icon: Briefcase },
+  { to: '/app/research', label: 'Research', icon: Search },
   { to: '/app/applications', label: 'Applications', icon: FileText },
   { to: '/app/companies', label: 'Companies', icon: Building2 },
   { to: '/app/insights', label: 'AI Insights', icon: Sparkles },
@@ -91,6 +92,7 @@ const studentNav: NavItem[] = [
 const companyNav: NavItem[] = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/app/listings', label: 'My Listings', icon: Briefcase },
+  { to: '/app/research', label: 'Research', icon: Search },
   { to: '/app/analytics', label: 'Analytics', icon: LayoutDashboard },
   { to: '/app/messages', label: 'Messages', icon: MessageSquare },
   { to: '/app/company-profile', label: 'Company Profile', icon: Building2 },
@@ -99,7 +101,11 @@ const companyNav: NavItem[] = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const user = useCurrentUser()
   const isCompany = user?.user_type === 'company' || user?.user_type === 'school'
-  const nav = isCompany ? companyNav : studentNav
+  // Admins get an extra "Admin" entry appended to whichever nav they're on.
+  const nav = useMemo(() => {
+    const base = isCompany ? companyNav : studentNav
+    return user?.is_admin ? [...base, { to: '/app/admin', label: 'Admin', icon: ShieldCheck }] : base
+  }, [isCompany, user?.is_admin])
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
   const badges = useNavBadges(user?.id ?? null, isCompany)
@@ -142,9 +148,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Topbar onMenu={() => setMobileOpen(true)} />
         <main className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">{children}</main>
       </div>
-
-      {/* Global AI sourcing — opened from the topbar search */}
-      <AISourcingPanel />
 
       {/* Always-on AI activity window (students) — shows what matching/research
           is doing in real time so it's never a black box. */}
@@ -262,7 +265,6 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
   const user = useCurrentUser()
   const navigate = useNavigate()
   const logout = useSession((s) => s.logout)
-  const openSourcing = useSourcing((s) => s.openSourcing)
   const [menuOpen, setMenuOpen] = useState(false)
   const [search, setSearch] = useState('')
 
@@ -275,24 +277,25 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
       <form
         onSubmit={(e) => {
           e.preventDefault()
-          if (search.trim()) {
-            openSourcing(search)
-            setSearch('')
-          }
+          // Search opens the Research page in the main view (a normal in-page
+          // experience), not a side drawer.
+          const q = search.trim()
+          navigate(q ? `/app/research?q=${encodeURIComponent(q)}` : '/app/research')
+          setSearch('')
         }}
         className="flex max-w-xl flex-1 items-center gap-2"
       >
         <div className="relative flex-1">
-          <Sparkles className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Describe what you want… e.g. “remote data internship $2k+”"
+            placeholder="Search opportunities by role, company, location, or skill…"
             className="h-10 rounded-full bg-muted/50 pl-9"
           />
         </div>
         <Button type="submit" className="hidden rounded-full sm:inline-flex gap-1.5">
-          <Sparkles className="h-4 w-4" /> Find with AI
+          <Search className="h-4 w-4" /> Search
         </Button>
       </form>
 
@@ -339,11 +342,11 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
                 <button
                   onClick={() => {
                     setMenuOpen(false)
-                    navigate('/app/billing')
+                    navigate('/app/usage')
                   }}
                   className="flex w-full items-center gap-2 px-3 py-2.5 text-sm hover:bg-muted"
                 >
-                  <CreditCard className="h-4 w-4" /> Billing & Plan
+                  <Gauge className="h-4 w-4" /> Usage
                 </button>
                 <button
                   onClick={() => {

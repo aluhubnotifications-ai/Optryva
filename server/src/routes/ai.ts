@@ -1,6 +1,7 @@
 import { Router } from '@/lib/http'
 import { sb, must, j } from '@/db'
 import { requireAuth } from '@/lib/auth'
+import { getUsageSummary } from '@/lib/usage'
 import { now } from '@/lib/util'
 import { claudeText, claudeJson, claudeTextWithSearch, streamClaude, extractJson, hasClaude, MODELS } from '@/lib/claude'
 import { type MatchJob, type MatchStudent, type AiMatch } from '@/lib/matching'
@@ -138,6 +139,11 @@ async function candidateJobs(viewer: any, rp: ResumeProfile | null): Promise<any
 
 export const ai = Router()
 ai.use(requireAuth)
+
+// AI usage metering — per-model token totals + estimated credits for the caller.
+ai.get('/usage', async (req, res) => {
+  res.json(await getUsageSummary(req.user!.id))
+})
 
 /* ---------- loaders ---------- */
 async function studentRow(id: string): Promise<any | null> {

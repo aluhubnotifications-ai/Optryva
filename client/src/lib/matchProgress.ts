@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AiMatch } from '@/types'
+import type { AiMatch, JobListing } from '@/types'
 import { aiApi } from '@/lib/api'
 import { useAiActivity } from '@/lib/aiActivity'
 import { useMatchRun } from '@/lib/matchRun'
@@ -20,10 +20,15 @@ interface MatchProgressState {
   total: number
   label: string // the role currently being scored
   matches: AiMatch[] // accumulated, by arrival
+  scoring: string[] // job ids being scored on demand right now
   /** Start a run. Idempotent: no-op if a run is already in flight for this user,
    *  or already finished with results (so navigating between pages reuses the
    *  same matches instead of re-scoring). Pass force=true to re-run. */
   run: (userId: string, force?: boolean) => Promise<void>
+  /** Score ONE opportunity on demand (for roles the funnel didn't auto-score).
+   *  The result is upserted into `matches`, so a scored role "joins matches"
+   *  everywhere the store is read. Returns the match, or null on failure. */
+  scoreOne: (job: JobListing) => Promise<AiMatch | null>
   /** Drop results (e.g. on logout) so a fresh user starts clean. */
   reset: () => void
 }
@@ -35,11 +40,30 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
   total: 0,
   label: '',
   matches: [],
+  scoring: [],
+
+  scoreOne: async (job) => {
+    const id = job.id
+    if (get().scoring.includes(id)) return null
+    set((st) => ({ scoring: [...st.scoring, id] }))
+    try {
+      const m = await aiApi.match({} as never, job)
+      set((st) => ({
+        scoring: st.scoring.filter((x) => x !== id),
+        // Upsert: replace any prior entry for this job, so it "joins matches".
+        matches: m ? [...st.matches.filter((x) => x.job_id !== id), m] : st.matches,
+      }))
+      return m
+    } catch {
+      set((st) => ({ scoring: st.scoring.filter((x) => x !== id) }))
+      return null
+    }
+  },
 
   run: async (userId, force = false) => {
     const s = get()
     if (!force && s.userId === userId && (s.phase === 'running' || (s.phase === 'done' && s.matches.length > 0))) return
-    set({ userId, phase: 'running', done: 0, total: 0, label: 'Reading your profile…', matches: [] })
+    set({ userId, phase: 'running', done: 0, total: 0, label: 'Reading your profile…', matches: [], scoring: [] })
 
     const act = useAiActivity.getState()
     const taskId = act.start('Matching you to open roles')
@@ -79,5 +103,5 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
     }
   },
 
-  reset: () => set({ userId: null, phase: 'idle', done: 0, total: 0, label: '', matches: [] }),
+  reset: () => set({ userId: null, phase: 'idle', done: 0, total: 0, label: '', matches: [], scoring: [] }),
 }))

@@ -9,6 +9,8 @@ import {
   Building2,
   Target,
   Send,
+  Gauge,
+  Loader2,
   MessageCircleQuestion,
 } from 'lucide-react'
 import { Drawer } from '@/components/ui/Drawer'
@@ -29,6 +31,8 @@ const SUGGESTED = [
   'How is career growth here?',
 ]
 
+/** Drawer wrapper — kept for pages that open research as a modal (Jobs,
+ *  ApplicationDetail). The Dashboard renders <ResearchBody> inline instead. */
 export function AIResearchPanel({
   open,
   onClose,
@@ -42,8 +46,47 @@ export function AIResearchPanel({
   company?: Profile
   user: Profile
 }) {
+  const companyName = job?.original_company_name || company?.company_name || 'this company'
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      width="xl"
+      title={
+        <span className="flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-primary" /> AI Research
+        </span>
+      }
+      description={job ? `${job.title} · ${companyName}` : undefined}
+    >
+      {open && job && <ResearchBody job={job} company={company} user={user} />}
+    </Drawer>
+  )
+}
+
+/** The research content itself — no Drawer. Renders inline (Dashboard) or inside
+ *  the Drawer (above). When `match` is passed it shows that verdict and never
+ *  re-scores; pass `onScore` to let an unscored role be scored on demand. With
+ *  neither (`autoMatch`, the default for the Drawer) it fetches its own score. */
+export function ResearchBody({
+  job,
+  company,
+  user,
+  match: matchProp,
+  autoMatch = true,
+  onScore,
+  scoring = false,
+}: {
+  job: JobListing
+  company?: Profile
+  user: Profile
+  match?: AiMatch | null
+  autoMatch?: boolean
+  onScore?: () => void
+  scoring?: boolean
+}) {
   const [research, setResearch] = useState<Research | null>(null)
-  const [match, setMatch] = useState<AiMatch | null>(null)
+  const [fetchedMatch, setFetchedMatch] = useState<AiMatch | null>(null)
   const [loading, setLoading] = useState(true)
 
   const [thread, setThread] = useState<QA[]>([])
@@ -52,30 +95,33 @@ export function AIResearchPanel({
   const [streamingAns, setStreamingAns] = useState(false)
   const threadEndRef = useRef<HTMLDivElement>(null)
 
-  const companyName = job?.original_company_name || company?.company_name || 'this company'
+  const companyName = job.original_company_name || company?.company_name || 'this company'
+  // Caller-supplied score wins (shared store); else our own auto-fetched one.
+  const match = matchProp ?? fetchedMatch
 
   useEffect(() => {
-    if (!open || !job) return
     setLoading(true)
     setResearch(null)
-    setMatch(null)
+    setFetchedMatch(null)
     setThread([])
     setInput('')
     let active = true
     ;(async () => {
       const [r, m] = await Promise.all([
         aiApi.companyResearch(companyName, job.title),
-        user.user_type === 'student' ? aiApi.match(user, job) : Promise.resolve(null),
+        autoMatch && matchProp == null && user.user_type === 'student'
+          ? aiApi.match(user, job)
+          : Promise.resolve(null),
       ])
       if (!active) return
       setResearch(r)
-      setMatch(m)
+      setFetchedMatch(m)
       setLoading(false)
     })()
     return () => {
       active = false
     }
-  }, [open, job, companyName, user])
+  }, [job, companyName, user, autoMatch, matchProp])
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -83,7 +129,7 @@ export function AIResearchPanel({
 
   async function ask(question: string) {
     const q = question.trim()
-    if (!q || !job || asking) return
+    if (!q || asking) return
     setInput('')
     setThread((t) => [...t, { role: 'user', text: q }])
     setAsking(true)
@@ -104,21 +150,9 @@ export function AIResearchPanel({
     setStreamingAns(false)
   }
 
+  if (loading) return <ResearchSkeleton />
+
   return (
-    <Drawer
-      open={open}
-      onClose={onClose}
-      width="xl"
-      title={
-        <span className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-primary" /> AI Research
-        </span>
-      }
-      description={job ? `${job.title} · ${companyName}` : undefined}
-    >
-      {loading ? (
-        <ResearchSkeleton />
-      ) : (
         <div className="space-y-6 animate-fade-in">
           {/* ---- Ask AI (you describe what to research) ---- */}
           <div className="rounded-2xl border border-primary/25 bg-primary/5 p-4">
@@ -200,6 +234,22 @@ export function AIResearchPanel({
               </Button>
             </form>
           </div>
+
+          {/* ---- Score prompt (unscored role on the dashboard) ---- */}
+          {!match && onScore && (
+            <div className="flex flex-col items-start gap-2 rounded-2xl border border-dashed border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold">See if you qualify</p>
+                <p className="text-sm text-muted-foreground">
+                  This role isn't in your auto-matched set yet. Score it to get your honest fit.
+                </p>
+              </div>
+              <Button className="gap-1.5" disabled={scoring} onClick={onScore}>
+                {scoring ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gauge className="h-4 w-4" />}
+                {scoring ? 'Scoring…' : 'Score this role'}
+              </Button>
+            </div>
+          )}
 
           {/* ---- Match verdict ---- */}
           {match && (
@@ -288,8 +338,6 @@ export function AIResearchPanel({
             </div>
           )}
         </div>
-      )}
-    </Drawer>
   )
 }
 

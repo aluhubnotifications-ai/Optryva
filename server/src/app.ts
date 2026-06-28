@@ -13,6 +13,7 @@ import { profiles } from '@/routes/profiles'
 import { jobs } from '@/routes/jobs'
 import { applications } from '@/routes/applications'
 import { ai } from '@/routes/ai'
+import { admin } from '@/routes/admin'
 import { social, notifications, messages } from '@/routes/social'
 import { hasClaude } from '@/lib/claude'
 
@@ -38,6 +39,7 @@ app.route('/api/profiles', profiles.hono)
 app.route('/api/jobs', jobs.hono)
 app.route('/api/applications', applications.hono)
 app.route('/api/ai', ai.hono)
+app.route('/api/admin', admin.hono)
 app.route('/api/social', social.hono)
 app.route('/api/notifications', notifications.hono)
 app.route('/api/messages', messages.hono)

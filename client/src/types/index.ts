@@ -49,6 +49,8 @@ export interface Profile {
   // plan
   plan: Plan
   plan_activated_at?: string
+  /** True when the account's email is in the server's ADMIN_EMAILS allowlist. */
+  is_admin?: boolean
   created_at: string
 }
 

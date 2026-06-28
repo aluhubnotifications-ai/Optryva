@@ -22,7 +22,6 @@ import type { AiMatch, Application, JobListing, Profile } from '@/types'
 import { Card, CardBody, Badge, Avatar, Progress, Skeleton } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { ScoreRing } from '@/components/ScoreRing'
-import { AIResearchPanel } from '@/components/AIResearchPanel'
 import { formatDate, daysUntil } from '@/lib/utils'
 
 export default function Dashboard() {
@@ -47,7 +46,6 @@ function StudentDashboard({ user }: { user: Profile }) {
   const [companies, setCompanies] = useState<Record<string, Profile>>({})
   const [following, setFollowing] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
-  const [researchJob, setResearchJob] = useState<JobListing | null>(null)
 
   useEffect(() => {
     let active = true
@@ -143,9 +141,9 @@ function StudentDashboard({ user }: { user: Profile }) {
         </div>
         <div className="flex items-center gap-2">
           {user.plan === 'free' ? (
-            <Link to="/app/billing">
+            <Link to="/app/usage">
               <Button variant="subtle" className="gap-1.5">
-                <Crown className="h-4 w-4" /> Upgrade to Pro
+                <Crown className="h-4 w-4" /> View usage
               </Button>
             </Link>
           ) : (
@@ -199,7 +197,7 @@ function StudentDashboard({ user }: { user: Profile }) {
               topPicks.map((m) => {
                 const job = jobs.find((j) => j.id === m.job_id)!
                 const company = companies[job.company_id]
-                return <MatchRow key={m.job_id} job={job} match={m} company={company} onResearch={setResearchJob} />
+                return <MatchRow key={m.job_id} job={job} match={m} company={company} />
               })
             )}
           </div>
@@ -360,13 +358,6 @@ function StudentDashboard({ user }: { user: Profile }) {
         </div>
       </div>
 
-      <AIResearchPanel
-        open={!!researchJob}
-        onClose={() => setResearchJob(null)}
-        job={researchJob}
-        company={researchJob ? companies[researchJob.company_id] : undefined}
-        user={user}
-      />
     </div>
   )
 }
@@ -375,12 +366,10 @@ function MatchRow({
   job,
   match,
   company,
-  onResearch,
 }: {
   job: JobListing
   match: AiMatch
   company?: Profile
-  onResearch: (j: JobListing) => void
 }) {
   const dl = daysUntil(job.deadline)
   return (
@@ -423,9 +412,11 @@ function MatchRow({
             </p>
           )}
         </div>
-        <Button variant="outline" size="sm" className="hidden shrink-0 gap-1.5 sm:inline-flex" onClick={() => onResearch(job)}>
-          <Sparkles className="h-4 w-4 text-primary" /> AI Research
-        </Button>
+        <Link to="/app/research" className="hidden shrink-0 sm:block">
+          <Button variant="outline" size="sm" className="gap-1.5">
+            <Sparkles className="h-4 w-4 text-primary" /> AI Research
+          </Button>
+        </Link>
       </CardBody>
     </Card>
   )

@@ -75,28 +75,15 @@ export default function CompanyPublic() {
 
       {/* Header */}
       <Card className="overflow-hidden">
-        <div className="h-28">
+        <div className="h-32">
           <CoverImage src={company.cover_url} isSchool={company.user_type === 'school'} />
         </div>
-        <CardBody className="-mt-10">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div className="flex items-end gap-3">
-              <Avatar name={company.company_name} src={company.avatar_url} size={72} className="rounded-2xl ring-4 ring-card" />
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-bold tracking-tight">{company.company_name}</h1>
-                  {company.user_type === 'school' && <Badge tone="accent">School</Badge>}
-                </div>
-                <p className="text-sm text-muted-foreground">{company.industry}{company.company_size ? ` · ${company.company_size}` : ''}</p>
-                <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                  <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5" /> {followers} followers</span>
-                  {company.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {company.location}</span>}
-                  {avgRating && <span className="inline-flex items-center gap-1"><Star className="h-3.5 w-3.5 text-warning" /> {avgRating} ({ratings.length})</span>}
-                  {company.website && <a href={company.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline"><Globe className="h-3.5 w-3.5" /> Website</a>}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
+        <CardBody>
+          {/* Avatar overlaps the cover; actions sit on its right. Name & details
+              render BELOW so the name is never over the cover photo. */}
+          <div className="-mt-14 flex items-end justify-between gap-3">
+            <Avatar name={company.company_name} src={company.avatar_url} size={96} className="rounded-2xl bg-card ring-4 ring-card shadow-card" />
+            <div className="mb-1 flex shrink-0 items-center gap-2">
               {following && (
                 <Button variant="outline" size="icon" onClick={toggleEmail} title={emailOn ? 'Email alerts on' : 'Email alerts off'}>
                   {emailOn ? <Bell className="h-4 w-4 text-primary" /> : <BellOff className="h-4 w-4 text-muted-foreground" />}
@@ -104,12 +91,29 @@ export default function CompanyPublic() {
               )}
               {user.id !== company.id && (
                 <Button variant="outline" onClick={messageCompany} className="gap-1.5">
-                  <MessageSquare className="h-4 w-4" /> Message
+                  <MessageSquare className="h-4 w-4" /> <span className="hidden sm:inline">Message</span>
                 </Button>
               )}
               <Button variant={following ? 'outline' : 'default'} onClick={toggleFollow}>{following ? 'Following' : 'Follow'}</Button>
             </div>
           </div>
+
+          <div className="mt-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-bold tracking-tight">{company.company_name}</h1>
+              {company.user_type === 'school' && <Badge tone="accent">School</Badge>}
+            </div>
+            {(company.industry || company.company_size) && (
+              <p className="mt-0.5 text-sm text-muted-foreground">{[company.industry, company.company_size].filter(Boolean).join(' · ')}</p>
+            )}
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5" /> {followers} followers</span>
+              {company.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {company.location}</span>}
+              {avgRating && <span className="inline-flex items-center gap-1"><Star className="h-3.5 w-3.5 text-warning" /> {avgRating} ({ratings.length})</span>}
+              {company.website && <a href={company.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline"><Globe className="h-3.5 w-3.5" /> Website</a>}
+            </div>
+          </div>
+
           {company.bio && <p className="mt-4 text-sm leading-relaxed text-muted-foreground">{company.bio}</p>}
           {following && (
             <p className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-xs text-primary">

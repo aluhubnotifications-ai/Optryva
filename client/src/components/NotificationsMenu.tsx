@@ -35,7 +35,7 @@ function routeFor(n: AppNotification): string {
   if (n.type === 'dm' || n.type === 'booking') return n.ref_id ? `/app/messages?thread=${n.ref_id}` : '/app/messages'
   if (n.type === 'followed_company_listing' || n.type === 'new_listing' || n.type === 'new_job') return n.ref_id ? `/app/jobs?job=${n.ref_id}` : '/app/jobs'
   if (n.type === 'housing') return '/app/housing'
-  if (n.type === 'payment') return '/app/billing'
+  if (n.type === 'payment') return '/app/usage'
   return '/app'
 }
 

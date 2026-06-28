@@ -1,4 +1,5 @@
 import { j } from '@/db'
+import { isAdminEmail } from '@/lib/admin'
 
 const bool = (v: any) => v === 1 || v === true
 const arr = <T>(s: any): T[] => j.parse<T[]>(s, [])
@@ -43,6 +44,7 @@ export function rowToProfile(r: any) {
     posted_by_role: r.posted_by_role ?? undefined,
     plan: r.plan,
     plan_activated_at: r.plan_activated_at ?? undefined,
+    is_admin: isAdminEmail(r.email),
     created_at: r.created_at,
   }
 }

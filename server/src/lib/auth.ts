@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken'
 import { sb, must } from '@/db'
 import type { ShimReq, ShimRes, Next } from '@/lib/http'
+import { setUsageUser } from '@/lib/usage'
 
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET ?? 'dev-access-secret'
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET ?? 'dev-refresh-secret'
@@ -41,6 +42,7 @@ export function requireAuth(req: ShimReq, res: ShimRes, next: Next) {
   const user = token ? verifyAccess(token) : null
   if (!user) return res.status(401).json({ error: 'unauthorized' })
   req.user = user
+  setUsageUser(user.id) // attribute this request's AI usage to the caller
   next()
 }
 
