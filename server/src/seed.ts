@@ -2,7 +2,7 @@
 // (INSERT OR IGNORE) and is no longer wired into the server. The canonical
 // schema + seed now live in server/supabase/init.sql — run that once in the
 // Supabase SQL Editor. Kept only for reference.
-import 'dotenv/config'
+import '@/loadenv' // override so project .env wins over a stale shell ANTHROPIC_API_KEY
 import bcrypt from 'bcryptjs'
 import { db, initSchema, j } from '@/db'
 

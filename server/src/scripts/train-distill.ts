@@ -9,7 +9,7 @@
 //
 //   npm run train-distill
 
-import 'dotenv/config'
+import '@/loadenv' // override so project .env wins over a stale shell ANTHROPIC_API_KEY
 import { sb, must } from '@/db'
 import { now } from '@/lib/util'
 import { PRELLM_FEATURES } from '@/lib/features'

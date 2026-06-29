@@ -10,7 +10,7 @@
 //
 // When positives accumulate (~50+), this table is the one input a ranker needs.
 
-import 'dotenv/config'
+import '@/loadenv' // override so project .env wins over a stale shell ANTHROPIC_API_KEY
 import { sb, must, j } from '@/db'
 import { now } from '@/lib/util'
 import { asResumeProfile, semanticSimilarities } from '@/lib/enrich'

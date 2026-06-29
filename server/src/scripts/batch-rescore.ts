@@ -5,7 +5,7 @@
 //   npm run rescore
 // No-ops gracefully without ANTHROPIC_API_KEY. Bound the grid with BATCH_LIMIT.
 
-import 'dotenv/config'
+import '@/loadenv' // override so project .env wins over a stale shell ANTHROPIC_API_KEY
 import { sb, must, j } from '@/db'
 import { anthropic, hasClaude, MODELS } from '@/lib/claude'
 import { buildScoringSystem, SCORE_SCHEMA, type LlmScore } from '@/lib/rubric'

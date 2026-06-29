@@ -1,7 +1,7 @@
 // Local Node dev server (`npm run dev`). Production runs on Cloudflare via
 // worker.ts; this serves the same Hono `app` over Node for convenient local
 // development with `tsx watch`.
-import 'dotenv/config'
+import '@/loadenv' // MUST be first — loads .env with override before any module reads process.env
 import { serve } from '@hono/node-server'
 import { app } from '@/app'
 import { sb } from '@/db'

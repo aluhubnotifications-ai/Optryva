@@ -4,7 +4,7 @@
 // Safe to re-run. No-ops gracefully if migrations 0008/0009 aren't applied or
 // VOYAGE_API_KEY isn't set (it just reports 0 embeddings written).
 
-import 'dotenv/config'
+import '@/loadenv' // override so project .env wins over a stale shell ANTHROPIC_API_KEY
 import { sb, must } from '@/db'
 import { hasEmbeddings } from '@/lib/embeddings'
 import { hasProfileEmbedding, hasJobEmbedding, embedJob, ensureResumeProfile, embedStudent } from '@/lib/enrich'

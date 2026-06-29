@@ -16,7 +16,7 @@
 //   • Coverage                           — how much signal we actually have yet.
 // Re-run after every matcher change to see whether quality moved.
 
-import 'dotenv/config'
+import '@/loadenv' // override so project .env wins over a stale shell ANTHROPIC_API_KEY
 import { sb, must } from '@/db'
 
 type Pair = { student: string; job: string; score: number; engaged: boolean }

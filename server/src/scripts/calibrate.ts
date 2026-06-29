@@ -9,7 +9,7 @@
 //   npm run calibrate
 // Needs a minimum number of terminal outcomes (MIN_SAMPLES, default 20).
 
-import 'dotenv/config'
+import '@/loadenv' // override so project .env wins over a stale shell ANTHROPIC_API_KEY
 import { sb, must } from '@/db'
 import { claudeJson, hasClaude, MODELS } from '@/lib/claude'
 import { now } from '@/lib/util'
