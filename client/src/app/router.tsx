@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
 import { AppShell } from '@/app/AppShell'
 import { useSession, useCurrentUser } from '@/lib/store'
 import { authApi } from '@/lib/api'
+import { needsOnboarding } from '@/lib/matchReady'
 
 import Landing from '@/pages/Landing'
 import Login from '@/pages/auth/Login'
@@ -36,7 +37,7 @@ import ApplicantView from '@/pages/company/ApplicantView'
 
 function RequireAuth() {
   const userId = useSession((s) => s.userId)
-  const onboarded = useSession((s) => s.onboarded)
+  const profile = useSession((s) => s.profile)
   // Refresh the persisted profile from the server on load, so changes made since
   // last login (is_admin, plan, …) take effect without a re-login.
   useEffect(() => {
@@ -44,7 +45,10 @@ function RequireAuth() {
     authApi.me().then((p) => { if (p) useSession.getState().setProfile(p) })
   }, [userId])
   if (!userId) return <Navigate to="/login" replace />
-  if (!onboarded[userId]) return <Navigate to="/onboarding" replace />
+  // A student can't be matched without a résumé + preferences — collect them in
+  // a required onboarding step instead of failing silently later. Companies and
+  // already-complete students fall straight through.
+  if (needsOnboarding(profile)) return <Navigate to="/onboarding" replace />
   return (
     <AppShell>
       <Outlet />
