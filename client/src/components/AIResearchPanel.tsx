@@ -2,25 +2,23 @@ import { useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
-  HelpCircle,
   Lightbulb,
   Sparkles,
-  ThumbsUp,
-  Building2,
-  Target,
   Send,
   Gauge,
   Loader2,
+  RefreshCw,
   MessageCircleQuestion,
 } from 'lucide-react'
 import { Drawer } from '@/components/ui/Drawer'
 import { Badge, Skeleton, Avatar } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
+import { Markdown } from '@/components/Markdown'
 import { ScoreRing, scoreBand } from '@/components/ScoreRing'
 import { aiApi } from '@/lib/api'
+import { useResearchStream } from '@/lib/researchStream'
 import type { AiMatch, JobListing, Profile } from '@/types'
 
-type Research = Awaited<ReturnType<typeof aiApi.companyResearch>>
 type QA = { role: 'user' | 'ai'; text: string }
 
 const SUGGESTED = [
@@ -85,9 +83,14 @@ export function ResearchBody({
   onScore?: () => void
   scoring?: boolean
 }) {
-  const [research, setResearch] = useState<Research | null>(null)
+  // Company research streams from a global store so it keeps going — and stays
+  // visible — when the drawer closes or the user switches tabs. The match is a
+  // separate, fast/cached fetch.
+  const rsCompany = useResearchStream((s) => s.company)
+  const rsText = useResearchStream((s) => s.text)
+  const rsPhase = useResearchStream((s) => s.phase)
   const [fetchedMatch, setFetchedMatch] = useState<AiMatch | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [matchLoading, setMatchLoading] = useState(true)
 
   const [thread, setThread] = useState<QA[]>([])
   const [input, setInput] = useState('')
@@ -100,23 +103,20 @@ export function ResearchBody({
   const match = matchProp ?? fetchedMatch
 
   useEffect(() => {
-    setLoading(true)
-    setResearch(null)
-    setFetchedMatch(null)
     setThread([])
     setInput('')
+    // Kick off (or reuse) the streaming company research in the global store.
+    void useResearchStream.getState().run(companyName, job.title)
+    // Match score — local, fast, usually cached.
     let active = true
+    setMatchLoading(true)
+    setFetchedMatch(null)
     ;(async () => {
-      const [r, m] = await Promise.all([
-        aiApi.companyResearch(companyName, job.title),
-        autoMatch && matchProp == null && user.user_type === 'student'
-          ? aiApi.match(user, job)
-          : Promise.resolve(null),
-      ])
+      const m =
+        autoMatch && matchProp == null && user.user_type === 'student' ? await aiApi.match(user, job) : null
       if (!active) return
-      setResearch(r)
       setFetchedMatch(m)
-      setLoading(false)
+      setMatchLoading(false)
     })()
     return () => {
       active = false
@@ -150,7 +150,7 @@ export function ResearchBody({
     setStreamingAns(false)
   }
 
-  if (loading) return <ResearchSkeleton />
+  const showResearch = rsCompany === companyName
 
   return (
         <div className="space-y-6 animate-fade-in">
@@ -235,6 +235,19 @@ export function ResearchBody({
             </form>
           </div>
 
+          {/* ---- Match score loading ---- */}
+          {matchLoading && !match && !onScore && (
+            <div className="rounded-2xl border border-border bg-card p-4">
+              <div className="flex items-center gap-4">
+                <div className="skeleton h-16 w-16 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-3 w-1/3" />
+                  <Skeleton className="h-5 w-1/2" />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ---- Score prompt (unscored role on the dashboard) ---- */}
           {!match && onScore && (
             <div className="flex flex-col items-start gap-2 rounded-2xl border border-dashed border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -295,46 +308,45 @@ export function ResearchBody({
             </div>
           )}
 
-          {/* ---- Company research ---- */}
-          {research && (
-            <div className="space-y-5">
+          {/* ---- Company research (streamed, live web-grounded) ---- */}
+          {showResearch && (
+            <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Avatar name={companyName} size={28} className="rounded-lg" />
                 <h3 className="font-semibold">About {companyName}</h3>
+                {rsPhase === 'running' && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
               </div>
-              <Section icon={Building2} title="What they do">
-                <p className="text-sm text-muted-foreground">{research.overview}</p>
-              </Section>
-              <Section icon={ThumbsUp} title="What it's like to work there">
-                <p className="text-sm text-muted-foreground">{research.culture}</p>
-              </Section>
-              <Section icon={Target} title="Why it's a fit for you">
-                <p className="text-sm text-muted-foreground">{research.opportunity}</p>
-              </Section>
-              <Section icon={AlertTriangle} title="Honest red flags" tone="warning">
-                <p className="text-sm text-muted-foreground">{research.red_flags}</p>
-              </Section>
-              <Section icon={HelpCircle} title="Smart questions to ask">
-                <ul className="space-y-1.5">
-                  {research.questions.map((q, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
-                      <span className="font-semibold text-primary">{i + 1}.</span>
-                      <button onClick={() => ask(q)} className="text-left hover:text-foreground hover:underline">
-                        {q}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </Section>
-              <div className="rounded-xl border border-success/30 bg-success/10 p-4">
-                <p className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-success">
-                  <CheckCircle2 className="h-4 w-4" /> Bottom line
+
+              {rsText ? (
+                <div className="rounded-2xl border border-border bg-card p-4">
+                  <Markdown content={rsText} />
+                </div>
+              ) : rsPhase === 'running' ? (
+                <div className="flex items-center gap-2 rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">
+                  <Sparkles className="h-4 w-4 animate-pulse text-primary" />
+                  Searching the web for the latest on {companyName}…
+                </div>
+              ) : null}
+
+              {rsPhase === 'error' && !rsText && (
+                <div className="rounded-2xl border border-danger/30 bg-danger/5 p-4 text-sm">
+                  <p className="text-danger">Couldn’t reach the research AI.</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 gap-1.5"
+                    onClick={() => useResearchStream.getState().run(companyName, job.title, true)}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" /> Retry
+                  </Button>
+                </div>
+              )}
+
+              {rsText && rsPhase === 'done' && (
+                <p className="text-center text-[11px] text-muted-foreground">
+                  AI-generated research · verify key facts before applying
                 </p>
-                <p className="text-sm text-muted-foreground">{research.verdict}</p>
-              </div>
-              <p className="text-center text-[11px] text-muted-foreground">
-                AI-generated research · verify key facts before applying
-              </p>
+              )}
             </div>
           )}
         </div>
@@ -343,57 +355,4 @@ export function ResearchBody({
 
 function Dot() {
   return <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s] [&:nth-child(2)]:[animation-delay:-0.1s]" />
-}
-
-function Section({
-  icon: Icon,
-  title,
-  children,
-  tone = 'primary',
-}: {
-  icon: typeof Sparkles
-  title: string
-  children: React.ReactNode
-  tone?: 'primary' | 'warning'
-}) {
-  return (
-    <div>
-      <h3 className="mb-1.5 flex items-center gap-2 text-sm font-semibold">
-        <Icon className={tone === 'warning' ? 'h-4 w-4 text-warning' : 'h-4 w-4 text-primary'} />
-        {title}
-      </h3>
-      {children}
-    </div>
-  )
-}
-
-function ResearchSkeleton() {
-  return (
-    <div className="space-y-5">
-      <div className="rounded-2xl border border-primary/25 bg-primary/5 p-4">
-        <Skeleton className="mb-2 h-5 w-1/2" />
-        <Skeleton className="mb-3 h-3 w-3/4" />
-        <Skeleton className="h-10 w-full rounded-full" />
-      </div>
-      <div className="rounded-2xl border border-border p-4">
-        <div className="flex items-center gap-4">
-          <div className="skeleton h-16 w-16 rounded-full" />
-          <div className="flex-1 space-y-2">
-            <Skeleton className="h-3 w-1/3" />
-            <Skeleton className="h-5 w-1/2" />
-          </div>
-        </div>
-      </div>
-      {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="space-y-2">
-          <Skeleton className="h-4 w-1/3" />
-          <Skeleton className="h-3 w-full" />
-          <Skeleton className="h-3 w-4/5" />
-        </div>
-      ))}
-      <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-        <Sparkles className="h-4 w-4 animate-pulse text-primary" /> Researching…
-      </p>
-    </div>
-  )
 }

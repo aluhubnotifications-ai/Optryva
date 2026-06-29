@@ -634,6 +634,31 @@ ai.post('/company', async (req, res) => {
   })
 })
 
+// Streamed company research — markdown, live web-grounded, rendered token-by-token
+// so the student sees progress instead of waiting ~1min for a blocking call (and
+// no brittle JSON parse to fail). max_uses bounds the web search so it stays snappy.
+const COMPANY_STREAM_SYSTEM =
+  'You are a warm, encouraging career guide researching a company for an early-career African/global student, grounded in CURRENT web results. ' +
+  'Write in friendly, supportive Markdown — like a mentor who did the homework for them. Be specific and cite what you actually found, but stay honest and balanced: surface REAL risks (layoffs, funding trouble, poor reviews, visa limits) when the evidence shows them, framed constructively. Do not write a brochure; do not sugar-coat.\n\n' +
+  'Use EXACTLY these section headings, in this order, each 2–4 sentences:\n' +
+  '## What they do\n## What it’s like to work there\n## Why it could be a fit for you\n## Honest red flags\n## Smart questions to ask\n(then 3 short bullet questions)\n## Bottom line\n(one or two honest, encouraging sentences)\n\n' +
+  'Search the web first, then write.'
+
+ai.post('/company/stream', async (req, res) => {
+  if (!hasClaude()) return res.status(503).json({ error: 'ai_unavailable' })
+  const { company, role } = req.body ?? {}
+  const stream = streamClaude({
+    model: MODELS.research,
+    maxTokens: 900,
+    system: COMPANY_STREAM_SYSTEM,
+    user: `Company: ${company}. Role: ${role ?? 'an early-career role'}. Search for recent, specific information before writing.`,
+    tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 4 }],
+    meta: { company }, // flush headers immediately so the client connection opens during the search phase
+  })
+  if (!stream) return res.status(503).json({ error: 'ai_unavailable' })
+  res.sse(stream)
+})
+
 /* ---------- §8.4 Chat (CV-aware, personalised) ---------- */
 ai.post('/chat', async (req, res) => {
   const { message } = req.body ?? {}

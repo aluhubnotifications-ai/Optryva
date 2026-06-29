@@ -1011,6 +1011,13 @@ export const aiApi = {
     }
   },
 
+  /** Streamed company research (live web-grounded Markdown). Renders progressively
+   *  instead of blocking ~1min on a single call. Returns true if anything streamed;
+   *  throws on a hard failure so the store can surface an error. */
+  async companyResearchStream(companyName: string, role: string | undefined, onToken: (t: string) => void): Promise<boolean> {
+    return await streamAi(`Researching ${companyName}`, '/ai/company/stream', { company: companyName, role }, onToken)
+  },
+
   /** Streamed research answer (live web-grounded). Returns true if anything
    *  streamed; on failure returns false so the caller can fall back. */
   async researchAskStream(companyName: string, role: string | undefined, question: string, onToken: (t: string) => void): Promise<boolean> {
