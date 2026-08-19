@@ -4,7 +4,7 @@ import { isAdminEmail } from '@/lib/admin'
 const bool = (v: any) => v === 1 || v === true
 const arr = <T>(s: any): T[] => j.parse<T[]>(s, [])
 
-export function rowToProfile(r: any) {
+export function rowToProfile(r: any, includePrivate = false) {
   if (!r) return null
   return {
     id: r.id,
@@ -22,10 +22,12 @@ export function rowToProfile(r: any) {
     github: r.github ?? undefined,
     twitter: r.twitter ?? undefined,
     website: r.website ?? undefined,
-    cv_filename: r.cv_filename ?? undefined,
-    cv_uploaded_at: r.cv_uploaded_at ?? undefined,
-    cv_text: r.cv_text ?? undefined,
-    cv_url: r.cv_url ?? undefined,
+    ...(includePrivate ? {
+      cv_filename: r.cv_filename ?? undefined,
+      cv_uploaded_at: r.cv_uploaded_at ?? undefined,
+      cv_text: r.cv_text ?? undefined,
+      cv_url: r.cv_url ?? undefined,
+    } : {}),
     desired_roles: arr<string>(r.desired_roles),
     preferred_industries: arr<string>(r.preferred_industries),
     work_type: r.work_type ?? undefined,

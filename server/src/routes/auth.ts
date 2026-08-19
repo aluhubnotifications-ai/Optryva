@@ -55,7 +55,7 @@ auth.post('/register', async (req, res) => {
   const user = await authUserFrom(id)
   res.cookie(REFRESH_COOKIE, signRefresh(user), cookieOpts)
   const profile = must(await sb.from('profiles').select('*').eq('id', id).maybeSingle())
-  res.json({ accessToken: signAccess(user), user: rowToProfile(profile) })
+  res.json({ accessToken: signAccess(user), user: rowToProfile(profile, true) })
 })
 
 auth.post('/login', async (req, res) => {
@@ -66,7 +66,7 @@ auth.post('/login', async (req, res) => {
   const user = await authUserFrom(u.id)
   res.cookie(REFRESH_COOKIE, signRefresh(user), cookieOpts)
   const profile = must(await sb.from('profiles').select('*').eq('id', u.id).maybeSingle())
-  res.json({ accessToken: signAccess(user), user: rowToProfile(profile) })
+  res.json({ accessToken: signAccess(user), user: rowToProfile(profile, true) })
 })
 
 auth.post('/refresh', async (req, res) => {
@@ -87,7 +87,7 @@ auth.post('/logout', (_req, res) => {
 auth.get('/me', requireAuth, async (req, res) => {
   const p = must(await sb.from('profiles').select('*').eq('id', req.user!.id).maybeSingle())
   if (!p) return res.status(404).json({ error: 'not_found' })
-  res.json(rowToProfile(p))
+  res.json(rowToProfile(p, true))
 })
 
 auth.post('/change-password', requireAuth, async (req, res) => {

@@ -37,9 +37,9 @@ Already available:
 
 ### Security fixes
 
-- [ ] Enforce application authorization on every read and write endpoint.
-- [ ] Ensure only the student, job owner, or authorized administrator can access an application.
-- [ ] Remove `cv_text` and `cv_url` from public profile responses.
+- [x] Enforce application authorization on every read and write endpoint.
+- [x] Ensure only the student, job owner, or authorized administrator can access an application.
+- [x] Remove `cv_text` and `cv_url` from public profile responses.
 - [ ] Add private document access with authorization checks.
 - [ ] Move résumé and application files out of database data URLs where practical.
 - [ ] Add upload size limits, file validation, and download auditing.
@@ -81,9 +81,10 @@ Build one source of truth for each student.
 
 A student should have multiple truthful career directions in one account.
 
-- [ ] Add `ResumeProfile` records linked to one student.
-- [ ] Support résumé names, target roles, industries, locations, work modes, opportunity types, compensation, availability, and exclusions.
-- [ ] Support create, duplicate, edit, preview, download, archive, restore, pause, and delete.
+- [x] Add `ResumeProfile` records linked to one student.
+- [x] Support résumé names, target roles, industries, locations, work modes, and opportunity types.
+- [x] Support create, edit, pause, and delete.
+- [ ] Add compensation, availability, exclusions, duplicate, preview, download, archive, and restore.
 - [ ] Add résumé version history.
 - [ ] Show which résumé versions and evidence are affected when the master profile changes.
 - [ ] Preserve the exact résumé version submitted with every application.
@@ -269,9 +270,9 @@ Suggested ALU pilot:
 2. Fix résumé exposure in profile serialization.
 3. Add document privacy and upload validation.
 4. Add retry/error states for authentication and applicant detail.
-5. Add `ResumeProfile` database migration and API.
-6. Add résumé library UI.
-7. Add résumé-specific preferences.
+5. [x] Add `ResumeProfile` database migration and API.
+6. [x] Add résumé library UI.
+7. [x] Add résumé-specific preferences.
 8. Add exact résumé version to applications.
 9. Implement fixed-40 de-duplication and attribution.
 10. Add evidence-linked match explanations.

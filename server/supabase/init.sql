@@ -58,6 +58,23 @@ create table if not exists profiles (
   created_at    text not null
 );
 
+create table if not exists resume_profiles (
+  id text primary key,
+  student_id text not null references profiles(id) on delete cascade,
+  name text not null,
+  target_roles text not null default '[]',
+  preferred_industries text not null default '[]',
+  pref_countries text not null default '[]',
+  pref_listing_types text not null default '[]',
+  skills text not null default '[]',
+  work_type text not null default 'any',
+  cv_filename text,
+  cv_url text,
+  active integer not null default 1,
+  created_at text not null,
+  updated_at text not null
+);
+
 create table if not exists job_listings (
   id            text primary key,
   company_id    text not null references profiles(id) on delete cascade,
@@ -158,6 +175,7 @@ create table if not exists ai_match_cache (
 );
 
 create index if not exists idx_jobs_company on job_listings(company_id);
+create index if not exists idx_resume_profiles_student on resume_profiles(student_id);
 create index if not exists idx_apps_student on applications(student_id);
 create index if not exists idx_apps_job     on applications(job_id);
 create index if not exists idx_msgs_thread  on messages(thread_id);

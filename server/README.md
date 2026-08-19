@@ -33,6 +33,9 @@ Helium Health/Jumia) via their emails in `src/seed.ts`.
   completeness cap), `POST /ai/source`, `POST /ai/company`, `POST /ai/chat`,
   `POST /ai/coach`, `POST /ai/cv-tips`, `POST /ai/research/ask`,
   `POST /ai/compass/interview|recommend|prep`, `GET /ai/_status`
+- **resumes**: `GET /resumes`, `POST /resumes`, `PATCH /resumes/:id`,
+  `DELETE /resumes/:id` (student-owned résumé profiles with independent roles,
+  skills, countries, opportunity types, work mode, and active/paused state)
 - **social**: follows (`/social/follows/*`), ratings (`/social/ratings*`)
 - **notifications**: `GET /notifications`, `POST /notifications/:id/read`, `/read-all`
 - **messages**: `GET /messages/conversations`, `GET /messages/thread/:id`, `POST /messages`,
@@ -46,3 +49,18 @@ Helium Health/Jumia) via their emails in `src/seed.ts`.
 - AI match cache lives in `ai_match_cache`; invalidated on profile/job edits.
 - **Swap step (frontend):** point `client/src/lib/api.ts` at these routes (fetch +
   TanStack Query). The function signatures already match the mock layer.
+
+## Supabase migrations
+
+The repository uses sequential SQL migrations in `supabase/migrations`. From the
+`server` directory, link the CLI once and apply pending migrations:
+
+```bash
+npx supabase link --project-ref YOUR_PROJECT_REF
+npx supabase db push
+```
+
+The multiple-résumé schema is in `0020_resume_profiles.sql`. The migration
+sequence previously contained duplicate `0015` and `0018` filenames; those were
+renumbered so Supabase can track every migration uniquely. Never commit the local
+`.temp` directory created by `supabase link`.

@@ -29,6 +29,7 @@ import { Modal } from '@/components/ui/Modal'
 import { AvatarEditor } from '@/components/AvatarEditor'
 import { useToast } from '@/components/ui/toast'
 import { formatDate, cn, fileToDataUrl } from '@/lib/utils'
+import { ResumeWorkspace } from '@/components/ResumeWorkspace'
 
 const ROLES = ['Software Engineering', 'Data Science', 'Product Management', 'Marketing', 'Operations', 'Finance', 'Design', 'Consulting']
 const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Agriculture', 'Education', 'E-commerce', 'Consulting', 'Nonprofit']
@@ -247,6 +248,7 @@ export default function Profile() {
         )}
         <p className="mt-2.5 flex items-center gap-1.5 text-xs text-muted-foreground"><Sparkles className="h-3.5 w-3.5 text-primary" /> Your CV is the #1 signal our AI uses to find your best-fit roles.</p>
       </Section>
+      {user.user_type === 'student' && <ResumeWorkspace />}
 
       {/* Career preferences */}
       <Section icon={Briefcase} title="Career preferences" hint="Feeds the AI matching engine">

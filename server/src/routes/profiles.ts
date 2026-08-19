@@ -26,7 +26,7 @@ profiles.get('/:id', async (req, res) => {
     const viewer = must(await sb.from('profiles').select('*').eq('id', req.user!.id).maybeSingle()) as any
     if (schoolHiddenFrom(r, viewer)) return res.status(404).json({ error: 'not_found' })
   }
-  res.json(rowToProfile(r))
+  res.json(rowToProfile(r, req.user!.id === r.id))
 })
 
 const EDITABLE = [
@@ -129,5 +129,5 @@ profiles.patch('/:id', async (req, res) => {
   }
 
   const r = must(await sb.from('profiles').select('*').eq('id', req.params.id).maybeSingle())
-  res.json(rowToProfile(r))
+  res.json(rowToProfile(r, true))
 })

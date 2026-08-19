@@ -15,6 +15,7 @@ import { applications } from '@/routes/applications'
 import { ai } from '@/routes/ai'
 import { admin } from '@/routes/admin'
 import { social, notifications, messages } from '@/routes/social'
+import { resumes } from '@/routes/resumes'
 import { hasClaude } from '@/lib/claude'
 
 export const app = new Hono()
@@ -43,6 +44,7 @@ app.route('/api/admin', admin.hono)
 app.route('/api/social', social.hono)
 app.route('/api/notifications', notifications.hono)
 app.route('/api/messages', messages.hono)
+app.route('/api/resumes', resumes.hono)
 
 app.onError((err, c) => {
   console.error(err)

@@ -12,6 +12,7 @@ import type {
   Payment,
   Plan,
   Profile,
+  ResumeProfile,
   Rating,
   Resource,
   SkillBooking,
@@ -194,6 +195,21 @@ export const profilesApi = {
   },
   async list(type?: Profile['user_type']): Promise<Profile[]> {
     return (await apiFetch(`/profiles${type ? `?type=${encodeURIComponent(type)}` : ''}`)) as Profile[]
+  },
+}
+
+export const resumesApi = {
+  async list(): Promise<ResumeProfile[]> {
+    return (await apiFetch('/resumes')) as ResumeProfile[]
+  },
+  async create(payload: Omit<ResumeProfile, 'id' | 'student_id' | 'created_at' | 'updated_at'>): Promise<ResumeProfile> {
+    return (await apiFetch('/resumes', { method: 'POST', body: JSON.stringify(payload) })) as ResumeProfile
+  },
+  async update(id: string, patch: Partial<ResumeProfile>): Promise<ResumeProfile> {
+    return (await apiFetch(`/resumes/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })) as ResumeProfile
+  },
+  async remove(id: string): Promise<void> {
+    await apiFetch(`/resumes/${id}`, { method: 'DELETE' })
   },
 }
 

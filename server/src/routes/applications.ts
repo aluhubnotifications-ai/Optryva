@@ -3,6 +3,7 @@ import { sb, must, j } from '@/db'
 import { requireAuth } from '@/lib/auth'
 import { rowToApplication } from '@/lib/serialize'
 import { uid, now, notify } from '@/lib/util'
+import { isAdminEmail } from '@/lib/admin'
 
 export const applications = Router()
 applications.use(requireAuth)
@@ -13,11 +14,17 @@ applications.get('/mine', async (req, res) => {
 })
 
 applications.get('/job/:jobId', async (req, res) => {
+  const job = must(await sb.from('job_listings').select('company_id').eq('id', req.params.jobId).maybeSingle()) as any
+  if (!job) return res.status(404).json({ error: 'job_not_found' })
+  if (job.company_id !== req.user!.id && !isAdminEmail(req.user!.email)) return res.status(403).json({ error: 'forbidden' })
   const rows = must(await sb.from('applications').select('*').eq('job_id', req.params.jobId).order('created_at', { ascending: false })) as any[]
   res.json(rows.map(rowToApplication))
 })
 
 applications.get('/company', async (req, res) => {
+  if (req.user!.user_type !== 'company' && req.user!.user_type !== 'school' && !isAdminEmail(req.user!.email)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
   const jobs = must(await sb.from('job_listings').select('id').eq('company_id', req.user!.id)) as any[]
   const ids = jobs.map((j2) => j2.id)
   if (!ids.length) return res.json([])
@@ -28,6 +35,9 @@ applications.get('/company', async (req, res) => {
 applications.get('/:id', async (req, res) => {
   const r = must(await sb.from('applications').select('*').eq('id', req.params.id).maybeSingle())
   if (!r) return res.status(404).json({ error: 'not_found' })
+  const job = must(await sb.from('job_listings').select('company_id').eq('id', r.job_id).maybeSingle()) as any
+  const allowed = r.student_id === req.user!.id || job?.company_id === req.user!.id || isAdminEmail(req.user!.email)
+  if (!allowed) return res.status(403).json({ error: 'forbidden' })
   res.json(rowToApplication(r))
 })
 
@@ -56,7 +66,10 @@ applications.patch('/:id/status', async (req, res) => {
   const { status } = req.body ?? {}
   const r = must(await sb.from('applications').select('*').eq('id', req.params.id).maybeSingle()) as any
   if (!r) return res.status(404).json({ error: 'not_found' })
-  const job = must(await sb.from('job_listings').select('title').eq('id', r.job_id).maybeSingle()) as any
+  const validStatuses = new Set(['pending', 'reviewed', 'shortlisted', 'hired', 'rejected'])
+  if (!validStatuses.has(status)) return res.status(400).json({ error: 'invalid_status' })
+  const job = must(await sb.from('job_listings').select('title, company_id').eq('id', r.job_id).maybeSingle()) as any
+  if (!job || (job.company_id !== req.user!.id && !isAdminEmail(req.user!.email))) return res.status(403).json({ error: 'forbidden' })
   const timeline = j.parse<any[]>(r.timeline, [])
   timeline.push({ status, at: now() })
   must(await sb.from('applications').update({ status, timeline: j.stringify(timeline) }).eq('id', r.id))

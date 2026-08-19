@@ -54,6 +54,23 @@ export interface Profile {
   created_at: string
 }
 
+export interface ResumeProfile {
+  id: string
+  student_id: string
+  name: string
+  target_roles: string[]
+  preferred_industries: string[]
+  pref_countries: string[]
+  pref_listing_types: ListingType[]
+  skills: string[]
+  work_type: WorkType
+  cv_filename?: string
+  cv_url?: string
+  active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export type ListingType = 'Internship' | 'Full-time' | 'Part-time' | 'Fellowship'
 export type ListingStatus = 'active' | 'closed' | 'draft'
 
