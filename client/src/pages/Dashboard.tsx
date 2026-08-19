@@ -23,11 +23,12 @@ import { Card, CardBody, Badge, Avatar, Progress, Skeleton } from '@/components/
 import { Button } from '@/components/ui/Button'
 import { ScoreRing } from '@/components/ScoreRing'
 import { formatDate, daysUntil } from '@/lib/utils'
+import Analytics from '@/pages/company/Analytics'
 
 export default function Dashboard() {
   const user = useCurrentUser()
   if (!user) return null
-  return user.user_type === 'student' ? <StudentDashboard user={user} /> : <CompanyDashboard user={user} />
+  return user.user_type === 'student' ? <StudentDashboard user={user} /> : <Analytics />
 }
 
 /* ============================ STUDENT ============================ */
@@ -459,126 +460,6 @@ function TopPicksEmpty({ hasCv }: { hasCv: boolean }) {
         )}
       </CardBody>
     </Card>
-  )
-}
-
-/* ============================ COMPANY ============================ */
-
-function CompanyDashboard({ user }: { user: Profile }) {
-  const [jobs, setJobs] = useState<JobListing[]>([])
-  const [apps, setApps] = useState<Application[]>([])
-  const [opens, setOpens] = useState<Record<string, number>>({})
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    ;(async () => {
-      const [j, a, o] = await Promise.all([
-        jobsApi.byCompany(user.id),
-        applicationsApi.byCompany(user.id),
-        jobsApi.openCounts(),
-      ])
-      setJobs(j)
-      setApps(a)
-      setOpens(o)
-      setLoading(false)
-    })()
-  }, [user])
-
-  const stats = [
-    { label: 'Active listings', value: jobs.filter((j) => j.status === 'active').length, icon: Briefcase },
-    { label: 'Total applications', value: apps.length, icon: Users },
-    { label: 'Shortlisted', value: apps.filter((a) => a.status === 'shortlisted' || a.status === 'hired').length, icon: CheckCircle2 },
-    { label: 'In review', value: apps.filter((a) => a.status === 'reviewed').length, icon: Eye },
-  ]
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-          <p className="text-sm text-muted-foreground">{greeting()},</p>
-          <h1 className="text-2xl font-bold tracking-tight">{user.company_name}</h1>
-        </div>
-        <Link to="/app/listings">
-          <Button className="gap-1.5">
-            <Send className="h-4 w-4" /> Post a role
-          </Button>
-        </Link>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {stats.map((s) => (
-          <Card key={s.label}>
-            <CardBody className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/12 text-primary">
-                <s.icon className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold leading-none">{loading ? '—' : s.value}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{s.label}</p>
-              </div>
-            </CardBody>
-          </Card>
-        ))}
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <SectionHeader icon={Briefcase} title="Your listings" action={<Link to="/app/listings" className="text-sm font-medium text-primary hover:underline">Manage</Link>} />
-          <div className="space-y-3">
-            {jobs.length === 0 ? (
-              <Card><CardBody className="py-10 text-center text-sm text-muted-foreground">No listings yet. Post your first role.</CardBody></Card>
-            ) : (
-              jobs.map((j) => {
-                // External listings apply off-platform → no applications reach us;
-                // show unique people who opened the apply link instead.
-                const external = !!j.apply_url
-                const count = external ? (opens[j.id] ?? 0) : apps.filter((a) => a.job_id === j.id).length
-                return (
-                  <Card key={j.id}>
-                    <CardBody className="flex items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <Link to={`/app/listings/${j.id}`} className="block truncate font-semibold hover:text-primary hover:underline">{j.title}</Link>
-                        <p className="text-sm text-muted-foreground">{j.location} · {j.listing_type}</p>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-center">
-                          <p className="text-lg font-bold">{count}</p>
-                          <p className="text-xs text-muted-foreground">{external ? 'views' : 'applicants'}</p>
-                        </div>
-                        <Badge tone={j.status === 'active' ? 'success' : 'default'} className="capitalize">{j.status}</Badge>
-                      </div>
-                    </CardBody>
-                  </Card>
-                )
-              })
-            )}
-          </div>
-        </div>
-        <div>
-          <SectionHeader icon={Users} title="Recent applicants" />
-          <Card>
-            <CardBody>
-              {apps.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No applicants yet.</p>
-              ) : (
-                <div className="space-y-3">
-                  {apps.slice(0, 5).map((a) => (
-                    <Link key={a.id} to={`/app/applicants/${a.id}`} className="flex items-center gap-3 rounded-lg -mx-2 p-2 hover:bg-muted">
-                      <Avatar name={a.full_name} size={34} />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{a.full_name}</p>
-                        <p className="truncate text-xs text-muted-foreground">{a.school}</p>
-                      </div>
-                      <Badge tone={statusTone[a.status]} className="capitalize">{a.status}</Badge>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </CardBody>
-          </Card>
-        </div>
-      </div>
-    </div>
   )
 }
 

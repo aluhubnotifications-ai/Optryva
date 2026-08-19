@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { BarChart3, Briefcase, Users, Star, TrendingUp, UserCheck, Eye } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
 import { useCurrentUser } from '@/lib/store'
 import { applicationsApi, followsApi, jobsApi } from '@/lib/api'
 import type { Application, JobListing } from '@/types'
 import { Card, CardBody, Skeleton } from '@/components/ui/primitives'
+import { Button } from '@/components/ui/Button'
 
 export default function Analytics() {
   const user = useCurrentUser()!
@@ -73,8 +75,15 @@ export default function Analytics() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight"><BarChart3 className="h-6 w-6 text-primary" /> Analytics</h1>
-        <p className="text-sm text-muted-foreground">Performance across your listings.</p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight"><BarChart3 className="h-6 w-6 text-primary" /> Analytics</h1>
+            <p className="text-sm text-muted-foreground">Performance across your listings.</p>
+          </div>
+          <Link to="/app/listings">
+            <Button className="gap-1.5"><Briefcase className="h-4 w-4" /> Manage listings</Button>
+          </Link>
+        </div>
       </div>
 
       {/* KPIs */}
