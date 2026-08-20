@@ -1,6 +1,7 @@
 import * as db from '@/data/mockDb'
 import { dmThreadId, seededScore, sleep, uid } from '@/lib/utils'
 import { trackAi } from '@/lib/aiActivity'
+import { cached, invalidateCache } from '@/lib/dataCache'
 import type {
   AiMatch,
   AppNotification,
@@ -191,10 +192,13 @@ export const profilesApi = {
     }
   },
   async update(id: string, patch: Partial<Profile>): Promise<Profile | null> {
+    invalidateCache('profiles:list:all', 'profiles:list:company', 'profiles:list:school')
     return (await apiFetch(`/profiles/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })) as Profile
   },
   async list(type?: Profile['user_type']): Promise<Profile[]> {
-    return (await apiFetch(`/profiles${type ? `?type=${encodeURIComponent(type)}` : ''}`)) as Profile[]
+    return cached(`profiles:list:${type ?? 'all'}`, () =>
+      apiFetch(`/profiles${type ? `?type=${encodeURIComponent(type)}` : ''}`) as Promise<Profile[]>,
+    )
   },
 }
 
@@ -219,7 +223,7 @@ export const resumesApi = {
 // (kept for call-site compatibility).
 export const jobsApi = {
   async list(_viewer?: Profile | null): Promise<JobListing[]> {
-    return (await apiFetch('/jobs')) as JobListing[]
+    return cached('jobs:list', () => apiFetch('/jobs') as Promise<JobListing[]>)
   },
   async get(id: string): Promise<JobListing | null> {
     try {
@@ -232,12 +236,15 @@ export const jobsApi = {
     return (await apiFetch(`/jobs/company/${companyId}`)) as JobListing[]
   },
   async create(job: Omit<JobListing, 'id' | 'created_at'>): Promise<JobListing> {
+    invalidateCache('jobs:list')
     return (await apiFetch('/jobs', { method: 'POST', body: JSON.stringify(job) })) as JobListing
   },
   async update(id: string, patch: Partial<JobListing>): Promise<JobListing | null> {
+    invalidateCache('jobs:list')
     return (await apiFetch(`/jobs/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })) as JobListing
   },
   async remove(id: string): Promise<boolean> {
+    invalidateCache('jobs:list')
     await apiFetch(`/jobs/${id}`, { method: 'DELETE' })
     return true
   },
@@ -264,7 +271,7 @@ export const jobsApi = {
 // company; a status change notifies the student (server-side, in `notify`).
 export const applicationsApi = {
   async byStudent(_studentId: string): Promise<Application[]> {
-    return (await apiFetch('/applications/mine')) as Application[]
+    return cached(`apps:student:${_studentId}`, () => apiFetch('/applications/mine') as Promise<Application[]>)
   },
   async byJob(jobId: string): Promise<Application[]> {
     return (await apiFetch(`/applications/job/${jobId}`)) as Application[]
@@ -280,12 +287,15 @@ export const applicationsApi = {
     }
   },
   async create(app: Omit<Application, 'id' | 'created_at' | 'timeline' | 'status'>): Promise<Application> {
+    invalidateCache(`apps:student:${app.student_id}`)
     return (await apiFetch('/applications', { method: 'POST', body: JSON.stringify(app) })) as Application
   },
   async setStatus(id: string, status: ApplicationStatus): Promise<Application | null> {
+    invalidateCache()
     return (await apiFetch(`/applications/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })) as Application
   },
   async remove(id: string): Promise<boolean> {
+    invalidateCache()
     await apiFetch(`/applications/${id}`, { method: 'DELETE' })
     return true
   },
@@ -306,9 +316,10 @@ export interface Conversation {
 // via short-interval polling in the Messages page.
 export const messagesApi = {
   async conversations(_userId: string): Promise<Conversation[]> {
-    return (await apiFetch('/messages/conversations')) as Conversation[]
+    return cached(`msgs:conv:${_userId}`, () => apiFetch('/messages/conversations') as Promise<Conversation[]>)
   },
   async markThreadRead(threadId: string, _userId: string) {
+    invalidateCache(`msgs:conv:${_userId}`)
     await apiFetch(`/messages/thread/${threadId}/read`, { method: 'POST' })
     return true
   },

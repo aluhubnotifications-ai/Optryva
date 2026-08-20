@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -23,12 +23,21 @@ import { Card, CardBody, Badge, Avatar, Progress, Skeleton } from '@/components/
 import { Button } from '@/components/ui/Button'
 import { ScoreRing } from '@/components/ScoreRing'
 import { formatDate, daysUntil } from '@/lib/utils'
-import Analytics from '@/pages/company/Analytics'
+
+// Recharts-backed analytics is heavy and only used for the company view — load
+// it on demand so students never download the charting bundle on the dashboard.
+const Analytics = lazy(() => import('@/pages/company/Analytics'))
 
 export default function Dashboard() {
   const user = useCurrentUser()
   if (!user) return null
-  return user.user_type === 'student' ? <StudentDashboard user={user} /> : <Analytics />
+  return user.user_type === 'student' ? (
+    <StudentDashboard user={user} />
+  ) : (
+    <Suspense fallback={<div className="py-20 text-center text-sm text-muted-foreground">Loading analytics…</div>}>
+      <Analytics />
+    </Suspense>
+  )
 }
 
 /* ============================ STUDENT ============================ */
@@ -67,11 +76,25 @@ function StudentDashboard({ user }: { user: Profile }) {
       setFollowing(new Set(myFollows.map((f) => f.company_id)))
       setLoading(false)
     })()
-    // Matching runs through the shared global runner — same scores everywhere,
-    // a single activity-panel task with a real percentage. Idempotent.
-    void useMatchProgress.getState().run(user.id)
+
+    // Kick off AI matching only once the browser is idle, so it never competes
+    // with the dashboard's first paint / data load. The runner itself is
+    // idempotent, so navigating back reuses the same scores.
+    const startMatching = () => {
+      if (active) void useMatchProgress.getState().run(user.id)
+    }
+    const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback
+    let idleId: number
+    if (ric) {
+      idleId = ric(startMatching, { timeout: 2000 })
+    } else {
+      idleId = window.setTimeout(startMatching, 1200)
+    }
     return () => {
       active = false
+      const cic = (window as unknown as { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback
+      if (ric && cic) cic(idleId)
+      else clearTimeout(idleId)
     }
   }, [user])
 

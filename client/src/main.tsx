@@ -8,19 +8,29 @@ import './styles/globals.css'
 
 // This app has NO service worker. If a stale one from a previous PWA build is
 // still registered on this origin, it intercepts requests and serves cached
-// assets (e.g. "Optryva.js"), breaking the real Vite bundle. Tear it down.
+// assets, breaking the real Vite bundle. Tear it down — but only once per
+// browser, so a future legitimate SW is never force-reloaded on every startup.
+const SW_CLEANUP_KEY = 'optryva-sw-cleaned'
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations()
-    .then((regs) => {
-      if (regs.length) {
-        Promise.all(regs.map((r) => r.unregister()))
-          .then(() => (window.caches ? caches.keys() : Promise.resolve([] as string[])))
-          .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
-          .then(() => location.reload()) // one reload to load fresh, uncached assets
-          .catch(() => {})
-      }
-    })
-    .catch(() => {})
+  if (!localStorage.getItem(SW_CLEANUP_KEY)) {
+    navigator.serviceWorker.getRegistrations()
+      .then((regs) => {
+        if (regs.length) {
+          Promise.all(regs.map((r) => r.unregister()))
+            .then(() => (window.caches ? caches.keys() : Promise.resolve([] as string[])))
+            .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+            .then(() => {
+              localStorage.setItem(SW_CLEANUP_KEY, '1')
+              location.reload() // single reload to load fresh, uncached assets
+            })
+            .catch(() => localStorage.setItem(SW_CLEANUP_KEY, '1'))
+        } else {
+          // No stale SW present — record the cleanup so we never check again.
+          localStorage.setItem(SW_CLEANUP_KEY, '1')
+        }
+      })
+      .catch(() => localStorage.setItem(SW_CLEANUP_KEY, '1'))
+  }
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
