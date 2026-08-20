@@ -3,6 +3,7 @@ import { sb, must } from '@/db'
 import { requireAuth } from '@/lib/auth'
 import { rowToNotification } from '@/lib/serialize'
 import { uid, now, notify, dmThreadId } from '@/lib/util'
+import { cacheGet, cacheSet, cacheDelete } from '@/lib/cache'
 
 /* ----------------------------- Follows + ratings + companies ----------------------------- */
 export const social = Router()
@@ -76,8 +77,18 @@ messages.use(requireAuth)
 
 messages.get('/conversations', async (req, res) => {
   const meId = req.user!.id
-  const me = must(await sb.from('profiles').select('user_type').eq('id', meId).maybeSingle()) as any
-  const isCompany = me?.user_type === 'company' || me?.user_type === 'school'
+  // req.user is the verified JWT payload, which already carries user_type — no
+  // need for a separate profiles lookup just to decide company vs student.
+  const isCompany = req.user!.user_type === 'company' || req.user!.user_type === 'school'
+
+  // Short-lived cache: the nav badge polls this every 30s and the dashboard
+  // also calls it, so serve repeats from memory instead of re-querying Postgres.
+  const cacheKey = `convos:${meId}`
+  const cached = cacheGet<any[]>(cacheKey)
+  if (cached) {
+    const limit = parseInt((req.query.limit as string) || '0', 10)
+    return res.json(limit > 0 ? cached.slice(0, limit) : cached)
+  }
 
   // 1) Application-scoped conversations (1–2 queries, no per-row lookups).
   let apps: any[]
@@ -145,6 +156,7 @@ messages.get('/conversations', async (req, res) => {
   // doesn't pull them all at once.
   const limit = parseInt((req.query.limit as string) || '0', 10)
   if (limit > 0) convos = convos.slice(0, limit)
+  cacheSet(cacheKey, convos, 10_000)
   res.json(convos)
 })
 
@@ -162,6 +174,7 @@ messages.get('/thread/:threadId', async (req, res) => {
 
 messages.post('/thread/:threadId/read', async (req, res) => {
   must(await sb.from('messages').update({ read: 1 }).eq('thread_id', req.params.threadId).neq('sender_id', req.user!.id))
+  cacheDelete(`convos:${req.user!.id}`)
   res.json({ ok: true })
 })
 

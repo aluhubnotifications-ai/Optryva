@@ -5,6 +5,7 @@ import { rowToJob } from '@/lib/serialize'
 import { uid, now, notify } from '@/lib/util'
 import { embedJob } from '@/lib/enrich'
 import { jobVisibleTo, schoolGates } from '@/lib/visibility'
+import { cacheGet, cacheSet, cacheDeletePrefix } from '@/lib/cache'
 
 export const jobs = Router()
 jobs.use(requireAuth)
@@ -112,9 +113,16 @@ jobs.post('/:id/open', async (req, res) => {
 
 jobs.get('/', async (req, res) => {
   const viewer = must(await sb.from('profiles').select('*').eq('id', req.user!.id).maybeSingle()) as any
+  // The dashboard, nav badges, and the Jobs page all hit this; the full active
+  // set changes rarely, so cache the visibility-filtered result per viewer.
+  const cacheKey = `jobs:active:${req.user!.id}`
+  const cached = cacheGet<any[]>(cacheKey)
+  if (cached) return res.json(cached)
   const rows = must(await sb.from('job_listings').select(LIST_COLUMNS).eq('status', 'active').order('created_at', { ascending: false })) as any[]
   const gates = await schoolGates(rows.map((r) => r.company_id))
-  res.json(rows.filter((r) => jobVisibleTo(r, viewer, gates)).map(rowToJob))
+  const payload = rows.filter((r) => jobVisibleTo(r, viewer, gates)).map(rowToJob)
+  cacheSet(cacheKey, payload, 20_000)
+  res.json(payload)
 })
 
 jobs.get('/company/:companyId', async (req, res) => {
@@ -178,6 +186,7 @@ jobs.post('/', async (req, res) => {
     row.students_only = viewer.user_type === 'school' && b.students_only ? 1 : 0
   }
   must(await sb.from('job_listings').insert(row))
+  cacheDeletePrefix('jobs:active:')
 
   // Notify followers (in-app; email/push would fire here in §14.2)
   const followers = must(await sb.from('company_follows').select('student_id').eq('company_id', req.user!.id)) as any[]
@@ -228,6 +237,7 @@ jobs.patch('/:id', async (req, res) => {
           : 0
   }
   must(await sb.from('job_listings').update(merged).eq('id', r.id))
+  cacheDeletePrefix('jobs:active:')
   // Invalidate cached matches for this job (DB-trigger equivalent, spec §8.1)
   must(await sb.from('ai_match_cache').update({ stale: 1 }).eq('job_id', r.id))
   const job = must(await sb.from('job_listings').select('*').eq('id', r.id).maybeSingle())
@@ -239,6 +249,7 @@ jobs.delete('/:id', async (req, res) => {
   const r = must(await sb.from('job_listings').select('company_id').eq('id', req.params.id).maybeSingle()) as any
   if (!r) return res.status(404).json({ error: 'not_found' })
   if (r.company_id !== req.user!.id) return res.status(403).json({ error: 'forbidden' })
-  must(await sb.from('job_listings').delete().eq('id', req.params.id))
+  must(await sb.from('job_listings').delete().eq('id', r.id))
+  cacheDeletePrefix('jobs:active:')
   res.json({ ok: true })
 })
