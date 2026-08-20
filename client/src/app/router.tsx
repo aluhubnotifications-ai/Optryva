@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, useEffect, useState } from 'react'
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
 import { AppShell } from '@/app/AppShell'
 import { useSession, useCurrentUser } from '@/lib/store'
@@ -12,28 +12,28 @@ import VerifyEmail from '@/pages/auth/VerifyEmail'
 import ForgotPassword from '@/pages/auth/ForgotPassword'
 import Onboarding from '@/pages/Onboarding'
 
-import Dashboard from '@/pages/Dashboard'
-import Research from '@/pages/Research'
-import Jobs from '@/pages/student/Jobs'
-import JobDetail from '@/pages/student/JobDetail'
-import Applications from '@/pages/student/Applications'
-import ApplicationDetail from '@/pages/student/ApplicationDetail'
-import Insights from '@/pages/student/Insights'
-import Compass from '@/pages/student/Compass'
-import Companies from '@/pages/student/Companies'
-import CompanyPublic from '@/pages/student/CompanyPublic'
-import Profile from '@/pages/Profile'
+const Dashboard = lazy(() => import('@/pages/Dashboard'))
+const Research = lazy(() => import('@/pages/Research'))
+const Jobs = lazy(() => import('@/pages/student/Jobs'))
+const JobDetail = lazy(() => import('@/pages/student/JobDetail'))
+const Applications = lazy(() => import('@/pages/student/Applications'))
+const ApplicationDetail = lazy(() => import('@/pages/student/ApplicationDetail'))
+const Insights = lazy(() => import('@/pages/student/Insights'))
+const Compass = lazy(() => import('@/pages/student/Compass'))
+const Companies = lazy(() => import('@/pages/student/Companies'))
+const CompanyPublic = lazy(() => import('@/pages/student/CompanyPublic'))
+const Profile = lazy(() => import('@/pages/Profile'))
 
-import Messages from '@/pages/Messages'
-import Usage from '@/pages/Usage'
-import Admin from '@/pages/Admin'
-import UserProfile from '@/pages/UserProfile'
+const Messages = lazy(() => import('@/pages/Messages'))
+const Usage = lazy(() => import('@/pages/Usage'))
+const Admin = lazy(() => import('@/pages/Admin'))
+const UserProfile = lazy(() => import('@/pages/UserProfile'))
 
-import Listings from '@/pages/company/Listings'
-import ListingApplicants from '@/pages/company/ListingApplicants'
-import Analytics from '@/pages/company/Analytics'
-import CompanyProfile from '@/pages/company/CompanyProfile'
-import ApplicantView from '@/pages/company/ApplicantView'
+const Listings = lazy(() => import('@/pages/company/Listings'))
+const ListingApplicants = lazy(() => import('@/pages/company/ListingApplicants'))
+const Analytics = lazy(() => import('@/pages/company/Analytics'))
+const CompanyProfile = lazy(() => import('@/pages/company/CompanyProfile'))
+const ApplicantView = lazy(() => import('@/pages/company/ApplicantView'))
 
 function RequireAuth() {
   const userId = useSession((s) => s.userId)

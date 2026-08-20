@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -48,7 +48,6 @@ type NavBadges = Partial<Record<string, number>>
  *  a short interval so unread/new counts stay current without a page reload. */
 function useNavBadges(userId: string | null, isCompany: boolean): NavBadges {
   const [counts, setCounts] = useState<NavBadges>({})
-  const location = useLocation()
   useEffect(() => {
     if (!userId) return
     let cancelled = false
@@ -68,13 +67,14 @@ function useNavBadges(userId: string | null, isCompany: boolean): NavBadges {
         /* ignore transient fetch errors */
       }
     }
-    load()
+    const start = window.setTimeout(load, 0)
     const t = setInterval(load, 30_000)
     return () => {
       cancelled = true
+      clearTimeout(start)
       clearInterval(t)
     }
-  }, [userId, isCompany, location.pathname])
+  }, [userId, isCompany])
   return counts
 }
 
@@ -146,7 +146,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Main column */}
       <div className="lg:pl-64">
         <Topbar onMenu={() => setMobileOpen(true)} />
-        <main className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+        <main className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
+          <Suspense fallback={<div className="py-20 text-center text-sm text-muted-foreground">Loading…</div>}>
+            {children}
+          </Suspense>
+        </main>
       </div>
 
       {/* Always-on AI activity window (students) — shows what matching/research

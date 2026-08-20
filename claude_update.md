@@ -57,6 +57,84 @@ Already available:
 - [ ] Add automated authorization and privacy tests.
 - [ ] Make database migrations reproducible in deployment.
 
+### Performance and load-time fixes
+
+The production client currently builds into one approximately 1.04 MB JavaScript
+chunk (about 295 KB gzip) across 2,809 transformed modules. Browser Core Web
+Vitals still need a real DevTools trace, but the build and startup code confirm
+several load-time risks.
+
+- [ ] Add route-level lazy loading and `Suspense` so the first screen does not download every page.
+- [ ] Keep Recharts, admin pages, company pages, and AI-heavy panels out of the initial student bundle.
+- [ ] Stop starting AI matching automatically from the dashboard; defer it to Opportunities, Insights, an explicit action, or browser idle time.
+- [ ] Deduplicate dashboard and navigation API requests through a shared cache for jobs, applications, companies, and conversations.
+- [ ] Stop refetching navigation badges on every pathname change; refresh from cached data on a controlled interval.
+- [ ] Remove legacy `mockDb` code from the production API dependency graph where no longer needed.
+- [ ] Replace the Google Fonts render-blocking stylesheet with a locally hosted font or `font-display: swap`.
+- [ ] Replace service-worker cleanup reloads with a one-time versioned cleanup so normal startup cannot trigger a second page load.
+- [ ] Measure LCP, FCP, TTFB, INP, CLS, TBT, and Speed Index with Chrome DevTools on desktop and mobile.
+- [ ] Add a bundle-size budget and fail CI when the initial JavaScript or route chunks exceed the agreed limits.
+
+Recommended order: route splitting, deferred AI matching, request deduplication,
+service-worker cleanup, font loading, then bundle and Core Web Vitals budgets.
+
+#### Implementation recommendations
+
+- Use `React.lazy` for route pages in `client/src/app/router.tsx` and wrap the protected outlet with a small loading boundary.
+- Keep the landing, login, register, and onboarding routes in the first-load chunk; load student, company, analytics, admin, and AI-heavy pages on demand.
+- Move `Analytics` and other Recharts imports behind their route boundary so chart code is not downloaded by students or before the analytics page opens.
+- Remove the dashboard-side `useMatchProgress.getState().run(...)` startup call and let the Opportunities or Insights action own matching.
+- Add request deduplication or a small Zustand data cache so `AppShell`, `Dashboard`, and page components share jobs, applications, profiles, and conversations.
+- Make navigation badge refresh independent of `location.pathname`; refresh on login, relevant mutations, and a longer background interval.
+- Split or remove legacy mock helpers from `client/src/lib/api.ts` after confirming no production call site depends on them.
+- Add `font-display: swap` or self-host the selected font and avoid making an external font stylesheet part of first paint.
+- Change the service-worker cleanup in `client/src/main.tsx` to a versioned one-time migration and never reload on every startup check.
+- Add `vite-bundle-visualizer` or equivalent reporting in CI, with an initial-entry budget of 350 KB gzip and a warning budget for route chunks.
+- Test cold loads on a mid-range mobile profile and Slow 4G, then compare authenticated and logged-out startup separately.
+
+### Security requirements before real ALU data
+
+The recent authorization work protects application ownership and hides résumé
+file contents from general profile responses. The following requirements are
+still needed before using real student, employer, or university data.
+
+- [x] Restrict application detail and status changes to the student, listing owner, or authorized administrator.
+- [x] Keep `cv_text` and `cv_url` out of general profile responses.
+- [ ] Create separate public, candidate-review, and private-owner profile response shapes.
+- [ ] Remove email addresses from general profile lists and profile pages unless the viewer is authorized for that purpose.
+- [ ] Require production JWT access and refresh secrets; fail closed when they are missing.
+- [ ] Add refresh-token rotation, session identifiers, revocation, and password-change invalidation.
+- [ ] Stop marking newly registered accounts as email-verified before ownership is proven.
+- [ ] Load application identity fields from the authenticated student profile instead of trusting request-body name, email, school, and year values.
+- [ ] Move résumé and application documents to private object storage with short-lived signed download URLs.
+- [ ] Add server-side file type, MIME, size, content, and upload-count validation.
+- [ ] Scan uploaded documents for malware and reject unsafe or unsupported files.
+- [ ] Add download and access auditing for résumés, applications, and assessment evidence.
+- [ ] Add rate limits and abuse controls for login, registration, password changes, uploads, applications, and AI endpoints.
+- [ ] Replace or reduce localStorage access-token persistence and document the XSS threat model.
+- [ ] Add consent records with purpose, policy version, timestamp, revocation, and reuse scope.
+- [ ] Add correction, export, deletion, retention, and appeal workflows.
+- [ ] Add authorization integration tests for students, employers, schools, and administrators.
+- [ ] Add privacy tests proving one authenticated user cannot enumerate another user's private data.
+
+### Country preference evaluation
+
+Do not change the matching behavior yet. Evaluate an alternative country-preference
+policy before implementation:
+
+- [ ] Keep all countries eligible for retrieval and scoring when a student has country preferences.
+- [ ] Treat preferred countries as a ranking and explanation signal rather than a hard exclusion.
+- [ ] Keep hard eligibility restrictions separate, including school, year, work authorization, deadline, and explicit opportunity constraints.
+- [ ] Preserve remote opportunities as country-flexible where the role supports remote work.
+- [ ] Compare the current hard-country-filter policy with the proposed preference-boost policy.
+- [ ] Measure qualified matches, applications, interviews, country distribution, and student usefulness ratings.
+- [ ] Review whether students understand that a non-preferred-country role is being shown as an alternative.
+- [ ] Decide the policy only after evaluation; no production matching change is included in this phase.
+
+Do not use real ALU data in the pilot until the public-profile privacy boundary,
+production secret checks, private document storage, rate limits, and authorization
+tests are complete.
+
 ### Pilot readiness
 
 - [ ] Use Optryva branding consistently.
