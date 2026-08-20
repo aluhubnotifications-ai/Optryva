@@ -95,7 +95,7 @@ messages.get('/conversations', async (req, res) => {
     : []
   const jobMap = new Map<string, any>(jobRows.map((j2) => [j2.id, j2]))
 
-  const convos: any[] = apps.map((a) => {
+  let convos: any[] = apps.map((a) => {
     const job = jobMap.get(a.job_id)
     return { thread_id: a.id, scope: 'application', counterpartId: isCompany ? a.student_id : job?.company_id, jobTitle: job?.title }
   })
@@ -141,12 +141,23 @@ messages.get('/conversations', async (req, res) => {
     c.unread = msgs.filter((m) => m.read === 0 && m.sender_id !== meId).length
   }
   convos.sort((a, b) => (b.lastAt ? +new Date(b.lastAt) : 0) - (a.lastAt ? +new Date(a.lastAt) : 0))
+  // Optional cap (e.g. ?limit=50) so a power user with hundreds of threads
+  // doesn't pull them all at once.
+  const limit = parseInt((req.query.limit as string) || '0', 10)
+  if (limit > 0) convos = convos.slice(0, limit)
   res.json(convos)
 })
 
 messages.get('/thread/:threadId', async (req, res) => {
-  const rows = must(await sb.from('messages').select('*').eq('thread_id', req.params.threadId).eq('deleted', 0).order('created_at', { ascending: true })) as any[]
-  res.json(rows.map((r: any) => ({ ...r, reactions: JSON.parse(r.reactions ?? '{}'), attachment: r.attachment ? JSON.parse(r.attachment) : undefined, read: r.read === 1, deleted: false })))
+  // Paginated: return the most-recent `limit` messages (default 30, capped 100)
+  // in ascending order. Pass `before=<created_at>` to fetch the next older page.
+  const limit = Math.min(parseInt((req.query.limit as string) || '30', 10) || 30, 100)
+  const before = typeof req.query.before === 'string' ? req.query.before : undefined
+  let q = sb.from('messages').select('*').eq('thread_id', req.params.threadId).eq('deleted', 0) as any
+  if (before) q = q.lt('created_at', before)
+  const rows = must(await q.order('created_at', { ascending: true })) as any[]
+  const slice = rows.slice(-limit)
+  res.json(slice.map((r: any) => ({ ...r, reactions: JSON.parse(r.reactions ?? '{}'), attachment: r.attachment ? JSON.parse(r.attachment) : undefined, read: r.read === 1, deleted: false })))
 })
 
 messages.post('/thread/:threadId/read', async (req, res) => {

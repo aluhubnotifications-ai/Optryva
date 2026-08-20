@@ -326,16 +326,21 @@ export interface Conversation {
 // Messaging — real backend (Supabase). Application + DM threads. Near real-time
 // via short-interval polling in the Messages page.
 export const messagesApi = {
-  async conversations(_userId: string): Promise<Conversation[]> {
-    return cached(`msgs:conv:${_userId}`, () => apiFetch('/messages/conversations') as Promise<Conversation[]>)
+  async conversations(_userId: string, opts?: { limit?: number }): Promise<Conversation[]> {
+    const q = opts?.limit ? `?limit=${opts.limit}` : ''
+    return cached(`msgs:conv:${_userId}${q}`, () => apiFetch(`/messages/conversations${q}`) as Promise<Conversation[]>)
   },
   async markThreadRead(threadId: string, _userId: string) {
     invalidateCache(`msgs:conv:${_userId}`)
     await apiFetch(`/messages/thread/${threadId}/read`, { method: 'POST' })
     return true
   },
-  async thread(threadId: string): Promise<Message[]> {
-    return (await apiFetch(`/messages/thread/${threadId}`)) as Message[]
+  async thread(threadId: string, opts?: { limit?: number; before?: string }): Promise<Message[]> {
+    const qs = new URLSearchParams()
+    if (opts?.limit) qs.set('limit', String(opts.limit))
+    if (opts?.before) qs.set('before', opts.before)
+    const q = qs.toString()
+    return (await apiFetch(`/messages/thread/${threadId}${q ? `?${q}` : ''}`)) as Message[]
   },
   async send(msg: Omit<Message, 'id' | 'created_at' | 'reactions' | 'read'>) {
     return apiFetch('/messages', {

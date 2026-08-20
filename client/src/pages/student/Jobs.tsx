@@ -99,6 +99,14 @@ export default function Jobs() {
   const [saved, setSaved] = useState<Set<string>>(new Set())
   const [params, setParams] = useSearchParams()
 
+  // Render the list in pages so we never mount all ~100 rows into the DOM at
+  // once (the full set is still fetched once, lean, for filtering + matching).
+  const PAGE = 12
+  const [shown, setShown] = useState(PAGE)
+  useEffect(() => {
+    setShown(PAGE)
+  }, [country, tab, typeKey, listQ, jobs])
+
   // Daily "run AI matching" gate. We also hold the gate OPEN (and never auto-run)
   // until the student has a résumé + preferences — the funnel can't pick a top-40
   // without them, so MatchRunner shows a "complete your profile" prompt instead.
@@ -307,25 +315,32 @@ export default function Jobs() {
             </div>
           </div>
 
-          <div className="space-y-2">
-            {loading
-              ? Array.from({ length: 6 }).map((_, i) => <ListSkeleton key={i} />)
-              : filtered.map((job) => (
-                  <ListRow
-                    key={job.id}
-                    job={job}
-                    company={companies[job.company_id]}
-                    match={matches[job.id]}
-                    selected={selected?.id === job.id}
-                    onClick={() => openJob(job)}
-                  />
-                ))}
-            {!loading && filtered.length === 0 && (
-              <p className="py-10 text-center text-sm text-muted-foreground">
-                No roles in {country === 'All countries' ? 'this view' : country} yet. Try another country, type, or tab.
-              </p>
-            )}
-          </div>
+           <div className="space-y-2">
+             {loading
+               ? Array.from({ length: 6 }).map((_, i) => <ListSkeleton key={i} />)
+               : filtered.slice(0, shown).map((job) => (
+                   <ListRow
+                     key={job.id}
+                     job={job}
+                     company={companies[job.company_id]}
+                     match={matches[job.id]}
+                     selected={selected?.id === job.id}
+                     onClick={() => openJob(job)}
+                   />
+                 ))}
+             {!loading && shown < filtered.length && (
+               <div className="flex justify-center pt-2">
+                 <Button variant="outline" size="sm" onClick={() => setShown((s) => s + PAGE)} className="gap-1.5">
+                   Load more ({filtered.length - shown} more)
+                 </Button>
+               </div>
+             )}
+             {!loading && filtered.length === 0 && (
+               <p className="py-10 text-center text-sm text-muted-foreground">
+                 No roles in {country === 'All countries' ? 'this view' : country} yet. Try another country, type, or tab.
+               </p>
+             )}
+           </div>
         </section>
 
         {/* Detail (desktop) */}

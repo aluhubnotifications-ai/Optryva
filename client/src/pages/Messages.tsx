@@ -165,15 +165,50 @@ function Thread({
   const pollingRef = useRef(false)
   const name = person?.company_name || person?.full_name || 'Unknown'
 
+  const PAGE = 30
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+
   // A cheap signature so polling only re-renders when something actually changed.
   function signature(m: Message[]) {
     return m.map((x) => `${x.id}:${Object.keys(x.reactions).length}`).join('|') + `#${m.length}`
   }
 
-  async function load(markRead = true) {
-    const m = await messagesApi.thread(convo.thread_id)
-    sigRef.current = signature(m)
+  // Replace the visible window (initial load / send / react / remove).
+  function applyWindow(m: Message[]) {
     setMsgs(m)
+    setHasMore(m.length >= PAGE)
+  }
+  // Append only messages not already present (used by polling, which only
+  // fetches the latest page — keeps any older messages the user has loaded).
+  function mergeNew(incoming: Message[]) {
+    setMsgs((prev) => {
+      const ids = new Set(prev.map((x) => x.id))
+      const fresh = incoming.filter((x) => !ids.has(x.id))
+      return fresh.length ? [...prev, ...fresh] : prev
+    })
+  }
+  // Prepend the next older page (cursor = created_at of the current oldest).
+  async function loadOlder() {
+    if (!msgs.length || loadingOlder) return
+    setLoadingOlder(true)
+    try {
+      const older = await messagesApi.thread(convo.thread_id, { limit: PAGE, before: msgs[0].created_at })
+      setMsgs((prev) => {
+        const ids = new Set(prev.map((x) => x.id))
+        const fresh = older.filter((x) => !ids.has(x.id))
+        return fresh.length ? [...fresh, ...prev] : prev
+      })
+      if (older.length < PAGE) setHasMore(false)
+    } finally {
+      setLoadingOlder(false)
+    }
+  }
+
+  async function load(markRead = true) {
+    const m = await messagesApi.thread(convo.thread_id, { limit: PAGE })
+    sigRef.current = signature(m)
+    applyWindow(m)
     if (markRead) {
       await messagesApi.markThreadRead(convo.thread_id, userId)
       onChanged()
@@ -187,11 +222,11 @@ function Thread({
       if (pollingRef.current) return
       pollingRef.current = true
       try {
-        const m = await messagesApi.thread(convo.thread_id)
+        const m = await messagesApi.thread(convo.thread_id, { limit: PAGE })
         const sig = signature(m)
         if (sig !== sigRef.current) {
           sigRef.current = sig
-          setMsgs(m)
+          mergeNew(m)
           await messagesApi.markThreadRead(convo.thread_id, userId)
           onChanged()
         }
@@ -244,9 +279,16 @@ function Thread({
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
-        {grouped.map((m) => {
+       {/* Messages */}
+       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
+         {hasMore && (
+           <div className="flex justify-center pb-1">
+             <Button variant="outline" size="sm" onClick={loadOlder} disabled={loadingOlder} className="gap-1.5">
+               {loadingOlder ? 'Loading…' : 'Load older messages'}
+             </Button>
+           </div>
+         )}
+         {grouped.map((m) => {
           const mine = m.sender_id === userId
           return (
             <div key={m.id} className={cn('group flex items-end gap-2', mine ? 'justify-end' : 'justify-start')}>
