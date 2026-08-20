@@ -111,7 +111,7 @@ function StudentDashboard({ user }: { user: Profile }) {
       if (ric && cic) cic(idleId)
       else clearTimeout(idleId)
     }
-  }, [user])
+  }, [user.id])
 
   // Match scores from the shared store (same source as Jobs & Insights).
   const storeMatches = useMatchProgress((s) => s.matches)
@@ -216,7 +216,9 @@ function StudentDashboard({ user }: { user: Profile }) {
                     <s.icon className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-2xl font-bold leading-none text-accent">{loading ? '—' : s.value}</p>
+                    <p className="text-2xl font-bold leading-none text-accent">
+                      {loading ? <Skeleton className="h-8 w-12" /> : s.value}
+                    </p>
                     <p className="mt-1 text-xs text-muted-foreground">{s.label}</p>
                   </div>
                 </CardBody>
@@ -311,6 +313,31 @@ function StudentDashboard({ user }: { user: Profile }) {
               </Link>
             </CardBody>
           </Card>
+
+          {/* Placeholder cards while the first data load is in flight, so the
+              right rail doesn't jump around once Closing soon / Followed load. */}
+          {loading && (
+            <>
+              <Card>
+                <CardBody>
+                  <Skeleton className="mb-3 h-4 w-32" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                  </div>
+                </CardBody>
+              </Card>
+              <Card>
+                <CardBody>
+                  <Skeleton className="mb-3 h-4 w-32" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                  </div>
+                </CardBody>
+              </Card>
+            </>
+          )}
 
           {/* Closing soon */}
           {!loading && closingSoon.length > 0 && (

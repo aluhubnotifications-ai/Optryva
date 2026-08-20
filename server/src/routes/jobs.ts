@@ -9,6 +9,12 @@ import { jobVisibleTo, schoolGates } from '@/lib/visibility'
 export const jobs = Router()
 jobs.use(requireAuth)
 
+// Lean column set for list views — full descriptions/arrays are only needed on
+// the single-job detail route. Trimming them keeps the 100+ row list payload
+// small (faster transfer + parse) while cards still have everything they show.
+const LIST_COLUMNS =
+  'id,company_id,title,description,type,listing_type,location,country,remote,pay,currency,duration,deadline,tags,status,apply_url,allowed_years,allowed_schools,students_only,posted_by_role,original_company_name,original_company_logo_url,created_at'
+
 // The responsibilities/benefits/qualifications columns are optional (added by a
 // later migration). Detect their presence so create/update still work before the
 // migration is run — and pick them up automatically once it is.
@@ -106,13 +112,13 @@ jobs.post('/:id/open', async (req, res) => {
 
 jobs.get('/', async (req, res) => {
   const viewer = must(await sb.from('profiles').select('*').eq('id', req.user!.id).maybeSingle()) as any
-  const rows = must(await sb.from('job_listings').select('*').eq('status', 'active').order('created_at', { ascending: false })) as any[]
+  const rows = must(await sb.from('job_listings').select(LIST_COLUMNS).eq('status', 'active').order('created_at', { ascending: false })) as any[]
   const gates = await schoolGates(rows.map((r) => r.company_id))
   res.json(rows.filter((r) => jobVisibleTo(r, viewer, gates)).map(rowToJob))
 })
 
 jobs.get('/company/:companyId', async (req, res) => {
-  const rows = must(await sb.from('job_listings').select('*').eq('company_id', req.params.companyId).order('created_at', { ascending: false })) as any[]
+  const rows = must(await sb.from('job_listings').select(LIST_COLUMNS).eq('company_id', req.params.companyId).order('created_at', { ascending: false })) as any[]
   // The owner manages all of its listings (incl. drafts/closed); everyone else
   // only sees what the domain/privacy/year/school gates allow.
   if (req.user!.id === req.params.companyId) return res.json(rows.map(rowToJob))

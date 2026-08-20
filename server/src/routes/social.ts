@@ -100,8 +100,19 @@ messages.get('/conversations', async (req, res) => {
     return { thread_id: a.id, scope: 'application', counterpartId: isCompany ? a.student_id : job?.company_id, jobTitle: job?.title }
   })
 
-  // 2) DM-scoped conversations involving me.
-  const dmRows = must(await sb.from('messages').select('thread_id').eq('scope', 'dm')) as any[]
+  // 2) DM-scoped conversations involving me. The thread_id is `${a}__${b}` with
+  // the two participant ids sorted, so restrict to threads that contain meId on
+  // either side instead of scanning EVERY dm message in the whole table.
+  const safeId = meId.replace(/[^a-zA-Z0-9_-]/g, '')
+  const dmRows = safeId
+    ? (must(
+        await sb
+          .from('messages')
+          .select('thread_id')
+          .eq('scope', 'dm')
+          .or(`thread_id.like.${safeId}__*,thread_id.like.*__${safeId}`),
+      ) as any[])
+    : []
   const seen = new Set<string>()
   for (const d of dmRows) {
     if (seen.has(d.thread_id)) continue

@@ -2,6 +2,7 @@ import * as db from '@/data/mockDb'
 import { dmThreadId, seededScore, sleep, uid } from '@/lib/utils'
 import { trackAi } from '@/lib/aiActivity'
 import { cached, invalidateCache } from '@/lib/dataCache'
+import { startLoad, endLoad } from '@/lib/loadingBar'
 import type {
   AiMatch,
   AppNotification,
@@ -165,8 +166,10 @@ async function rawFetchAuthed(path: string, init: RequestInit = {}): Promise<Res
 /** Authenticated fetch against the real server (Bearer token + cookies).
  *  On a 401, transparently refresh the access token once and retry. */
 async function apiFetch(path: string, init: RequestInit = {}) {
+  startLoad()
   const start = performance.now()
-  let res = await rawFetch(path, init)
+  try {
+    let res = await rawFetch(path, init)
   if (res.status === 401) {
     const ok = await refreshAccessToken()
     if (ok) {
@@ -184,6 +187,9 @@ async function apiFetch(path: string, init: RequestInit = {}) {
   }
   if (!res.ok) throw new Error((data as any)?.error ?? `request_failed_${res.status}`)
   return data
+  } finally {
+    endLoad()
+  }
 }
 
 /* ----------------------------- Profiles (real backend) ----------------------------- */

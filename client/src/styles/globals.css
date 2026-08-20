@@ -73,6 +73,12 @@
     background: hsl(var(--primary) / 0.25);
   }
 
+  /* Top progress bar (GlobalProgress) — a sliding accent segment. */
+  @keyframes optryva-progress {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(400%); }
+  }
+
   /* Prevent iOS Safari from auto-zooming when focusing chat inputs (keeps the
      Messenger-style layout intact when the on-screen keyboard opens). */
   @media (max-width: 640px) {

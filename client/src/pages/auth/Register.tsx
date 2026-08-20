@@ -7,6 +7,7 @@ import { Input, Label } from '@/components/ui/primitives'
 import { useSession } from '@/lib/store'
 import { authApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { Spinner } from '@/components/ui/Spinner'
 import type { UserType } from '@/types'
 
 const ERRORS: Record<string, string> = {
@@ -136,7 +137,13 @@ export default function Register() {
               <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
             )}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Creating…' : 'Create account'}
+              {loading ? (
+                <>
+                  <Spinner className="h-4 w-4" /> Creating…
+                </>
+              ) : (
+                'Create account'
+              )}
             </Button>
           </form>
           <p className="mt-5 text-center text-sm text-muted-foreground">

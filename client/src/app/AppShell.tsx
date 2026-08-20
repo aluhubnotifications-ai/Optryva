@@ -33,9 +33,11 @@ import { messagesApi, jobsApi, applicationsApi } from '@/lib/api'
 import { perf } from '@/lib/perf'
 import { Avatar, Input } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
+import { PageSpinner } from '@/components/ui/Spinner'
 import { Logo } from '@/components/Logo'
 import { AiActivityPanel } from '@/components/AiActivityPanel'
 import { NotificationsMenu } from '@/components/NotificationsMenu'
+import { GlobalProgress } from '@/components/GlobalProgress'
 
 interface NavItem {
   to: string
@@ -118,6 +120,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background">
+      <GlobalProgress />
       {/* Sidebar (desktop) */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-border bg-card/40 lg:flex">
         <SidebarInner nav={nav} badges={badges} />
@@ -151,7 +154,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="lg:pl-64">
         <Topbar onMenu={() => setMobileOpen(true)} />
         <main className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
-          <Suspense fallback={<div className="py-20 text-center text-sm text-muted-foreground">Loading…</div>}>
+          <Suspense fallback={<div className="py-24"><PageSpinner label="Loading…" /></div>}>
             {children}
           </Suspense>
         </main>

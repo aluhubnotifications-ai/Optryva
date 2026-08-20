@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/Button'
 import { Input, Label } from '@/components/ui/primitives'
+import { Spinner } from '@/components/ui/Spinner'
 import { useSession } from '@/lib/store'
 import { authApi } from '@/lib/api'
 
@@ -68,7 +69,13 @@ export default function Login() {
               <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
             )}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Signing in…' : 'Sign in'}
+              {loading ? (
+                <>
+                  <Spinner className="h-4 w-4" /> Signing in…
+                </>
+              ) : (
+                'Sign in'
+              )}
             </Button>
           </form>
           <p className="mt-5 text-center text-sm text-muted-foreground">
