@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -36,6 +36,7 @@ import { matchReadiness } from '@/lib/matchReady'
 import { Drawer } from '@/components/ui/Drawer'
 import { Input, Badge, Avatar, Skeleton } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
+import { Spinner } from '@/components/ui/Spinner'
 import { cn, daysUntil, timeAgo } from '@/lib/utils'
 import { buildJobContent } from '@/lib/jobContent'
 import { CheckCircle2 as Check2, Gift, ClipboardList, GraduationCap, Flag, Wifi } from 'lucide-react'
@@ -101,8 +102,11 @@ export default function Jobs() {
 
   // Render the list in pages so we never mount all ~100 rows into the DOM at
   // once (the full set is still fetched once, lean, for filtering + matching).
-  const PAGE = 12
+  // New pages are revealed automatically as the user scrolls (infinite scroll).
+  const PAGE = 10
   const [shown, setShown] = useState(PAGE)
+  const listRef = useRef<HTMLDivElement>(null)
+  const sentinelRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     setShown(PAGE)
   }, [country, tab, typeKey, listQ, jobs])
@@ -176,6 +180,24 @@ export default function Jobs() {
     list = [...list].sort((a, b) => (matches[b.id]?.score ?? 0) - (matches[a.id]?.score ?? 0))
     return list
   }, [jobs, country, tab, typeKey, listQ, matches, companies])
+
+  // Auto-load the next page when the sentinel scrolls into view. Revealing more
+  // rows is pure client-side (data is already loaded), so it's instant.
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el || shown >= filtered.length) return
+    // Desktop: the list scrolls inside its own sticky container, so observe
+    // against that container. Mobile: the page scrolls, so use the viewport.
+    const isDesktop = window.matchMedia('(min-width: 1024px)').matches
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setShown((s) => Math.min(s + PAGE, filtered.length))
+      },
+      { root: isDesktop ? listRef.current : null, rootMargin: '200px', threshold: 0 },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [shown, filtered.length])
 
   // Keep a valid selection as filters change.
   useEffect(() => {
@@ -304,7 +326,7 @@ export default function Jobs() {
       {/* Two-pane: list (sticky/scroll) + detail (sticky/scroll) */}
       <div className="grid gap-6 lg:grid-cols-[minmax(320px,400px)_1fr]">
         {/* List */}
-        <section className="lg:sticky lg:top-[7.5rem] lg:h-[calc(100vh-9rem)] lg:overflow-y-auto lg:pr-1">
+        <section ref={listRef} className="lg:sticky lg:top-[7.5rem] lg:h-[calc(100vh-9rem)] lg:overflow-y-auto lg:pr-1">
           <p className="mb-2 text-sm text-muted-foreground">
             Showing <span className="font-semibold text-foreground">{filtered.length}</span> AI-matched {filtered.length === 1 ? 'role' : 'roles'}
           </p>
@@ -329,11 +351,12 @@ export default function Jobs() {
                    />
                  ))}
              {!loading && shown < filtered.length && (
-               <div className="flex justify-center pt-2">
-                 <Button variant="outline" size="sm" onClick={() => setShown((s) => s + PAGE)} className="gap-1.5">
-                   Load more ({filtered.length - shown} more)
-                 </Button>
+               <div ref={sentinelRef} className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
+                 <Spinner className="h-4 w-4" /> Loading more…
                </div>
+             )}
+             {!loading && shown >= filtered.length && filtered.length > 0 && (
+               <p className="py-4 text-center text-xs text-muted-foreground">You've reached the end</p>
              )}
              {!loading && filtered.length === 0 && (
                <p className="py-10 text-center text-sm text-muted-foreground">
