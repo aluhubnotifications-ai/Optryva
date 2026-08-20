@@ -30,6 +30,7 @@ import { useTheme } from '@/lib/theme'
 import { useSession, useCurrentUser } from '@/lib/store'
 import { useGeo, COUNTRIES } from '@/lib/geo'
 import { messagesApi, jobsApi, applicationsApi } from '@/lib/api'
+import { perf } from '@/lib/perf'
 import { Avatar, Input } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { Logo } from '@/components/Logo'
@@ -53,6 +54,7 @@ function useNavBadges(userId: string | null, isCompany: boolean): NavBadges {
     let cancelled = false
     const load = async () => {
       try {
+        const navStart = performance.now()
         const convos = await messagesApi.conversations(userId)
         const next: NavBadges = {}
         const unread = convos.reduce((s, c) => s + (c.unread || 0), 0)
@@ -63,6 +65,8 @@ function useNavBadges(userId: string | null, isCompany: boolean): NavBadges {
           if (jobs.length) next['/app/jobs'] = jobs.length
         }
         if (!cancelled) setCounts(next)
+        const ms = Math.round((performance.now() - navStart) * 10) / 10
+        perf('nav badges refreshed', { ms, unread })
       } catch {
         /* ignore transient fetch errors */
       }

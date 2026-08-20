@@ -13,11 +13,26 @@ export function cached<T>(key: string, fn: () => Promise<T>, ttl: number = DEFAU
   const now = Date.now()
   const existing = cache.get(key) as Entry<T> | undefined
   if (existing) {
-    if (existing.promise) return existing.promise
-    if (existing.expire > now) return Promise.resolve(existing.value)
+    if (existing.promise) {
+      if ((import.meta as any).env?.DEV ?? false)
+        console.log(`[Optryva perf] cache DEDUPE  ${key}  (in-flight, reusing request)`)
+      return existing.promise
+    }
+    if (existing.expire > now) {
+      if ((import.meta as any).env?.DEV ?? false)
+        console.log(`[Optryva perf] cache HIT     ${key}  (served from cache, 0ms)`)
+      return Promise.resolve(existing.value)
+    }
   }
+  if ((import.meta as any).env?.DEV ?? false)
+    console.log(`[Optryva perf] cache MISS    ${key}  (fetching from server)`)
+  const start = performance.now()
   const promise = fn()
     .then((value) => {
+      if ((import.meta as any).env?.DEV ?? false) {
+        const ms = Math.round((performance.now() - start) * 10) / 10
+        console.log(`[Optryva perf] fetch done    ${key}  →  ${ms}ms`)
+      }
       cache.set(key, { value, expire: Date.now() + ttl })
       return value
     })

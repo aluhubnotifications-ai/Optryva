@@ -23,6 +23,7 @@ import { Card, CardBody, Badge, Avatar, Progress, Skeleton } from '@/components/
 import { Button } from '@/components/ui/Button'
 import { ScoreRing } from '@/components/ScoreRing'
 import { formatDate, daysUntil } from '@/lib/utils'
+import { perf } from '@/lib/perf'
 
 // Recharts-backed analytics is heavy and only used for the company view — load
 // it on demand so students never download the charting bundle on the dashboard.
@@ -59,6 +60,8 @@ function StudentDashboard({ user }: { user: Profile }) {
 
   useEffect(() => {
     let active = true
+    perf('StudentDashboard mounted', { userId: user.id })
+    const dataStart = performance.now()
     ;(async () => {
       const [j, a, cs, myFollows] = await Promise.all([
         jobsApi.list(user),
@@ -75,13 +78,25 @@ function StudentDashboard({ user }: { user: Profile }) {
       setCompanies(map)
       setFollowing(new Set(myFollows.map((f) => f.company_id)))
       setLoading(false)
+      const ms = Math.round((performance.now() - dataStart) * 10) / 10
+      perf('dashboard DATA READY', { jobs: j.length, apps: a.length, companies: cs.length, ms })
     })()
 
     // Kick off AI matching only once the browser is idle, so it never competes
     // with the dashboard's first paint / data load. The runner itself is
     // idempotent, so navigating back reuses the same scores.
     const startMatching = () => {
-      if (active) void useMatchProgress.getState().run(user.id)
+      if (!active) return
+      perf('idle callback fired → starting AI matching')
+      const mStart = performance.now()
+      void useMatchProgress
+        .getState()
+        .run(user.id)
+        .then(() => {
+          const ms = Math.round((performance.now() - mStart) * 10) / 10
+          perf('AI matching COMPLETE', { ms })
+        })
+        .catch(() => perf('AI matching FAILED'))
     }
     const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback
     let idleId: number
@@ -101,6 +116,13 @@ function StudentDashboard({ user }: { user: Profile }) {
   // Match scores from the shared store (same source as Jobs & Insights).
   const storeMatches = useMatchProgress((s) => s.matches)
   const matches = useMemo(() => [...storeMatches].sort((a, b) => b.score - a.score), [storeMatches])
+
+  // Log once the match scores actually land (Top Picks can render).
+  useEffect(() => {
+    if (storeMatches.length > 0) {
+      perf('dashboard MATCHES READY', { count: storeMatches.length })
+    }
+  }, [storeMatches])
 
   const completeness = useMemo(() => profileCompleteness(user), [user])
   const gaps = useMemo(() => profileGaps(user), [user])

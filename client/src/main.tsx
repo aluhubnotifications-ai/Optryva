@@ -13,6 +13,7 @@ import './styles/globals.css'
 const SW_CLEANUP_KEY = 'optryva-sw-cleaned'
 if ('serviceWorker' in navigator) {
   if (!localStorage.getItem(SW_CLEANUP_KEY)) {
+    const swStart = performance.now()
     navigator.serviceWorker.getRegistrations()
       .then((regs) => {
         if (regs.length) {
@@ -21,12 +22,14 @@ if ('serviceWorker' in navigator) {
             .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
             .then(() => {
               localStorage.setItem(SW_CLEANUP_KEY, '1')
+              console.log(`[Optryva perf] service-worker cleanup  →  ${Math.round((performance.now() - swStart) * 10) / 10}ms (reloading once)`)
               location.reload() // single reload to load fresh, uncached assets
             })
             .catch(() => localStorage.setItem(SW_CLEANUP_KEY, '1'))
         } else {
           // No stale SW present — record the cleanup so we never check again.
           localStorage.setItem(SW_CLEANUP_KEY, '1')
+          console.log(`[Optryva perf] service-worker cleanup  →  none present (${Math.round((performance.now() - swStart) * 10) / 10}ms)`)
         }
       })
       .catch(() => localStorage.setItem(SW_CLEANUP_KEY, '1'))

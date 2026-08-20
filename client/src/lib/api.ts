@@ -165,6 +165,7 @@ async function rawFetchAuthed(path: string, init: RequestInit = {}): Promise<Res
 /** Authenticated fetch against the real server (Bearer token + cookies).
  *  On a 401, transparently refresh the access token once and retry. */
 async function apiFetch(path: string, init: RequestInit = {}) {
+  const start = performance.now()
   let res = await rawFetch(path, init)
   if (res.status === 401) {
     const ok = await refreshAccessToken()
@@ -177,6 +178,10 @@ async function apiFetch(path: string, init: RequestInit = {}) {
   }
   if (res.status === 204) return null
   const data = await res.json().catch(() => ({}))
+  if ((import.meta as any).env?.DEV ?? false) {
+    const ms = Math.round((performance.now() - start) * 10) / 10
+    console.log(`[Optryva perf] api ${init.method ?? 'GET'} ${path}  →  ${res.status} ${ms}ms`)
+  }
   if (!res.ok) throw new Error((data as any)?.error ?? `request_failed_${res.status}`)
   return data
 }
