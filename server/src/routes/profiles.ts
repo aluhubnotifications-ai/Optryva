@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth'
 import { rowToProfile } from '@/lib/serialize'
 import { refreshStudentEnrichment, hasResumeCols } from '@/lib/enrich'
 import { extractDocumentText } from '@/lib/claude'
+import { validateDocumentUrl } from '@/lib/documents'
 import { schoolHiddenFrom, visibilityColsExist, parseDomains } from '@/lib/visibility'
 import { cacheGet, cacheSet } from '@/lib/cache'
 
@@ -42,7 +43,7 @@ profiles.get('/', async (req, res) => {
   const rows = must(await q) as any[]
   // Hide private schools from viewers outside their student domains.
   const viewer = must(await sb.from('profiles').select('id,user_type,email,student_domains,is_private').eq('id', req.user!.id).maybeSingle()) as any
-  const payload = rows.filter((r) => !schoolHiddenFrom(r, viewer)).map(rowToProfile)
+  const payload = rows.filter((r) => !schoolHiddenFrom(r, viewer)).map((r) => rowToProfile(r))
   cacheSet(cacheKey, payload, 20_000)
   res.json(payload)
 })
@@ -101,6 +102,11 @@ profiles.patch('/:id', async (req, res) => {
   const b = req.body ?? {}
   const update: Record<string, any> = {}
   let affectsMatch = false
+
+  if ('cv_url' in b && b.cv_url) {
+    const documentError = validateDocumentUrl(b.cv_url)
+    if (documentError) return res.status(400).json({ error: documentError })
+  }
 
   const cvUrlOk = await cvUrlColExists()
   for (const f of EDITABLE) {

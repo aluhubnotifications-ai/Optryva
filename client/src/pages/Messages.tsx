@@ -341,7 +341,12 @@ function Thread({
 
       {/* Composer */}
       <form onSubmit={(e) => { e.preventDefault(); send() }} className="flex items-center gap-2 border-t border-border bg-card p-3">
-        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Type a message…" className="h-11 flex-1 rounded-full border border-input bg-background px-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Type a message…"
+          className="h-11 flex-1 rounded-full border border-input bg-card px-4 text-sm text-foreground placeholder:text-muted-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
         <Button type="submit" size="icon" className="h-11 w-11 rounded-full" disabled={!input.trim()}><Send className="h-4 w-4" /></Button>
       </form>
     </>

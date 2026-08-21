@@ -112,8 +112,23 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` pending
       applies year/school visibility, prints a ranked, explained report. (Uses `tsx`.)
 
 ## Phase A — Verification (after all pages)
-- [ ] `npm run build` passes, `tsc --noEmit` clean
+- [x] Client build passes, server `tsc --noEmit` clean
 - [ ] Walk all flows in light + dark, desktop + mobile
+
+## Active TODO
+- [ ] Finish client/server verification and desktop/mobile flow checks
+- [ ] Secure résumé and application documents with private storage, signed URLs,
+  validation, and access auditing (server-side validation is complete)
+- [ ] Add authorization and privacy tests
+- [ ] Add loading, error, retry, and offline states
+- [ ] Add route-level lazy loading and defer AI matching
+- [ ] Complete Student Profile, résumé versioning, and application snapshots
+- [x] Existing profile choices now initialize an equal first résumé; new résumé
+  directions start with the same saved preferences without triggering matching
+- [ ] Finish matching evaluation with qualification guardrails and score-band metrics
+
+### Deferred for now
+- AI calibration and engagement-feedback calibration
 
 ## Phase B — Backend (in `server/`, runnable — see server/README.md)
 - [x] Express + TS + **SQLite** (better-sqlite3), schema + auto-seed

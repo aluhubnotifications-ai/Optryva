@@ -2,6 +2,7 @@ import { Router } from '@/lib/http'
 import { sb, must, j } from '@/db'
 import { requireAuth } from '@/lib/auth'
 import { uid, now } from '@/lib/util'
+import { validateDocumentUrl } from '@/lib/documents'
 
 export const resumes = Router()
 resumes.use(requireAuth)
@@ -33,7 +34,34 @@ function owned(id: string, studentId: string) {
 }
 
 resumes.get('/', async (req, res) => {
-  const rows = must(await sb.from('resume_profiles').select('*').eq('student_id', req.user!.id).order('created_at', { ascending: true })) as any[]
+  let rows = must(await sb.from('resume_profiles').select('*').eq('student_id', req.user!.id).order('created_at', { ascending: true })) as any[]
+  // Convert the legacy profile into the first ordinary résumé direction once.
+  // This is deliberately local to résumé storage: it must not invalidate or
+  // rerun matching for the already-scored profile.
+  if (!rows.length && req.user!.user_type === 'student') {
+    const profile = must(await sb.from('profiles').select('*').eq('id', req.user!.id).maybeSingle()) as any
+    if (profile) {
+      const ts = now()
+      const first = {
+        id: uid('resume'),
+        student_id: req.user!.id,
+        name: 'Resume 1',
+        target_roles: profile.desired_roles ?? '[]',
+        preferred_industries: profile.preferred_industries ?? '[]',
+        pref_countries: profile.pref_countries ?? '[]',
+        pref_listing_types: profile.pref_listing_types ?? '[]',
+        skills: profile.skills ?? '[]',
+        work_type: profile.work_type ?? 'any',
+        cv_filename: profile.cv_filename ?? null,
+        cv_url: profile.cv_url ?? null,
+        active: 1,
+        created_at: ts,
+        updated_at: ts,
+      }
+      must(await sb.from('resume_profiles').insert(first))
+      rows = [first]
+    }
+  }
   res.json(rows.map(rowToResume))
 })
 
@@ -42,6 +70,10 @@ resumes.post('/', async (req, res) => {
   const b = req.body ?? {}
   const name = String(b.name ?? '').trim()
   if (!name) return res.status(400).json({ error: 'name_required' })
+  if (b.cv_url) {
+    const documentError = validateDocumentUrl(b.cv_url)
+    if (documentError) return res.status(400).json({ error: documentError })
+  }
   const ts = now()
   const id = uid('resume')
   const row: Record<string, any> = {
@@ -66,6 +98,10 @@ resumes.patch('/:id', async (req, res) => {
   if (!current) return res.status(404).json({ error: 'not_found' })
   const b = req.body ?? {}
   const update: Record<string, any> = { updated_at: now() }
+  if ('cv_url' in b && b.cv_url) {
+    const documentError = validateDocumentUrl(b.cv_url)
+    if (documentError) return res.status(400).json({ error: documentError })
+  }
   for (const field of editable) if (field in b) update[field] = field === 'active' ? (b[field] ? 1 : 0) : (b[field] ?? null)
   for (const field of arrays) if (field in b) update[field] = j.stringify(Array.isArray(b[field]) ? b[field] : [])
   if ('name' in b && !String(b.name ?? '').trim()) return res.status(400).json({ error: 'name_required' })

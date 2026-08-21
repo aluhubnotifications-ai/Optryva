@@ -37,7 +37,7 @@ The data is already collected; we just aren't using it or measuring anything.
       predict engagement — apply-rate / open-rate by score band, recall@K of applied
       jobs in top-K matches, and score↔outcome correlation. The measurement foundation;
       everything below is judged by it.
-- [ ] **Engagement-aware calibration**: extend `calibrate.ts` to treat `job_opens` (clicked
+- [ ] **Engagement-aware calibration** *(deferred for now)*: extend `calibrate.ts` to treat `job_opens` (clicked
       apply) and created `applications` as POSITIVE implicit feedback, and high-scored
       jobs the student saw but ignored as soft NEGATIVE — so the loop fires with real
       sample sizes long before we have terminal hires.

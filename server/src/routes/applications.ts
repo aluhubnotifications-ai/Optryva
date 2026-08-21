@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth'
 import { rowToApplication } from '@/lib/serialize'
 import { uid, now, notify } from '@/lib/util'
 import { isAdminEmail } from '@/lib/admin'
+import { validateDocuments } from '@/lib/documents'
 
 export const applications = Router()
 applications.use(requireAuth)
@@ -43,6 +44,8 @@ applications.get('/:id', async (req, res) => {
 
 applications.post('/', async (req, res) => {
   const b = req.body ?? {}
+  const documentError = validateDocuments(b.documents ?? [])
+  if (documentError) return res.status(400).json({ error: documentError })
   const job = must(await sb.from('job_listings').select('*').eq('id', b.job_id).maybeSingle()) as any
   if (!job) return res.status(404).json({ error: 'job_not_found' })
   const dup = must(await sb.from('applications').select('id').eq('student_id', req.user!.id).eq('job_id', b.job_id).maybeSingle())

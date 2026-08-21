@@ -12,9 +12,11 @@ const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Agriculture', 'Educa
 const TYPES: ListingType[] = ['Internship', 'Full-time', 'Part-time', 'Fellowship']
 const COUNTRIES = ['Rwanda', 'Kenya', 'Nigeria', 'Ghana', 'Uganda', 'Tanzania', 'Ethiopia', 'South Africa', 'Egypt', 'Senegal', 'Morocco']
 
-const blank = (): Omit<ResumeProfile, 'id' | 'student_id' | 'created_at' | 'updated_at'> => ({
-  name: 'New résumé', target_roles: [], preferred_industries: [], pref_countries: [],
-  pref_listing_types: [], skills: [], work_type: 'any', active: true,
+const blank = (base?: ResumeProfile): Omit<ResumeProfile, 'id' | 'student_id' | 'created_at' | 'updated_at'> => ({
+  name: 'New résumé', target_roles: base?.target_roles ?? [], preferred_industries: base?.preferred_industries ?? [],
+  pref_countries: base?.pref_countries ?? [], pref_listing_types: base?.pref_listing_types ?? [],
+  skills: base?.skills ?? [], work_type: base?.work_type ?? 'any',
+  cv_filename: base?.cv_filename, cv_url: base?.cv_url, active: true,
 })
 
 export function ResumeWorkspace() {
@@ -31,7 +33,7 @@ export function ResumeWorkspace() {
 
   async function create() {
     try {
-      const created = await resumesApi.create(blank())
+      const created = await resumesApi.create(blank(resumes[0]))
       setResumes((current) => [...current, created])
     } catch (error) {
       toast({ title: 'Could not create résumé', description: error instanceof Error ? error.message : undefined, tone: 'error' })
