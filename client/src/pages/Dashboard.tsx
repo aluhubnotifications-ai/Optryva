@@ -339,7 +339,10 @@ function StudentDashboard({ user }: { user: Profile }) {
                         to={`/app/jobs?job=${job.id}`}
                         className="-mx-2 flex items-center justify-between gap-2 rounded-lg p-2 hover:bg-muted"
                       >
-                        <p className="min-w-0 truncate text-sm font-medium">{job.title}</p>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{job.title}</p>
+                          <p className="truncate text-xs text-muted-foreground">{job.original_company_name || job.company_name}</p>
+                        </div>
                         <Badge tone={dl <= 3 ? 'danger' : 'warning'} className="shrink-0">
                           {dl === 0 ? 'Today' : `${dl}d`}
                         </Badge>
@@ -350,7 +353,7 @@ function StudentDashboard({ user }: { user: Profile }) {
               )}
               {!loading && followedRoles.length > 0 && (
                 <div>
-                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">From your follows</p>
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">From companies you follow</p>
                   <div className="space-y-1">
                     {followedRoles.map((job) => (
                       <Link
@@ -359,14 +362,17 @@ function StudentDashboard({ user }: { user: Profile }) {
                         className="-mx-2 flex items-center gap-3 rounded-lg p-2 hover:bg-muted"
                       >
                         <Avatar name={job.original_company_name || job.company_name} src={job.original_company_logo_url || job.company_avatar_url} size={32} />
-                        <p className="min-w-0 flex-1 truncate text-sm font-medium">{job.title}</p>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">{job.title}</p>
+                          <p className="truncate text-xs text-muted-foreground">{job.original_company_name || job.company_name} · {job.location}</p>
+                        </div>
                       </Link>
                     ))}
                   </div>
                 </div>
               )}
               {!loading && closingSoon.length === 0 && followedRoles.length === 0 && (
-                <p className="text-sm text-muted-foreground">Nothing urgent right now.</p>
+                <p className="text-sm text-muted-foreground">Nothing urgent right now — check back later.</p>
               )}
             </CardBody>
           </Card>
@@ -497,16 +503,19 @@ function MatchCard({ job, match }: { job: JobListing; match: AiMatch }) {
             </div>
             <ScoreRing score={match.score} size={40} />
           </div>
-          <p className="truncate text-sm font-semibold leading-tight group-hover:text-primary">{job.title}</p>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold leading-tight group-hover:text-primary">{job.title}</p>
+            <p className="truncate text-xs text-muted-foreground">{job.location}</p>
+          </div>
           {match.reasons[0] && (
-            <p className="flex items-start gap-1.5 text-xs text-muted-foreground line-clamp-1">
+            <p className="flex items-start gap-1.5 text-xs text-muted-foreground line-clamp-2">
               <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
-              <span className="min-w-0 truncate">{match.reasons[0]}</span>
+              <span className="min-w-0">{match.reasons[0]}</span>
             </p>
           )}
           <div className="mt-auto flex items-center justify-between gap-2 pt-1">
             <div className="flex min-w-0 flex-wrap gap-1">
-              {match.matched_skills.slice(0, 1).map((s) => (
+              {match.matched_skills.slice(0, 2).map((s) => (
                 <Badge key={s} tone="success" className="text-[11px]">
                   {s}
                 </Badge>
@@ -538,6 +547,7 @@ function MatchSkeleton() {
             <div className="skeleton h-10 w-10 rounded-full" />
           </div>
           <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-3 w-1/2" />
           <Skeleton className="h-3 w-full" />
           <div className="mt-auto flex items-center justify-between gap-2 pt-1">
             <div className="flex gap-1">
