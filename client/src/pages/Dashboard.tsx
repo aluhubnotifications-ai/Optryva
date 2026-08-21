@@ -63,15 +63,17 @@ function StudentDashboard({ user }: { user: Profile }) {
     perf('StudentDashboard mounted', { userId: user.id })
     const dataStart = performance.now()
     ;(async () => {
-      const [j, a, cs, myFollows] = await Promise.all([
+      const [j, a, myFollows] = await Promise.all([
         jobsApi.list(user),
         applicationsApi.byStudent(user.id),
-        profilesApi.list('company'),
         followsApi.forStudent(user.id),
       ])
-      const schoolList = await profilesApi.list('school')
+      // Only fetch the companies/schools that actually posted these jobs — a
+      // targeted `?ids=` query instead of scanning the entire directory table.
+      const refIds = [...new Set(j.map((job) => job.company_id))]
+      const cs = refIds.length ? await profilesApi.list(undefined, { ids: refIds }) : []
       const map: Record<string, Profile> = {}
-      ;[...cs, ...schoolList].forEach((c) => (map[c.id] = c))
+      cs.forEach((c) => (map[c.id] = c))
       if (!active) return
       setJobs(j)
       setApps(a)

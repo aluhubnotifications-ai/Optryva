@@ -4,19 +4,37 @@ import { requireAuth } from '@/lib/auth'
 import { rowToProfile } from '@/lib/serialize'
 import { refreshStudentEnrichment, hasResumeCols } from '@/lib/enrich'
 import { extractDocumentText } from '@/lib/claude'
-import { schoolHiddenFrom, visibilityColsExist } from '@/lib/visibility'
+import { schoolHiddenFrom, visibilityColsExist, parseDomains } from '@/lib/visibility'
+import { cacheGet, cacheSet } from '@/lib/cache'
 
 export const profiles = Router()
 profiles.use(requireAuth)
 
+// Lean column set for list views — the private cv_* columns are never needed by
+// list/directory callers (and cv_text can be very large), so excluding them
+// keeps the payload small and the parse fast. Full rows are still served by the
+// single-profile PATCH/GET-by-id paths.
+const LIST_COLUMNS =
+  'id,user_type,full_name,email,avatar_url,cover_url,bio,school,major,year,location,linkedin,github,twitter,website,desired_roles,preferred_industries,work_type,location_pref,open_to_internship,open_to_fulltime,pref_listing_types,pref_countries,monitoring_consent,skills,company_name,industry,company_size,student_domains,is_private,posted_by_role,plan,plan_activated_at,created_at'
+
 profiles.get('/', async (req, res) => {
   const type = req.query.type as string | undefined
-  let q = sb.from('profiles').select('*').order('created_at', { ascending: false })
+  // Optional `ids` lets callers (e.g. the dashboard) fetch only the specific
+  // profiles they need instead of scanning the whole directory table.
+  const idsRaw = req.query.ids as string | undefined
+  const ids = idsRaw ? idsRaw.split(',').filter(Boolean) : null
+  const cacheKey = `profiles:${type ?? 'all'}:${ids ? ids.join(',') : 'all'}`
+  const cached = cacheGet<any[]>(cacheKey)
+  if (cached) return res.json(cached)
+  let q = sb.from('profiles').select(LIST_COLUMNS).order('created_at', { ascending: false })
   if (type) q = q.eq('user_type', type)
+  if (ids) q = q.in('id', ids)
   const rows = must(await q) as any[]
   // Hide private schools from viewers outside their student domains.
-  const viewer = must(await sb.from('profiles').select('*').eq('id', req.user!.id).maybeSingle()) as any
-  res.json(rows.filter((r) => !schoolHiddenFrom(r, viewer)).map(rowToProfile))
+  const viewer = must(await sb.from('profiles').select('id,user_type,email,student_domains,is_private').eq('id', req.user!.id).maybeSingle()) as any
+  const payload = rows.filter((r) => !schoolHiddenFrom(r, viewer)).map(rowToProfile)
+  cacheSet(cacheKey, payload, 20_000)
+  res.json(payload)
 })
 
 profiles.get('/:id', async (req, res) => {
@@ -115,8 +133,22 @@ profiles.patch('/:id', async (req, res) => {
 
   // School domain/privacy fields (migration 0011) — only persisted once present.
   if (('student_domains' in b || 'is_private' in b) && (await visibilityColsExist())) {
-    if ('student_domains' in b) update.student_domains = j.stringify(b.student_domains ?? [])
-    if ('is_private' in b) update.is_private = b.is_private ? 1 : 0
+    // A private school with no domains is invisible to everyone (incl. its own
+    // students and the messaging UI), so refuse to save that state. The school
+    // must name at least one student email domain before going private.
+    const cur = must(
+      await sb.from('profiles').select('user_type, is_private, student_domains').eq('id', req.user!.id).maybeSingle(),
+    ) as any
+    const willPrivate = 'is_private' in b ? (b.is_private ? 1 : 0) : (cur?.is_private ?? 0)
+    const domainsRaw = 'student_domains' in b ? (b.student_domains ?? []) : (cur?.student_domains ?? [])
+    if (cur?.user_type === 'school' && willPrivate === 1 && parseDomains(domainsRaw).length === 0) {
+      return res.status(400).json({
+        error: 'private_requires_domains',
+        message: 'A private school must list at least one student email domain (student_domains).',
+      })
+    }
+    if ('student_domains' in b) update.student_domains = j.stringify(domainsRaw)
+    if ('is_private' in b) update.is_private = willPrivate
   }
 
   if (Object.keys(update).length) must(await sb.from('profiles').update(update).eq('id', req.params.id))
