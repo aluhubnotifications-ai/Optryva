@@ -198,8 +198,8 @@ function StudentDashboard({ user }: { user: Profile }) {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {stats.map((s, i) => (
           <motion.div key={s.label} className="min-w-0" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
-            <Link to={s.to}>
-              <Card className="transition-shadow hover:shadow-card">
+            <Link to={s.to} className="group block">
+              <Card className="relative transition-all hover:border-primary/25 hover:shadow-card active:scale-[.99]">
                 <CardBody className="flex items-center gap-2.5 p-4 sm:gap-3 sm:p-5">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary sm:h-11 sm:w-11">
                     <s.icon className="h-5 w-5" />
@@ -211,6 +211,7 @@ function StudentDashboard({ user }: { user: Profile }) {
                     <p className="mt-1 text-xs text-muted-foreground">{s.label}</p>
                     {!loading && <p className="mt-0.5 truncate text-[11px] text-muted-foreground/70">{s.sub}</p>}
                   </div>
+                  <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
                 </CardBody>
               </Card>
             </Link>
