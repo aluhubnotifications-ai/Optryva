@@ -185,6 +185,7 @@ create table if not exists notifications (
 create table if not exists ai_match_cache (
   student_id    text not null,
   job_id        text not null,
+  resume_id     text references resume_profiles(id) on delete set null,
   payload       text not null,                 -- JSON AiMatch
   stale         integer not null default 0,
   created_at    text not null,
