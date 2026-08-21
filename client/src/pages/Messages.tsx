@@ -161,6 +161,8 @@ function Thread({
   const [input, setInput] = useState('')
   const [reactFor, setReactFor] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const bottomIdRef = useRef<string | null>(null)
   const sigRef = useRef('')
   const pollingRef = useRef(false)
   const name = person?.company_name || person?.full_name || 'Unknown'
@@ -240,7 +242,20 @@ function Thread({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [convo.thread_id])
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
+  // Scroll the messages container to the bottom when a new message lands at the
+  // bottom (initial load or a freshly sent/received message) — never the page.
+  // Scrolling the container directly avoids scrollIntoView bubbling up to the
+  // window, which was pushing the whole view up after load. Loading older
+  // messages prepends above, so the bottom id stays the same and we skip it.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const last = msgs[msgs.length - 1]
+    if (last && last.id !== bottomIdRef.current) {
+      bottomIdRef.current = last.id
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    }
+  }, [msgs])
 
   async function send() {
     const body = input.trim()
@@ -280,7 +295,7 @@ function Thread({
       </div>
 
        {/* Messages */}
-       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
+       <div ref={scrollRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
          {hasMore && (
            <div className="flex justify-center pb-1">
              <Button variant="outline" size="sm" onClick={loadOlder} disabled={loadingOlder} className="gap-1.5">
