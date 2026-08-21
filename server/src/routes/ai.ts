@@ -467,16 +467,25 @@ ai.post('/matches/stream', async (req, res) => {
         if (!ready.ready) { send({ notReady: { missing: ready.missing } }); send({ done: true }); return }
         const total = visible.length
         send({ meta: { total } })
+        // Score concurrently in a bounded pool: progress stays per-role granular, but
+        // we no longer spend 30 sequential round-trips. Cached roles still return
+        // instantly; the pool size keeps us under the Haiku rate limit.
+        const CONCURRENCY = 5
         let done = 0
-        // Sequential so progress is granular AND we don't burst past the Haiku
-        // rate limit; cached roles return instantly.
-        for (const r of visible) {
-          const job = rowToMatchJob(r)
-          let m: AiMatch | null = null
-          try { m = await getMatch(uid, job, {}, { row: viewer, rp, cached: cm.get(r.id) ?? null }) } catch { m = null }
-          done++
-          send({ progress: { done, total, title: job.title }, match: m })
-        }
+        let cursor = 0
+        const pool = Array.from({ length: Math.min(CONCURRENCY, total || 1) }, () => (async () => {
+          while (true) {
+            const i = cursor++
+            if (i >= visible.length) break
+            const r = visible[i]
+            const job = rowToMatchJob(r)
+            let m: AiMatch | null = null
+            try { m = await getMatch(uid, job, {}, { row: viewer, rp, cached: cm.get(r.id) ?? null }) } catch { m = null }
+            done++
+            send({ progress: { done, total, title: job.title }, match: m })
+          }
+        })())
+        await Promise.all(pool)
         send({ done: true })
       } catch {
         send({ error: true })
