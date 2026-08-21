@@ -56,7 +56,7 @@ export default function Listings() {
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight"><Briefcase className="h-6 w-6 text-primary" /> My Listings</h1>
           <p className="text-sm text-muted-foreground">Post roles and manage applicants.</p>
         </div>
-        <Button className="gap-1.5" onClick={() => { setEditing(null); setOpen(true) }}><Plus className="h-4 w-4" /> Create listing</Button>
+        <Button className="w-full gap-1.5 sm:w-auto" onClick={() => { setEditing(null); setOpen(true) }}><Plus className="h-4 w-4" /> Create listing</Button>
       </div>
 
       {loading ? (
@@ -66,7 +66,7 @@ export default function Listings() {
           <Briefcase className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
           <p className="font-medium">No listings yet</p>
           <p className="mt-1 text-sm text-muted-foreground">Post your first role to start receiving applicants.</p>
-          <Button className="mt-4 gap-1.5" onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Create listing</Button>
+          <Button className="mt-4 w-full max-w-xs gap-1.5 sm:w-auto" onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Create listing</Button>
         </div>
       ) : (
         <div className="space-y-3">

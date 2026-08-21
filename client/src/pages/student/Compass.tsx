@@ -181,9 +181,9 @@ export default function Compass() {
                           </ul>
                         </div>
 
-                        <div className="mt-3 flex gap-2">
-                          <Button size="sm" className="gap-1.5" onClick={() => openPrep(rec.job)}><Sparkles className="h-4 w-4" /> One-page prep plan</Button>
-                          <Link to={`/app/jobs?job=${rec.job.id}`}><Button variant="outline" size="sm" className="gap-1">View role <ArrowRight className="h-3.5 w-3.5" /></Button></Link>
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                          <Button size="sm" className="w-full gap-1.5 sm:w-auto" onClick={() => openPrep(rec.job)}><Sparkles className="h-4 w-4" /> One-page prep plan</Button>
+                          <Link to={`/app/jobs?job=${rec.job.id}`} className="w-full sm:w-auto"><Button variant="outline" size="sm" className="w-full gap-1">View role <ArrowRight className="h-3.5 w-3.5" /></Button></Link>
                         </div>
                       </div>
                     </div>

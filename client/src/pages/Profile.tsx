@@ -181,7 +181,7 @@ export default function Profile() {
             <p className="text-sm text-muted-foreground">{user.major}{user.school ? ` · ${user.school}` : ''}</p>
             <p className="text-xs text-muted-foreground">{user.email}</p>
           </div>
-          <Button onClick={save} loading={saving} className="gap-1.5"><Save className="h-4 w-4" /> Save changes</Button>
+          <Button onClick={save} loading={saving} className="w-full gap-1.5 sm:w-auto"><Save className="h-4 w-4" /> Save changes</Button>
         </CardBody>
       </Card>
 
@@ -326,7 +326,7 @@ export default function Profile() {
       </Section>
 
       <div className="flex justify-end">
-        <Button onClick={save} loading={saving} className="gap-1.5"><Save className="h-4 w-4" /> Save changes</Button>
+        <Button onClick={save} loading={saving} className="w-full gap-1.5 sm:w-auto"><Save className="h-4 w-4" /> Save changes</Button>
       </div>
 
       <AccountSecurity />
@@ -339,7 +339,7 @@ export default function Profile() {
         title="Remove your CV?"
         description="Your AI matches rely on your CV. You can upload a new one anytime."
       >
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="ghost" onClick={() => setConfirmRemoveCv(false)}>Keep it</Button>
           <Button variant="danger" className="gap-1.5" onClick={() => { setConfirmRemoveCv(false); void removeCv() }}>
             <Trash2 className="h-4 w-4" /> Remove CV
