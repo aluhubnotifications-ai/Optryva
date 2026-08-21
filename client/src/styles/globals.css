@@ -138,4 +138,7 @@
 .scroll-area {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--muted-foreground) / 0.4) transparent;
+  /* Reserve the gutter permanently so the bar never pops in/out as overflow
+     toggles between short and long conversations. */
+  scrollbar-gutter: stable;
 }
