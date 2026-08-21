@@ -192,6 +192,13 @@ async function apiFetch(path: string, init: RequestInit = {}) {
   }
 }
 
+export async function fetchProtectedDocument(url: string): Promise<string> {
+  const path = url.startsWith('/api') ? url.slice(4) : url
+  const res = await rawFetchAuthed(path)
+  if (!res.ok) throw new Error(`document_request_failed_${res.status}`)
+  return URL.createObjectURL(await res.blob())
+}
+
 /* ----------------------------- Profiles (real backend) ----------------------------- */
 // Profiles — students, companies, and schools — come from the Supabase-backed server.
 export const profilesApi = {

@@ -40,6 +40,7 @@ create table if not exists profiles (
   cv_uploaded_at text,
   cv_text       text,
   cv_url        text,                          -- résumé file as a data URL
+  cv_storage_path text,
   desired_roles text,                          -- JSON array
   preferred_industries text,                   -- JSON array
   work_type     text,
@@ -70,6 +71,7 @@ create table if not exists resume_profiles (
   work_type text not null default 'any',
   cv_filename text,
   cv_url text,
+  cv_storage_path text,
   active integer not null default 1,
   created_at text not null,
   updated_at text not null
@@ -121,6 +123,21 @@ create table if not exists applications (
   created_at    text not null,
   unique (student_id, job_id)
 );
+
+create table if not exists document_access_audit (
+  id text primary key,
+  document_path text not null,
+  viewer_id text not null,
+  action text not null,
+  created_at text not null
+);
+
+create index if not exists idx_document_audit_path on document_access_audit(document_path);
+create index if not exists idx_document_audit_viewer on document_access_audit(viewer_id);
+
+insert into storage.buckets (id, name, public)
+values ('private-documents', 'private-documents', false)
+on conflict (id) do update set public = false;
 
 create table if not exists messages (
   id            text primary key,

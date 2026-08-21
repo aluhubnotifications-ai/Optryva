@@ -4,7 +4,7 @@ import { requireAuth } from '@/lib/auth'
 import { rowToApplication } from '@/lib/serialize'
 import { uid, now, notify } from '@/lib/util'
 import { isAdminEmail } from '@/lib/admin'
-import { validateDocuments } from '@/lib/documents'
+import { storeDocument, validateDocuments } from '@/lib/documents'
 
 export const applications = Router()
 applications.use(requireAuth)
@@ -50,12 +50,16 @@ applications.post('/', async (req, res) => {
   if (!job) return res.status(404).json({ error: 'job_not_found' })
   const dup = must(await sb.from('applications').select('id').eq('student_id', req.user!.id).eq('job_id', b.job_id).maybeSingle())
   if (dup) return res.status(409).json({ error: 'already_applied' })
+  const documents = await Promise.all((b.documents ?? []).map(async (document: any) => {
+    const stored = await storeDocument(req.user!.id, document.kind ?? 'document', document.name ?? 'document', document.url)
+    return { ...document, url: stored.url, storage_path: stored.path, mime: stored.mime, size: stored.size }
+  }))
 
   const id = uid('a')
   const ts = now()
   must(await sb.from('applications').insert({
     id, student_id: req.user!.id, job_id: b.job_id, status: 'pending',
-    cover_note: b.cover_note ?? null, documents: j.stringify(b.documents ?? []),
+    cover_note: b.cover_note ?? null, documents: j.stringify(documents),
     full_name: b.full_name, email: b.email, phone: b.phone ?? null,
     school: b.school ?? null, year: b.year ?? null, linkedin: b.linkedin ?? null,
     timeline: j.stringify([{ status: 'applied', at: ts }]), created_at: ts,

@@ -4,7 +4,7 @@ import { requireAuth } from '@/lib/auth'
 import { rowToProfile } from '@/lib/serialize'
 import { refreshStudentEnrichment, hasResumeCols } from '@/lib/enrich'
 import { extractDocumentText } from '@/lib/claude'
-import { validateDocumentUrl } from '@/lib/documents'
+import { documentUrl, storeDocument, validateDocumentUrl } from '@/lib/documents'
 import { schoolHiddenFrom, visibilityColsExist, parseDomains } from '@/lib/visibility'
 import { cacheGet, cacheSet } from '@/lib/cache'
 
@@ -71,11 +71,19 @@ const MATCH_AFFECTING = new Set(['cv_text', 'skills', 'desired_roles', 'preferre
 // cv_url (the résumé file) is added by migration 0007. Detect its presence so
 // updates don't fail before the migration is run — and pick it up once it is.
 let hasCvUrlCol = false
+let hasCvStorageCol = false
 async function cvUrlColExists(): Promise<boolean> {
   if (hasCvUrlCol) return true
   const { error } = await sb.from('profiles').select('cv_url').limit(1)
   hasCvUrlCol = !error
   return hasCvUrlCol
+}
+
+async function cvStorageColExists(): Promise<boolean> {
+  if (hasCvStorageCol) return true
+  const { error } = await sb.from('profiles').select('cv_storage_path').limit(1)
+  if (!error) hasCvStorageCol = true
+  return !error
 }
 
 // pref_listing_types / pref_countries arrive with migration 0013 — detect once so
@@ -102,16 +110,22 @@ profiles.patch('/:id', async (req, res) => {
   const b = req.body ?? {}
   const update: Record<string, any> = {}
   let affectsMatch = false
+  const incomingCvUrl = typeof b.cv_url === 'string' && b.cv_url.startsWith('data:') ? b.cv_url : null
 
-  if ('cv_url' in b && b.cv_url) {
+  if (incomingCvUrl) {
     const documentError = validateDocumentUrl(b.cv_url)
     if (documentError) return res.status(400).json({ error: documentError })
+    if (!await cvStorageColExists()) return res.status(503).json({ error: 'document_storage_unavailable' })
+    const stored = await storeDocument(req.user!.id, 'cv', b.cv_filename ?? 'resume', incomingCvUrl)
+    update.cv_url = documentUrl(stored.path)
+    update.cv_storage_path = stored.path
   }
 
   const cvUrlOk = await cvUrlColExists()
   for (const f of EDITABLE) {
     if (!(f in b)) continue
     if (f === 'cv_url' && !cvUrlOk) continue // skip until migration 0007 is run
+    if (f === 'cv_url' && incomingCvUrl) continue
     update[f] = b[f] ?? null
     if (MATCH_AFFECTING.has(f)) affectsMatch = true
   }
@@ -120,8 +134,8 @@ profiles.patch('/:id', async (req, res) => {
 
   // A new résumé file arrived but the client didn't send extracted text → pull the
   // plain text out of the PDF so the AI (chat, matches, insights) can read it.
-  if (cvUrlOk && 'cv_url' in b && b.cv_url && !(b.cv_text ?? '').trim()) {
-    const text = await extractDocumentText(b.cv_url)
+  if (cvUrlOk && incomingCvUrl && !(b.cv_text ?? '').trim()) {
+    const text = await extractDocumentText(incomingCvUrl)
     if (text) { update.cv_text = text; affectsMatch = true }
   }
 
@@ -131,6 +145,7 @@ profiles.patch('/:id', async (req, res) => {
   const clearingCv = ('cv_url' in b && !b.cv_url) || ('cv_text' in b && !(b.cv_text ?? '').trim())
   if (clearingCv) {
     update.cv_text = null
+    if (await cvStorageColExists()) update.cv_storage_path = null
     affectsMatch = true
     if (await hasResumeCols()) update.resume_profile = null
   }

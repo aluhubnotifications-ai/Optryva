@@ -7,10 +7,11 @@ Pilot hardening and product completion. AI calibration is intentionally deferred
   - [x] Server typecheck
   - [ ] Desktop and mobile flow checks in light and dark mode
 - [ ] Secure resume and application documents
-  - [ ] Move files to private storage
-  - [ ] Use short-lived signed URLs
+  - [x] Move files to private storage
+  - [x] Use short-lived signed URLs
   - [x] Add file type, MIME, size, and upload-count validation
-  - [ ] Add document access and download auditing
+  - [x] Add document access and download auditing
+  - [ ] Apply and live-test migration `0022_private_documents.sql`
 - [ ] Complete auth and privacy hardening
   - [x] Remove production JWT fallbacks
   - [ ] Add authorization tests

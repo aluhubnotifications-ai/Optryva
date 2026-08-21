@@ -1,3 +1,10 @@
+import { sb, j, must } from '@/db'
+import { uid, now } from '@/lib/util'
+import { isAdminEmail } from '@/lib/admin'
+
+export const DOCUMENT_BUCKET = 'private-documents'
+const SIGNED_URL_TTL = 300
+
 const MAX_DOCUMENT_BYTES = 8 * 1024 * 1024
 const MAX_DOCUMENTS = 8
 const DATA_URL_RE = /^data:([^;,]+);base64,([A-Za-z0-9+/=\s]+)$/
@@ -34,4 +41,69 @@ export function validateDocuments(value: unknown): string | null {
     totalBytes += Math.floor(payload.length * 3 / 4) - (payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0)
   }
   return totalBytes > 20 * 1024 * 1024 ? 'documents_too_large' : null
+}
+
+function decodeDataUrl(value: string): { mime: string; bytes: Uint8Array } {
+  const match = DATA_URL_RE.exec(value)
+  if (!match) throw new Error('document_format_invalid')
+  const encoded = match[2].replace(/\s/g, '')
+  const binary = atob(encoded)
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0))
+  return { mime: match[1].toLowerCase(), bytes }
+}
+
+function tokenFor(path: string): string {
+  return btoa(path).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+export function pathFromToken(token: string): string | null {
+  try {
+    const padded = token.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - token.length % 4) % 4)
+    return atob(padded)
+  } catch {
+    return null
+  }
+}
+
+export function documentUrl(path: string): string {
+  return `/api/documents/${tokenFor(path)}`
+}
+
+export async function storeDocument(ownerId: string, kind: string, name: string, dataUrl: string) {
+  const { mime, bytes } = decodeDataUrl(dataUrl)
+  const path = `${ownerId}/${uid('document')}-${kind}-${name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
+  const { error } = await sb.storage.from(DOCUMENT_BUCKET).upload(path, bytes, { contentType: mime, upsert: false })
+  if (error) throw new Error(`document_upload_failed: ${error.message}`)
+  return { path, url: documentUrl(path), mime, size: bytes.byteLength }
+}
+
+export async function signedDocumentUrl(path: string): Promise<string> {
+  const { data, error } = await sb.storage.from(DOCUMENT_BUCKET).createSignedUrl(path, SIGNED_URL_TTL)
+  if (error || !data?.signedUrl) throw new Error(`document_sign_failed: ${error?.message ?? 'missing_url'}`)
+  return data.signedUrl
+}
+
+async function audit(path: string, viewerId: string) {
+  await sb.from('document_access_audit').insert({ id: uid('audit'), document_path: path, viewer_id: viewerId, action: 'download', created_at: now() })
+}
+
+export async function canReadDocument(path: string, viewer: { id: string; email: string }): Promise<boolean> {
+  if (isAdminEmail(viewer.email)) return true
+  const profile = must(await sb.from('profiles').select('id').eq('id', viewer.id).eq('cv_storage_path', path).maybeSingle())
+  if (profile) return true
+  const resume = must(await sb.from('resume_profiles').select('id').eq('student_id', viewer.id).eq('cv_storage_path', path).maybeSingle())
+  if (resume) return true
+  const ownApps = must(await sb.from('applications').select('id,job_id,documents').eq('student_id', viewer.id)) as any[]
+  const ownedJobs = must(await sb.from('job_listings').select('id').eq('company_id', viewer.id)) as any[]
+  const jobIds = new Set(ownedJobs.map((job) => job.id))
+  const employerApps = jobIds.size
+    ? must(await sb.from('applications').select('id,job_id,documents').in('job_id', [...jobIds])) as any[]
+    : []
+  return [...ownApps, ...employerApps].some((application) => j.parse<any[]>(application.documents, []).some((document) => document.storage_path === path))
+}
+
+export async function authorizeAndSign(path: string, viewer: { id: string; email: string }): Promise<string | null> {
+  if (!await canReadDocument(path, viewer)) return null
+  await audit(path, viewer.id)
+  return signedDocumentUrl(path)
 }

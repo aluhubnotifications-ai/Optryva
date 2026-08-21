@@ -2,7 +2,7 @@ import { Router } from '@/lib/http'
 import { sb, must, j } from '@/db'
 import { requireAuth } from '@/lib/auth'
 import { uid, now } from '@/lib/util'
-import { validateDocumentUrl } from '@/lib/documents'
+import { documentUrl, storeDocument, validateDocumentUrl } from '@/lib/documents'
 
 export const resumes = Router()
 resumes.use(requireAuth)
@@ -33,6 +33,11 @@ function owned(id: string, studentId: string) {
   return sb.from('resume_profiles').select('*').eq('id', id).eq('student_id', studentId).maybeSingle()
 }
 
+async function storageColumnExists(): Promise<boolean> {
+  const { error } = await sb.from('resume_profiles').select('cv_storage_path').limit(1)
+  return !error
+}
+
 resumes.get('/', async (req, res) => {
   let rows = must(await sb.from('resume_profiles').select('*').eq('student_id', req.user!.id).order('created_at', { ascending: true })) as any[]
   // Convert the legacy profile into the first ordinary résumé direction once.
@@ -54,6 +59,7 @@ resumes.get('/', async (req, res) => {
         work_type: profile.work_type ?? 'any',
         cv_filename: profile.cv_filename ?? null,
         cv_url: profile.cv_url ?? null,
+        cv_storage_path: profile.cv_storage_path ?? null,
         active: 1,
         created_at: ts,
         updated_at: ts,
@@ -87,6 +93,12 @@ resumes.post('/', async (req, res) => {
     created_at: ts,
     updated_at: ts,
   }
+  if (b.cv_url) {
+    if (!await storageColumnExists()) return res.status(503).json({ error: 'document_storage_unavailable' })
+    const stored = await storeDocument(req.user!.id, 'resume', b.cv_filename ?? 'resume', b.cv_url)
+    row.cv_url = documentUrl(stored.path)
+    row.cv_storage_path = stored.path
+  }
   for (const field of arrays) row[field] = j.stringify(Array.isArray(b[field]) ? b[field] : [])
   must(await sb.from('resume_profiles').insert(row))
   const created = must(await owned(id, req.user!.id))
@@ -101,8 +113,12 @@ resumes.patch('/:id', async (req, res) => {
   if ('cv_url' in b && b.cv_url) {
     const documentError = validateDocumentUrl(b.cv_url)
     if (documentError) return res.status(400).json({ error: documentError })
+    if (!await storageColumnExists()) return res.status(503).json({ error: 'document_storage_unavailable' })
+    const stored = await storeDocument(req.user!.id, 'resume', b.cv_filename ?? current.cv_filename ?? 'resume', b.cv_url)
+    update.cv_url = documentUrl(stored.path)
+    update.cv_storage_path = stored.path
   }
-  for (const field of editable) if (field in b) update[field] = field === 'active' ? (b[field] ? 1 : 0) : (b[field] ?? null)
+  for (const field of editable) if (field in b && !(field === 'cv_url' && b.cv_url)) update[field] = field === 'active' ? (b[field] ? 1 : 0) : (b[field] ?? null)
   for (const field of arrays) if (field in b) update[field] = j.stringify(Array.isArray(b[field]) ? b[field] : [])
   if ('name' in b && !String(b.name ?? '').trim()) return res.status(400).json({ error: 'name_required' })
   must(await sb.from('resume_profiles').update(update).eq('id', req.params.id).eq('student_id', req.user!.id))

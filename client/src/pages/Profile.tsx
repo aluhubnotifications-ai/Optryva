@@ -21,7 +21,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { useMatchRun } from '@/lib/matchRun'
-import { profilesApi } from '@/lib/api'
+import { fetchProtectedDocument, profilesApi } from '@/lib/api'
 import type { Profile as ProfileT, WorkType, ListingType } from '@/types'
 import { Card, CardBody, Badge, Avatar, Input, Label, Textarea, Select } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
@@ -131,7 +131,11 @@ export default function Profile() {
 
   async function viewCv() {
     if (!user.cv_url) return
-    if (user.cv_url.startsWith('data:')) {
+    if (user.cv_url.startsWith('/api/documents/')) {
+      const objUrl = await fetchProtectedDocument(user.cv_url)
+      window.open(objUrl, '_blank', 'noopener')
+      setTimeout(() => URL.revokeObjectURL(objUrl), 60_000)
+    } else if (user.cv_url.startsWith('data:')) {
       const blob = await (await fetch(user.cv_url)).blob()
       const objUrl = URL.createObjectURL(blob)
       window.open(objUrl, '_blank', 'noopener')

@@ -1,6 +1,7 @@
 import { Download, Eye, FileText } from 'lucide-react'
 import type { AppDocument } from '@/types'
 import { formatBytes } from '@/lib/utils'
+import { fetchProtectedDocument } from '@/lib/api'
 
 const DOC_LABELS: Record<string, string> = {
   cv: 'CV / Résumé',
@@ -24,18 +25,24 @@ async function openDoc(d: AppDocument) {
     const objUrl = URL.createObjectURL(blob)
     window.open(objUrl, '_blank', 'noopener')
     setTimeout(() => URL.revokeObjectURL(objUrl), 60_000)
+  } else if (d.url.startsWith('/api/documents/')) {
+    const objUrl = await fetchProtectedDocument(d.url)
+    window.open(objUrl, '_blank', 'noopener')
+    setTimeout(() => URL.revokeObjectURL(objUrl), 60_000)
   } else {
     window.open(d.url, '_blank', 'noopener')
   }
 }
 
-function downloadDoc(d: AppDocument) {
+async function downloadDoc(d: AppDocument) {
+  const url = d.url.startsWith('/api/documents/') ? await fetchProtectedDocument(d.url) : d.url
   const a = document.createElement('a')
-  a.href = d.url
+  a.href = url
   a.download = d.name || 'document'
   document.body.appendChild(a)
   a.click()
   a.remove()
+  if (url.startsWith('blob:')) setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
 /** Shared renderer for an application's submitted documents, with working
