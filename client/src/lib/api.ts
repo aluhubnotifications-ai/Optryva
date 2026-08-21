@@ -499,6 +499,15 @@ export const followsApi = {
     const r = (await apiFetch(`/social/follows/count/${companyId}`)) as { count: number }
     return r.count ?? 0
   },
+  /** Batched follower counts keyed by company_id — one request instead of N. */
+  async followerCounts(ids: string[]): Promise<Record<string, number>> {
+    if (!ids.length) return {}
+    try {
+      return (await apiFetch(`/social/follows/counts?ids=${encodeURIComponent(ids.join(','))}`)) as Record<string, number>
+    } catch {
+      return {}
+    }
+  },
   async setEmailPref(_studentId: string, companyId: string, on: boolean): Promise<boolean> {
     await apiFetch(`/social/follows/${companyId}/email`, { method: 'POST', body: JSON.stringify({ on }) })
     return true

@@ -31,6 +31,21 @@ social.post('/follows/:companyId/email', async (req, res) => {
   res.json({ ok: true })
 })
 
+social.get('/follows/counts', async (req, res) => {
+  const idsRaw = req.query.ids as string | undefined
+  const ids = idsRaw ? idsRaw.split(',').filter(Boolean) : null
+  const cacheKey = `followcounts:${ids ? ids.join(',') : 'all'}`
+  const cached = cacheGet<Record<string, number>>(cacheKey)
+  if (cached) return res.json(cached)
+  let q = sb.from('company_follows').select('company_id')
+  if (ids) q = q.in('company_id', ids)
+  const rows = must(await q) as any[]
+  const counts: Record<string, number> = {}
+  for (const r of rows) counts[r.company_id] = (counts[r.company_id] ?? 0) + 1
+  cacheSet(cacheKey, counts, 20_000)
+  res.json(counts)
+})
+
 social.get('/follows/count/:companyId', async (req, res) => {
   const { count, error } = await sb.from('company_follows').select('*', { count: 'exact', head: true }).eq('company_id', req.params.companyId)
   if (error) throw new Error(error.message)

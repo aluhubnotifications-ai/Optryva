@@ -33,8 +33,7 @@ export default function Companies() {
     const all = [...cs, ...sc]
     const open: Record<string, number> = {}
     jobs.forEach((j) => (open[j.company_id] = (open[j.company_id] ?? 0) + 1))
-    const fc: Record<string, number> = {}
-    await Promise.all(all.map(async (c) => { fc[c.id] = await followsApi.followerCount(c.id) }))
+    const fc = await followsApi.followerCounts(all.map((c) => c.id))
     setCompanies(all)
     setOpenCounts(open)
     setFollowerCounts(fc)
