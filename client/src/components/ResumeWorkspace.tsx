@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { FileText, Pause, Play, Plus, Save, Trash2, Upload, X } from 'lucide-react'
-import { resumesApi } from '@/lib/api'
+import { ChevronDown, Eye, FileText, Pause, Play, Plus, Save, Trash2, Upload, X } from 'lucide-react'
+import { fetchProtectedDocument, resumesApi } from '@/lib/api'
 import type { ListingType, ResumeProfile, WorkType } from '@/types'
 import { Card, CardBody, Badge, Input, Label, Select } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
@@ -79,6 +79,21 @@ export function ResumeWorkspace() {
     }
   }
 
+  async function view(resume: ResumeProfile) {
+    if (!resume.cv_url) return
+    try {
+      const url = resume.cv_url.startsWith('/api/documents/')
+        ? await fetchProtectedDocument(resume.cv_url)
+        : resume.cv_url.startsWith('data:')
+          ? URL.createObjectURL(await (await fetch(resume.cv_url)).blob())
+          : resume.cv_url
+      window.open(url, '_blank', 'noopener')
+      if (url.startsWith('blob:')) setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (error) {
+      toast({ title: 'Could not open résumé', description: error instanceof Error ? error.message : undefined, tone: 'error' })
+    }
+  }
+
   if (loading) return <Card><CardBody><p className="text-sm text-muted-foreground">Loading résumé profiles…</p></CardBody></Card>
 
   return (
@@ -108,6 +123,8 @@ export function ResumeWorkspace() {
                 onSkillInput={(value) => setSkillInputs((current) => ({ ...current, [resume.id]: value }))}
                 onCountryInput={(value) => setCountryInputs((current) => ({ ...current, [resume.id]: value }))}
                 onUpload={(file) => upload(resume, file)}
+                onView={() => view(resume)}
+                initiallyOpen={resumes[0]?.id === resume.id}
               />
             ))}
           </div>
@@ -117,7 +134,7 @@ export function ResumeWorkspace() {
   )
 }
 
-function ResumeCard({ resume, saving, skillInput, countryInput, onPatch, onSave, onRemove, onSkillInput, onCountryInput, onUpload }: {
+function ResumeCard({ resume, saving, skillInput, countryInput, onPatch, onSave, onRemove, onSkillInput, onCountryInput, onUpload, onView, initiallyOpen }: {
   resume: ResumeProfile
   saving: boolean
   skillInput: string
@@ -128,8 +145,11 @@ function ResumeCard({ resume, saving, skillInput, countryInput, onPatch, onSave,
   onSkillInput: (value: string) => void
   onCountryInput: (value: string) => void
   onUpload: (file?: File) => void
+  onView: () => void
+  initiallyOpen: boolean
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
+  const [open, setOpen] = useState(initiallyOpen)
   const toggle = (field: 'target_roles' | 'preferred_industries' | 'pref_listing_types' | 'pref_countries', value: string) => {
     const values = resume[field] as string[]
     onPatch({ [field]: values.includes(value) ? values.filter((item) => item !== value) : [...values, value] })
@@ -144,6 +164,9 @@ function ResumeCard({ resume, saving, skillInput, countryInput, onPatch, onSave,
   return (
     <div className={cn('rounded-xl border p-4', resume.active ? 'border-primary/30 bg-primary/[0.02]' : 'border-border bg-muted/30')}>
       <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={() => setOpen((value) => !value)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`${open ? 'Collapse' : 'Expand'} ${resume.name}`} title={open ? 'Collapse résumé' : 'Expand résumé'}>
+          <ChevronDown className={cn('h-4 w-4 transition-transform', open ? 'rotate-180' : '')} />
+        </button>
         <Input value={resume.name} onChange={(event) => onPatch({ name: event.target.value })} className="max-w-xs font-semibold" aria-label="Résumé name" />
         <Badge tone={resume.active ? 'success' : 'default'}>{resume.active ? 'Active in matching' : 'Paused'}</Badge>
         <div className="ml-auto flex items-center gap-1.5">
@@ -152,8 +175,10 @@ function ResumeCard({ resume, saving, skillInput, countryInput, onPatch, onSave,
         </div>
       </div>
 
+      {open && <>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <input ref={fileRef} type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(event) => onUpload(event.target.files?.[0])} />
+        {resume.cv_url && <Button variant="outline" size="sm" onClick={onView} className="gap-1.5"><Eye className="h-3.5 w-3.5" /> View</Button>}
         <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} className="gap-1.5"><Upload className="h-3.5 w-3.5" /> {resume.cv_filename ? 'Replace résumé file' : 'Upload résumé file'}</Button>
         {resume.cv_filename && <span className="text-xs text-muted-foreground">{resume.cv_filename}</span>}
       </div>
@@ -170,6 +195,7 @@ function ResumeCard({ resume, saving, skillInput, countryInput, onPatch, onSave,
       <div className="flex flex-wrap gap-1.5">{resume.skills.map((skill) => <span key={skill} className="inline-flex items-center gap-1 rounded-full bg-primary/12 px-2.5 py-1 text-xs font-medium text-primary">{skill}<button type="button" onClick={() => onPatch({ skills: resume.skills.filter((item) => item !== skill) })} aria-label={`Remove ${skill}`}><X className="h-3 w-3" /></button></span>)}</div>
       <div className="mt-2 flex max-w-md gap-2"><Input value={skillInput} onChange={(event) => onSkillInput(event.target.value)} placeholder="Add a skill…" /><Button type="button" variant="outline" size="icon" onClick={() => addValue('skills', skillInput, () => onSkillInput(''))} aria-label="Add skill"><Plus className="h-4 w-4" /></Button></div>
       <div className="mt-4 flex justify-end"><Button onClick={onSave} loading={saving} className="gap-1.5"><Save className="h-4 w-4" /> Save résumé</Button></div>
+      </>}
     </div>
   )
 }

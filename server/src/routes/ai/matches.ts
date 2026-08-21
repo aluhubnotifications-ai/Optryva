@@ -10,6 +10,7 @@ import {
   cacheMap,
   matchReadiness,
   candidateJobs,
+  visibleJobs,
   ensureResumeProfile,
   outcomeNudges,
   hasClaude,
@@ -41,6 +42,24 @@ export function registerMatches(r: Router) {
       visible.map((rr) => getMatch(uid, rowToMatchJob(rr), {}, { row: viewer, rp, cached: cm.get(rr.id) ?? null })),
     )
     res.json(out.filter(Boolean))
+  })
+
+  // Rehydrate scores completed earlier today without invoking the scorer.
+  // This is used after a page reload; it must remain read-only so the daily
+  // run marker never causes cached matches to be recomputed.
+  r.get('/matches/cached', async (req, res) => {
+    const uid = req.user!.id
+    const viewer = await studentRow(uid)
+    const visible = await visibleJobs(viewer)
+    const visibleIds = new Set(visible.map((job) => job.id))
+    const cm = await cacheMap(uid)
+    const out = [...cm.values()]
+      .filter((row) => row.stale === 0 && visibleIds.has(row.job_id))
+      .map((row) => {
+        try { return JSON.parse(row.payload) as AiMatch } catch { return null }
+      })
+      .filter((match): match is AiMatch => !!match)
+    res.json(out)
   })
 
   /* Streaming matches: scores roles one-by-one and emits live progress so the UI

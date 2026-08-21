@@ -408,7 +408,7 @@ export function rowToMatchJob(r: any): MatchJob & { company_id: string; descript
 
 /** All cached match rows for a student in ONE query → job_id -> {payload,stale}. */
 export async function cacheMap(studentId: string): Promise<Map<string, any>> {
-  const rows = (must(await sb.from('ai_match_cache').select('job_id, payload, stale').eq('student_id', studentId)) as any[]) ?? []
+  const rows = (must(await sb.from('ai_match_cache').select('job_id, payload, stale, resume_id').eq('student_id', studentId)) as any[]) ?? []
   return new Map(rows.map((r) => [r.job_id, r]))
 }
 

@@ -986,6 +986,11 @@ export const aiApi = {
     }
   },
 
+  /** Read today's stored scores without starting or refreshing matching. */
+  async cachedMatches(): Promise<AiMatch[]> {
+    try { return (await apiFetch('/ai/matches/cached')) as AiMatch[] } catch { return [] }
+  },
+
   /** Stream matches with live progress. Calls onMeta(total) once, then
    *  onProgress(done,total,title,match) per scored role. Throws if streaming is
    *  unavailable so the caller can fall back to matchAll(). */

@@ -209,8 +209,8 @@ export default function Profile() {
         </div>
       </Section>
 
-      {/* CV */}
-      <Section icon={FileText} title="CV / Résumé" hint="Powers AI matching">
+      {/* Legacy profile CV controls are replaced by equal résumé directions below. */}
+      {false && <Section icon={FileText} title="CV / Résumé" hint="Powers AI matching">
         <input ref={cvRef} type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => uploadCv(e.target.files?.[0])} />
         {user.cv_filename ? (
           <div className="rounded-xl border border-success/30 bg-success/5 p-4">
@@ -221,7 +221,7 @@ export default function Profile() {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{user.cv_filename}</p>
                 <p className="text-xs text-muted-foreground">
-                  {user.cv_uploaded_at ? `Uploaded ${formatDate(user.cv_uploaded_at)} · ` : ''}You’re all set ✨
+                  {user.cv_uploaded_at ? `Uploaded ${formatDate(user.cv_uploaded_at!)} · ` : ''}You’re all set ✨
                 </p>
               </div>
             </div>
@@ -251,11 +251,11 @@ export default function Profile() {
           </button>
         )}
         <p className="mt-2.5 flex items-center gap-1.5 text-xs text-muted-foreground"><Sparkles className="h-3.5 w-3.5 text-primary" /> Your CV is the #1 signal our AI uses to find your best-fit roles.</p>
-      </Section>
+      </Section>}
       {user.user_type === 'student' && <ResumeWorkspace />}
 
-      {/* Career preferences */}
-      <Section icon={Briefcase} title="Career preferences" hint="Feeds the AI matching engine">
+      {/* Legacy profile preferences are replaced by per-résumé preferences above. */}
+      {false && <Section icon={Briefcase} title="Career preferences" hint="Feeds the AI matching engine">
         <Label>Roles I'm interested in</Label>
         <ChipGroup options={ROLES} selected={roles} onToggle={(v) => toggle(roles, setRoles, v)} />
         <Label className="mt-4">Industries</Label>
@@ -317,7 +317,7 @@ export default function Profile() {
           <Input value={skillInput} onChange={(e) => setSkillInput(e.target.value)} placeholder="Add a skill…" className="max-w-xs" />
           <Button type="submit" variant="outline" size="icon"><Plus className="h-4 w-4" /></Button>
         </form>
-      </Section>
+      </Section>}
 
       {/* Social */}
       <Section icon={Link2} title="Links">
