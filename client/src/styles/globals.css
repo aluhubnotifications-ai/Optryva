@@ -134,3 +134,8 @@
   background: hsl(var(--muted-foreground) / 0.5);
   background-clip: content-box;
 }
+/* Cross-browser visible scrollbar (Firefox doesn't honor ::-webkit-scrollbar). */
+.scroll-area {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.4) transparent;
+}

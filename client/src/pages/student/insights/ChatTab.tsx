@@ -50,7 +50,7 @@ export function ChatTab() {
   return (
     <Card>
       <CardBody className="flex h-[calc(100dvh-15rem)] flex-col">
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+        <div className="scroll-area min-h-0 flex-1 space-y-4 overflow-y-scroll pr-2">
           {msgs.length === 0 && (
             <div className="flex h-full flex-col items-center justify-center text-center">
               <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/12 text-primary"><Sparkles className="h-6 w-6" /></div>
@@ -83,7 +83,7 @@ export function ChatTab() {
           )}
           <div ref={endRef} />
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); send(input) }} className="mt-3 flex items-center gap-2 border-t border-border pt-3">
+        <form onSubmit={(e) => { e.preventDefault(); send(input) }} className="mt-3 flex shrink-0 items-center gap-2 border-t border-border pt-3">
           <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask anything…" className="h-11 flex-1 rounded-full border border-input bg-background px-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
           <Button type="submit" size="icon" className="h-11 w-11 rounded-full" disabled={busy || !input.trim()}><Send className="h-4 w-4" /></Button>
         </form>
