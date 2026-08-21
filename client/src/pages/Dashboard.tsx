@@ -197,11 +197,11 @@ function StudentDashboard({ user }: { user: Profile }) {
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {stats.map((s, i) => (
-          <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
+          <motion.div key={s.label} className="min-w-0" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
             <Link to={s.to}>
               <Card className="transition-shadow hover:shadow-card">
-                <CardBody className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/12 text-primary">
+                <CardBody className="flex items-center gap-2.5 p-4 sm:gap-3 sm:p-5">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary sm:h-11 sm:w-11">
                     <s.icon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
@@ -218,9 +218,9 @@ function StudentDashboard({ user }: { user: Profile }) {
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-3">
         {/* Left column */}
-        <div className="space-y-6 lg:col-span-2">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
           {/* AI Top Picks — horizontal, scannable */}
           <section>
             <SectionHeader
@@ -253,9 +253,9 @@ function StudentDashboard({ user }: { user: Profile }) {
                 <h3 className="mb-3 flex items-center gap-2 font-semibold">
                   <TrendingUp className="h-4 w-4 text-primary" /> Application pipeline
                 </h3>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {pipeline.map((s) => (
-                    <div key={s.key} className="rounded-xl border border-border p-3 text-center">
+                    <div key={s.key} className="rounded-xl border border-border p-2.5 text-center sm:p-3">
                       <p className="text-xl font-bold leading-none text-accent">{s.count}</p>
                       <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                         <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} /> {s.label}
@@ -303,7 +303,7 @@ function StudentDashboard({ user }: { user: Profile }) {
         </div>
 
         {/* Right rail */}
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           {/* Profile strength (slim) */}
           <Card>
             <CardBody>
@@ -493,8 +493,8 @@ function MatchCard({ job, match }: { job: JobListing; match: AiMatch }) {
   const dl = daysUntil(job.deadline)
   const company = job.original_company_name || job.company_name
   return (
-    <Link to={`/app/jobs?job=${job.id}`} className="group relative w-[240px] shrink-0 snap-start">
-      <Card className="h-full transition-shadow hover:shadow-card">
+    <Link to={`/app/jobs?job=${job.id}`} className="group relative w-[calc(100vw-3rem)] max-w-[280px] shrink-0 snap-start sm:w-[280px]">
+      <Card className="h-[300px] transition-shadow hover:shadow-card">
         <CardBody className="flex h-full flex-col gap-2.5 p-4">
           <div className="flex items-start justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
@@ -508,13 +508,13 @@ function MatchCard({ job, match }: { job: JobListing; match: AiMatch }) {
             <p className="truncate text-xs text-muted-foreground">{job.location}</p>
           </div>
           {match.reasons[0] && (
-            <p className="flex items-start gap-1.5 text-xs text-muted-foreground line-clamp-2">
+            <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground line-clamp-3">
               <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
               <span className="min-w-0">{match.reasons[0]}</span>
             </p>
           )}
-          <div className="mt-auto flex items-center justify-between gap-2 pt-1">
-            <div className="flex min-w-0 flex-wrap gap-1">
+          <div className="mt-auto flex flex-wrap items-end justify-between gap-2 pt-1">
+            <div className="flex min-w-0 flex-1 flex-wrap gap-1">
               {match.matched_skills.slice(0, 2).map((s) => (
                 <Badge key={s} tone="success" className="text-[11px]">
                   {s}
@@ -536,8 +536,8 @@ function MatchCard({ job, match }: { job: JobListing; match: AiMatch }) {
 
 function MatchSkeleton() {
   return (
-    <div className="w-[240px] shrink-0">
-      <Card>
+    <div className="w-[calc(100vw-3rem)] max-w-[280px] shrink-0 sm:w-[280px]">
+      <Card className="h-[300px]">
         <CardBody className="flex h-full flex-col gap-2.5 p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -591,11 +591,11 @@ function TopPicksEmpty({ hasCv }: { hasCv: boolean }) {
 
 function SectionHeader({ icon: Icon, title, action }: { icon: typeof Sparkles; title: string; action?: React.ReactNode }) {
   return (
-    <div className="mb-3 flex items-center justify-between">
-      <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <h2 className="flex min-w-0 items-center gap-2 text-lg font-semibold tracking-tight">
         <Icon className="h-5 w-5 text-primary" /> {title}
       </h2>
-      {action}
+      <div className="shrink-0">{action}</div>
     </div>
   )
 }
