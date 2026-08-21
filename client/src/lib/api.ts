@@ -206,12 +206,18 @@ export const profilesApi = {
     invalidateCache('profiles:list:all', 'profiles:list:company', 'profiles:list:school')
     return (await apiFetch(`/profiles/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })) as Profile
   },
-  async list(type?: Profile['user_type'], opts?: { ids?: string[] }): Promise<Profile[]> {
+  async list(
+    type?: Profile['user_type'],
+    opts?: { ids?: string[]; types?: string[]; limit?: number; offset?: number },
+  ): Promise<Profile[]> {
     const params = new URLSearchParams()
     if (type) params.set('type', type)
+    if (opts?.types?.length) params.set('types', opts.types.join(','))
     if (opts?.ids?.length) params.set('ids', opts.ids.join(','))
+    if (opts?.limit != null) params.set('limit', String(opts.limit))
+    if (opts?.offset != null) params.set('offset', String(opts.offset))
     const qs = params.toString()
-    const key = `profiles:list:${type ?? 'all'}:${opts?.ids?.join(',') ?? ''}`
+    const key = `profiles:list:${type ?? 'all'}:${opts?.types?.join(',') ?? ''}:${opts?.ids?.join(',') ?? ''}:${opts?.limit ?? ''}:${opts?.offset ?? ''}`
     return cached(key, () =>
       apiFetch(`/profiles${qs ? `?${qs}` : ''}`) as Promise<Profile[]>,
     )

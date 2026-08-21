@@ -19,16 +19,26 @@ const LIST_COLUMNS =
 
 profiles.get('/', async (req, res) => {
   const type = req.query.type as string | undefined
+  // Optional `types` fetches several user_types in one scan (e.g. company+school).
+  const typesRaw = req.query.types as string | undefined
+  const types = typesRaw ? typesRaw.split(',').filter(Boolean) : null
   // Optional `ids` lets callers (e.g. the dashboard) fetch only the specific
   // profiles they need instead of scanning the whole directory table.
   const idsRaw = req.query.ids as string | undefined
   const ids = idsRaw ? idsRaw.split(',').filter(Boolean) : null
-  const cacheKey = `profiles:${type ?? 'all'}:${ids ? ids.join(',') : 'all'}`
+  // Pagination: callers load a page at a time instead of the entire directory.
+  const limitRaw = req.query.limit as string | undefined
+  const offsetRaw = req.query.offset as string | undefined
+  const limit = limitRaw ? Math.min(Math.max(parseInt(limitRaw, 10) || 60, 1), 200) : null
+  const offset = offsetRaw ? Math.max(parseInt(offsetRaw, 10) || 0, 0) : 0
+  const cacheKey = `profiles:${type ?? 'all'}:${types ? types.join(',') : ''}:${ids ? ids.join(',') : 'all'}:${limit ?? ''}:${offset}`
   const cached = cacheGet<any[]>(cacheKey)
   if (cached) return res.json(cached)
   let q = sb.from('profiles').select(LIST_COLUMNS).order('created_at', { ascending: false })
   if (type) q = q.eq('user_type', type)
+  if (types) q = q.in('user_type', types)
   if (ids) q = q.in('id', ids)
+  if (limit != null) q = q.range(offset, offset + limit - 1)
   const rows = must(await q) as any[]
   // Hide private schools from viewers outside their student domains.
   const viewer = must(await sb.from('profiles').select('id,user_type,email,student_domains,is_private').eq('id', req.user!.id).maybeSingle()) as any

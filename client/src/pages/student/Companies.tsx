@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { Building2, Search, Users, MapPin, ArrowRight, Briefcase, Check, GraduationCap } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
 import { followsApi, jobsApi, profilesApi } from '@/lib/api'
-import type { Profile } from '@/types'
+import type { Profile, JobListing } from '@/types'
 import { Card, CardBody, Badge, Avatar, Input, Skeleton } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { CoverImage } from '@/components/CoverImage'
@@ -11,6 +11,8 @@ import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 
 type Tab = 'all' | 'company' | 'school' | 'following'
+
+const PAGE = 60
 
 export default function Companies() {
   const user = useCurrentUser()!
@@ -20,27 +22,63 @@ export default function Companies() {
   const [followerCounts, setFollowerCounts] = useState<Record<string, number>>({})
   const [following, setFollowing] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
   const [q, setQ] = useState('')
   const [tab, setTab] = useState<Tab>('all')
 
-  async function load() {
-    const [cs, sc, jobs, myFollows] = await Promise.all([
-      profilesApi.list('company'),
-      profilesApi.list('school'),
-      jobsApi.list(),
-      followsApi.forStudent(user.id),
-    ])
-    const all = [...cs, ...sc]
-    const open: Record<string, number> = {}
-    jobs.forEach((j) => (open[j.company_id] = (open[j.company_id] ?? 0) + 1))
-    const fc = await followsApi.followerCounts(all.map((c) => c.id))
-    setCompanies(all)
-    setOpenCounts(open)
-    setFollowerCounts(fc)
-    setFollowing(new Set(myFollows.map((f) => f.company_id)))
-    setLoading(false)
+  const jobsRef = useRef<JobListing[]>([])
+  const followingRef = useRef<Set<string>>(new Set())
+
+  // Loads one page. `initial` resets the list and refreshes jobs/follows;
+  // subsequent calls append the next page (so a large directory streams in).
+  async function load(initial = false) {
+    if (initial) {
+      setLoading(true)
+      setCompanies([])
+    } else {
+      setLoadingMore(true)
+    }
+    try {
+      if (initial) {
+        const [jobs, myFollows] = await Promise.all([
+          jobsApi.list(),
+          followsApi.forStudent(user.id),
+        ])
+        jobsRef.current = jobs
+        followingRef.current = new Set(myFollows.map((f) => f.company_id))
+        const open: Record<string, number> = {}
+        jobs.forEach((j) => (open[j.company_id] = (open[j.company_id] ?? 0) + 1))
+        setOpenCounts(open)
+      }
+
+      let profilesP: Promise<Profile[]>
+      if (tab === 'following') {
+        const ids = [...followingRef.current]
+        profilesP = ids.length
+          ? profilesApi.list(undefined, { ids, limit: PAGE, offset: initial ? 0 : companies.length })
+          : Promise.resolve([])
+      } else if (tab === 'all') {
+        profilesP = profilesApi.list(undefined, { types: ['company', 'school'], limit: PAGE, offset: initial ? 0 : companies.length })
+      } else {
+        profilesP = profilesApi.list(tab, { limit: PAGE, offset: initial ? 0 : companies.length })
+      }
+
+      const profiles = await profilesP
+      const fc = await followsApi.followerCounts(profiles.map((p) => p.id))
+      setFollowerCounts((prev) => ({ ...prev, ...fc }))
+      setCompanies((prev) => (initial ? profiles : [...prev, ...profiles]))
+      setFollowing(followingRef.current)
+      setHasMore(profiles.length === PAGE)
+    } finally {
+      if (initial) setLoading(false)
+      else setLoadingMore(false)
+    }
   }
-  useEffect(() => { load() }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    load(true)
+    // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, tab])
 
   async function toggleFollow(id: string, name: string) {
     const nowFollowing = await followsApi.toggle(user.id, id)
@@ -171,6 +209,14 @@ export default function Companies() {
               </Card>
             )
           })}
+        </div>
+      )}
+
+      {!loading && hasMore && (
+        <div className="flex justify-center pt-2">
+          <Button variant="outline" onClick={() => load(false)} disabled={loadingMore}>
+            {loadingMore ? 'Loading…' : 'Load more'}
+          </Button>
         </div>
       )}
     </div>
