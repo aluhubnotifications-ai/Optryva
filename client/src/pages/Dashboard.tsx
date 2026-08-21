@@ -516,7 +516,7 @@ function MatchCard({ job, match }: { job: JobListing; match: AiMatch }) {
           <div className="mt-auto flex flex-wrap items-end justify-between gap-2 pt-1">
             <div className="flex min-w-0 flex-1 flex-wrap gap-1">
               {match.matched_skills.slice(0, 2).map((s) => (
-                <Badge key={s} tone="success" className="text-[11px]">
+                <Badge key={s} tone="success" className="max-w-[160px] truncate whitespace-nowrap text-[11px]">
                   {s}
                 </Badge>
               ))}
