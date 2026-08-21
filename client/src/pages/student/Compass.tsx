@@ -103,8 +103,8 @@ export default function Compass() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight"><CompassIcon className="h-6 w-6 text-primary" /> Career Compass</h1>
           <p className="text-sm text-muted-foreground">A guided AI conversation to find your direction.</p>
         </div>

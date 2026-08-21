@@ -81,9 +81,9 @@ export default function CompanyPublic() {
         <CardBody>
           {/* Avatar overlaps the cover; actions sit on its right. Name & details
               render BELOW so the name is never over the cover photo. */}
-          <div className="-mt-14 flex items-end justify-between gap-3">
+          <div className="-mt-14 flex flex-wrap items-end justify-between gap-3">
             <Avatar name={company.company_name} src={company.avatar_url} size={96} className="rounded-2xl bg-card ring-4 ring-card shadow-card" />
-            <div className="mb-1 flex shrink-0 items-center gap-2">
+            <div className="mb-1 flex max-w-full flex-wrap items-center justify-end gap-2">
               {following && (
                 <Button variant="outline" size="icon" onClick={toggleEmail} title={emailOn ? 'Email alerts on' : 'Email alerts off'}>
                   {emailOn ? <Bell className="h-4 w-4 text-primary" /> : <BellOff className="h-4 w-4 text-muted-foreground" />}

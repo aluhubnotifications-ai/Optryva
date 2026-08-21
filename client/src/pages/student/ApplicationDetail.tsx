@@ -101,14 +101,14 @@ export default function ApplicationDetail() {
       </Card>
 
       {/* Actions */}
-      <div className="flex flex-wrap gap-2">
-        <Button className="gap-1.5" onClick={() => navigate(`/app/messages?thread=${app.id}&scope=application`)}>
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+        <Button className="w-full gap-1.5 sm:w-auto" onClick={() => navigate(`/app/messages?thread=${app.id}&scope=application`)}>
           <MessageSquare className="h-4 w-4" /> Message {brand}
         </Button>
-        <Button variant="outline" className="gap-1.5" onClick={() => setResearch(true)}>
+        <Button variant="outline" className="w-full gap-1.5 sm:w-auto" onClick={() => setResearch(true)}>
           <Sparkles className="h-4 w-4 text-primary" /> AI Research
         </Button>
-        <Button variant="ghost" className="gap-1.5 text-danger" onClick={() => setConfirmDelete(true)}>
+        <Button variant="ghost" className="w-full gap-1.5 text-danger sm:w-auto" onClick={() => setConfirmDelete(true)}>
           <Trash2 className="h-4 w-4" /> Withdraw
         </Button>
       </div>
