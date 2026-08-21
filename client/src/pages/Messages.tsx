@@ -125,7 +125,7 @@ export default function Messages() {
         </aside>
 
         {/* Thread */}
-        <section className={cn('flex flex-col bg-background', !active && 'hidden lg:flex')}>
+        <section className={cn('flex min-h-0 flex-col bg-background', !active && 'hidden lg:flex')}>
           {active ? (
             <Thread
               key={active.thread_id}
@@ -279,9 +279,9 @@ function Thread({
   const grouped = useMemo(() => msgs, [msgs])
 
   return (
-    <>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-border bg-card p-3">
+      <div className="flex shrink-0 items-center gap-3 border-b border-border bg-card p-3">
         <button onClick={onBack} className="rounded-lg p-1.5 hover:bg-muted lg:hidden"><ArrowLeft className="h-5 w-5" /></button>
         <Avatar name={name} src={person?.avatar_url} size={38} />
         <div className="min-w-0">
@@ -294,16 +294,16 @@ function Thread({
         </div>
       </div>
 
-       {/* Messages */}
-       <div ref={scrollRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
-         {hasMore && (
-           <div className="flex justify-center pb-1">
-             <Button variant="outline" size="sm" onClick={loadOlder} disabled={loadingOlder} className="gap-1.5">
-               {loadingOlder ? 'Loading…' : 'Load older messages'}
-             </Button>
-           </div>
-         )}
-         {grouped.map((m) => {
+      {/* Messages */}
+      <div ref={scrollRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
+        {hasMore && (
+          <div className="flex justify-center pb-1">
+            <Button variant="outline" size="sm" onClick={loadOlder} disabled={loadingOlder} className="gap-1.5">
+              {loadingOlder ? 'Loading…' : 'Load older messages'}
+            </Button>
+          </div>
+        )}
+        {grouped.map((m) => {
           const mine = m.sender_id === userId
           return (
             <div key={m.id} className={cn('group flex items-end gap-2', mine ? 'justify-end' : 'justify-start')}>
@@ -340,15 +340,15 @@ function Thread({
       </div>
 
       {/* Composer */}
-      <form onSubmit={(e) => { e.preventDefault(); send() }} className="flex items-center gap-2 border-t border-border bg-card p-3">
+      <form onSubmit={(e) => { e.preventDefault(); send() }} className="flex shrink-0 items-center gap-2 border-t border-border bg-card p-3">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Type a message…"
-          className="h-11 flex-1 rounded-full border border-input bg-card px-4 text-sm text-foreground placeholder:text-muted-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-11 flex-1 rounded-full border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-500 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-400"
         />
         <Button type="submit" size="icon" className="h-11 w-11 rounded-full" disabled={!input.trim()}><Send className="h-4 w-4" /></Button>
       </form>
-    </>
+    </div>
   )
 }
