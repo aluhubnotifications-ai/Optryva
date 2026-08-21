@@ -16,7 +16,7 @@
   // Cross-origin deploy: the client lives on Pages, not this Worker.
   // Set CLIENT_ORIGIN (e.g. https://optryva.pages.dev) and COOKIE_SAMESITE=none
   // as plain vars in the dashboard; secrets stay as secrets.
-  "vars": { "COOKIE_SAMESITE": "none" },
+  "vars": { "COOKIE_SAMESITE": "none", "NODE_ENV": "production" },
 
   // Nightly (02:00 UTC) honesty calibration + match-quality eval log. Handled by
   // worker.ts scheduled(). Calibration self-gates until enough outcomes exist.

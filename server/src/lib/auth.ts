@@ -3,8 +3,17 @@ import { sb, must } from '@/db'
 import type { ShimReq, ShimRes, Next } from '@/lib/http'
 import { setUsageUser } from '@/lib/usage'
 
-const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET ?? 'dev-access-secret'
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET ?? 'dev-refresh-secret'
+function loadJwtSecret(name: 'JWT_ACCESS_SECRET' | 'JWT_REFRESH_SECRET', devFallback: string) {
+  const secret = process.env[name]
+  if (secret) return secret
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(`${name} must be configured in production`)
+  }
+  return devFallback
+}
+
+const ACCESS_SECRET = loadJwtSecret('JWT_ACCESS_SECRET', 'dev-access-secret')
+const REFRESH_SECRET = loadJwtSecret('JWT_REFRESH_SECRET', 'dev-refresh-secret')
 const ACCESS_TTL = '15m'
 const REFRESH_TTL = '30d'
 
