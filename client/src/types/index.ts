@@ -100,6 +100,8 @@ export interface JobListing {
   posted_by_role: 'company' | 'school'
   original_company_name?: string
   original_company_logo_url?: string
+  company_name?: string // display name of the posting entity (company or school)
+  company_avatar_url?: string // avatar/logo of the posting entity
   created_at: string
 }
 

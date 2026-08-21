@@ -16,7 +16,7 @@ import {
   GraduationCap,
 } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
-import { applicationsApi, followsApi, jobsApi, profilesApi } from '@/lib/api'
+import { applicationsApi, followsApi, jobsApi } from '@/lib/api'
 import { useMatchProgress } from '@/lib/matchProgress'
 import type { AiMatch, Application, JobListing, Profile } from '@/types'
 import { Card, CardBody, Badge, Avatar, Progress, Skeleton } from '@/components/ui/primitives'
@@ -54,7 +54,6 @@ const statusTone = {
 function StudentDashboard({ user }: { user: Profile }) {
   const [jobs, setJobs] = useState<JobListing[]>([])
   const [apps, setApps] = useState<Application[]>([])
-  const [companies, setCompanies] = useState<Record<string, Profile>>({})
   const [following, setFollowing] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
 
@@ -63,25 +62,20 @@ function StudentDashboard({ user }: { user: Profile }) {
     perf('StudentDashboard mounted', { userId: user.id })
     const dataStart = performance.now()
     ;(async () => {
+      // Jobs now carry company_name + company_avatar_url, so the dashboard no
+      // longer needs a separate directory fetch — just jobs + apps + follows.
       const [j, a, myFollows] = await Promise.all([
         jobsApi.list(user),
         applicationsApi.byStudent(user.id),
         followsApi.forStudent(user.id),
       ])
-      // Only fetch the companies/schools that actually posted these jobs — a
-      // targeted `?ids=` query instead of scanning the entire directory table.
-      const refIds = [...new Set(j.map((job) => job.company_id))]
-      const cs = refIds.length ? await profilesApi.list(undefined, { ids: refIds }) : []
-      const map: Record<string, Profile> = {}
-      cs.forEach((c) => (map[c.id] = c))
       if (!active) return
       setJobs(j)
       setApps(a)
-      setCompanies(map)
       setFollowing(new Set(myFollows.map((f) => f.company_id)))
       setLoading(false)
       const ms = Math.round((performance.now() - dataStart) * 10) / 10
-      perf('dashboard DATA READY', { jobs: j.length, apps: a.length, companies: cs.length, ms })
+      perf('dashboard DATA READY', { jobs: j.length, apps: a.length, ms })
     })()
 
     // Kick off AI matching only once the browser is idle, so it never competes
@@ -246,7 +240,7 @@ function StudentDashboard({ user }: { user: Profile }) {
             ) : (
               topPicks.map((m) => {
                 const job = jobs.find((j) => j.id === m.job_id)!
-                const company = companies[job.company_id]
+                const company = { company_name: job.company_name, avatar_url: job.company_avatar_url } as Profile
                 return <MatchRow key={m.job_id} job={job} match={m} company={company} />
               })
             )}
@@ -357,7 +351,7 @@ function StudentDashboard({ user }: { user: Profile }) {
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{job.title}</p>
-                        <p className="truncate text-xs text-muted-foreground">{job.original_company_name || companies[job.company_id]?.company_name}</p>
+                        <p className="truncate text-xs text-muted-foreground">{job.original_company_name || job.company_name}</p>
                       </div>
                       <Badge tone={dl <= 3 ? 'danger' : 'warning'} className="shrink-0">
                         {dl === 0 ? 'Today' : `${dl}d`}
@@ -383,10 +377,10 @@ function StudentDashboard({ user }: { user: Profile }) {
                       to={`/app/jobs?job=${job.id}`}
                       className="-mx-2 flex items-center gap-3 rounded-lg p-2 hover:bg-muted"
                     >
-                      <Avatar name={job.original_company_name || companies[job.company_id]?.company_name} src={job.original_company_logo_url || companies[job.company_id]?.avatar_url} size={32} />
+                      <Avatar name={job.original_company_name || job.company_name} src={job.original_company_logo_url || job.company_avatar_url} size={32} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{job.title}</p>
-                        <p className="truncate text-xs text-muted-foreground">{job.original_company_name || companies[job.company_id]?.company_name} · {job.location}</p>
+                        <p className="truncate text-xs text-muted-foreground">{job.original_company_name || job.company_name} · {job.location}</p>
                       </div>
                     </Link>
                   ))}

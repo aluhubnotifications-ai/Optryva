@@ -120,7 +120,22 @@ jobs.get('/', async (req, res) => {
   if (cached) return res.json(cached)
   const rows = must(await sb.from('job_listings').select(LIST_COLUMNS).eq('status', 'active').order('created_at', { ascending: false })) as any[]
   const gates = await schoolGates(rows.map((r) => r.company_id))
-  const payload = rows.filter((r) => jobVisibleTo(r, viewer, gates)).map(rowToJob)
+  const visible = rows.filter((r) => jobVisibleTo(r, viewer, gates))
+  // Attach the posting entity's display name + avatar once (single batched
+  // query) so clients never have to scan the whole directory to label a job.
+  const companyIds = [...new Set(visible.map((r) => r.company_id))]
+  if (companyIds.length) {
+    const comps = must(
+      await sb.from('profiles').select('id,company_name,avatar_url,full_name').in('id', companyIds),
+    ) as any[]
+    const cmap = new Map(comps.map((c) => [c.id, c]))
+    for (const r of visible) {
+      const c = cmap.get(r.company_id)
+      r.company_name = c ? c.company_name ?? c.full_name ?? undefined : undefined
+      r.company_avatar_url = c?.avatar_url ?? undefined
+    }
+  }
+  const payload = visible.map(rowToJob)
   cacheSet(cacheKey, payload, 20_000)
   res.json(payload)
 })

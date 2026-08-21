@@ -79,6 +79,8 @@ export function rowToJob(r: any) {
     posted_by_role: r.posted_by_role,
     original_company_name: r.original_company_name ?? undefined,
     original_company_logo_url: r.original_company_logo_url ?? undefined,
+    company_name: r.company_name ?? undefined,
+    company_avatar_url: r.company_avatar_url ?? undefined,
     created_at: r.created_at,
   }
 }
