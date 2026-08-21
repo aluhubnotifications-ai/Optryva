@@ -34,3 +34,6 @@ yarn-error.log*
 # Misc
 .cache/
 coverage/
+
+# Local supabase CLI temp
+**/supabase/.temp/
