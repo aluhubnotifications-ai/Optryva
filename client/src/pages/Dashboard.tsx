@@ -491,38 +491,42 @@ function NextBestAction({
 // Compact, reason-led match card for the horizontal Top Picks row.
 function MatchCard({ job, match }: { job: JobListing; match: AiMatch }) {
   const dl = daysUntil(job.deadline)
+  const company = job.original_company_name || job.company_name
   return (
-    <Link to={`/app/jobs?job=${job.id}`} className="group relative w-[260px] shrink-0 snap-start">
+    <Link to={`/app/jobs?job=${job.id}`} className="group relative w-[240px] shrink-0 snap-start">
       <Card className="h-full transition-shadow hover:shadow-card">
-        <CardBody className="flex h-full flex-col gap-3">
+        <CardBody className="flex h-full flex-col gap-2.5 p-4">
           <div className="flex items-start justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
-              <Avatar name={job.original_company_name || job.company_name} src={job.original_company_logo_url || job.company_avatar_url} size={28} />
-              <span className="truncate text-xs text-muted-foreground">{job.original_company_name || job.company_name}</span>
+              <Avatar name={company} src={job.original_company_logo_url || job.company_avatar_url} size={24} />
+              <span className="truncate text-xs text-muted-foreground">{company}</span>
             </div>
-            <ScoreRing score={match.score} size={44} />
+            <ScoreRing score={match.score} size={40} />
           </div>
-          <div>
-            <p className="font-semibold leading-tight group-hover:text-primary">{job.title}</p>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">{job.location}</p>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold leading-tight group-hover:text-primary">{job.title}</p>
+            <p className="truncate text-xs text-muted-foreground">{job.location}</p>
           </div>
           {match.reasons[0] && (
             <p className="flex items-start gap-1.5 text-xs text-muted-foreground line-clamp-2">
               <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
-              <span>{match.reasons[0]}</span>
+              <span className="min-w-0">{match.reasons[0]}</span>
             </p>
           )}
-          <div className="mt-auto flex flex-wrap gap-1.5">
-            {match.matched_skills.slice(0, 3).map((s) => (
-              <Badge key={s} tone="success" className="text-[11px]">
-                {s}
-              </Badge>
-            ))}
-            {dl !== null && dl <= 14 && (
-              <Badge tone="warning" className="text-[11px]">
-                {dl <= 0 ? 'Closing' : `${dl}d left`}
-              </Badge>
-            )}
+          <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+            <div className="flex min-w-0 flex-wrap gap-1">
+              {match.matched_skills.slice(0, 2).map((s) => (
+                <Badge key={s} tone="success" className="text-[11px]">
+                  {s}
+                </Badge>
+              ))}
+              {dl !== null && dl <= 14 && (
+                <Badge tone="warning" className="text-[11px]">
+                  {dl <= 0 ? 'Closing' : `${dl}d left`}
+                </Badge>
+              )}
+            </div>
+            <span className="shrink-0 text-xs font-medium text-primary group-hover:underline">View more →</span>
           </div>
         </CardBody>
       </Card>
@@ -532,22 +536,25 @@ function MatchCard({ job, match }: { job: JobListing; match: AiMatch }) {
 
 function MatchSkeleton() {
   return (
-    <div className="w-[260px] shrink-0">
+    <div className="w-[240px] shrink-0">
       <Card>
-        <CardBody className="flex h-full flex-col gap-3">
+        <CardBody className="flex h-full flex-col gap-2.5 p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="skeleton h-7 w-7 rounded-full" />
+              <div className="skeleton h-6 w-6 rounded-full" />
               <Skeleton className="h-3 w-20" />
             </div>
-            <div className="skeleton h-11 w-11 rounded-full" />
+            <div className="skeleton h-10 w-10 rounded-full" />
           </div>
           <Skeleton className="h-4 w-2/3" />
           <Skeleton className="h-3 w-1/2" />
           <Skeleton className="h-3 w-full" />
-          <div className="mt-auto flex gap-1.5">
-            <Skeleton className="h-5 w-14 rounded-full" />
-            <Skeleton className="h-5 w-14 rounded-full" />
+          <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+            <div className="flex gap-1">
+              <Skeleton className="h-5 w-12 rounded-full" />
+              <Skeleton className="h-5 w-12 rounded-full" />
+            </div>
+            <Skeleton className="h-3 w-16" />
           </div>
         </CardBody>
       </Card>
