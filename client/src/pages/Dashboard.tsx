@@ -10,10 +10,9 @@ import {
   TrendingUp,
   Users,
   Crown,
-  Eye,
-  Send,
   Clock,
   GraduationCap,
+  Target,
 } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
 import { applicationsApi, followsApi, jobsApi } from '@/lib/api'
@@ -21,6 +20,7 @@ import { useMatchProgress } from '@/lib/matchProgress'
 import type { AiMatch, Application, JobListing, Profile } from '@/types'
 import { Card, CardBody, Badge, Avatar, Progress, Skeleton } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
+import { Spinner } from '@/components/ui/Spinner'
 import { ScoreRing } from '@/components/ScoreRing'
 import { formatDate, daysUntil } from '@/lib/utils'
 import { perf } from '@/lib/perf'
@@ -35,7 +35,14 @@ export default function Dashboard() {
   return user.user_type === 'student' ? (
     <StudentDashboard user={user} />
   ) : (
-    <Suspense fallback={<div className="py-20 text-center text-sm text-muted-foreground">Loading analytics…</div>}>
+    <Suspense
+      fallback={
+        <div className="flex flex-col items-center gap-3 py-24 text-muted-foreground">
+          <Spinner className="h-6 w-6" />
+          <p className="text-sm">Loading your analytics…</p>
+        </div>
+      }
+    >
       <Analytics />
     </Suspense>
   )
@@ -122,7 +129,8 @@ function StudentDashboard({ user }: { user: Profile }) {
 
   const completeness = useMemo(() => profileCompleteness(user), [user])
   const gaps = useMemo(() => profileGaps(user), [user])
-  const topPicks = matches.slice(0, 3)
+  const hasCv = !!(user.cv_text || user.cv_filename)
+  const topPicks = matches.slice(0, 6)
 
   // Roles the student hasn't applied to that are about to close — nudges action.
   const closingSoon = useMemo(() => {
@@ -132,7 +140,7 @@ function StudentDashboard({ user }: { user: Profile }) {
       .map((j) => ({ job: j, dl: daysUntil(j.deadline) }))
       .filter((x): x is { job: JobListing; dl: number } => x.dl !== null && x.dl >= 0 && x.dl <= 10)
       .sort((a, b) => a.dl - b.dl)
-      .slice(0, 3)
+      .slice(0, 4)
   }, [jobs, apps])
 
   // Application pipeline: count per stage.
@@ -153,53 +161,38 @@ function StudentDashboard({ user }: { user: Profile }) {
     return jobs
       .filter((j) => following.has(j.company_id) && !applied.has(j.id))
       .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))
-      .slice(0, 3)
+      .slice(0, 4)
   }, [jobs, apps, following])
 
   const stats = [
-    { label: 'Applications', value: apps.length, icon: FileText, to: '/app/applications' },
+    {
+      label: 'Applications',
+      value: apps.length,
+      icon: FileText,
+      to: '/app/applications',
+      sub: jobs.length ? `${jobs.length} open roles` : 'No open roles',
+    },
     {
       label: 'Shortlisted',
       value: apps.filter((a) => a.status === 'shortlisted' || a.status === 'hired').length,
       icon: CheckCircle2,
       to: '/app/applications',
+      sub: apps.length ? `${apps.length} applied` : 'No applications',
     },
-    { label: 'Open roles', value: jobs.length, icon: Briefcase, to: '/app/jobs' },
+    { label: 'Open roles', value: jobs.length, icon: Briefcase, to: '/app/jobs', sub: 'Live now' },
     {
       label: 'Avg match',
       value: matches.length ? Math.round(matches.reduce((s, m) => s + m.score, 0) / matches.length) : 0,
       icon: TrendingUp,
       to: '/app/insights',
+      sub: matches.length ? `${matches.length} scored` : 'Pending',
     },
   ]
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-          <p className="text-sm text-muted-foreground">{greeting()},</p>
-          <h1 className="text-2xl font-bold tracking-tight">{user.full_name.split(' ')[0]} 👋</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          {user.plan === 'free' ? (
-            <Link to="/app/usage">
-              <Button variant="subtle" className="gap-1.5">
-                <Crown className="h-4 w-4" /> View usage
-              </Button>
-            </Link>
-          ) : (
-            <Badge tone="primary" className="gap-1">
-              <Crown className="h-3 w-3" /> {user.plan.toUpperCase()}
-            </Badge>
-          )}
-          <Link to="/app/jobs">
-            <Button className="gap-1.5">
-              Browse jobs <ArrowRight className="h-4 w-4" />
-            </Button>
-          </Link>
-        </div>
-      </div>
+      <Hero user={user} completeness={completeness} />
+      <NextBestAction hasCv={hasCv} gaps={gaps} matches={matches} />
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -211,11 +204,12 @@ function StudentDashboard({ user }: { user: Profile }) {
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/12 text-primary">
                     <s.icon className="h-5 w-5" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-2xl font-bold leading-none text-accent">
                       {loading ? <Skeleton className="h-8 w-12" /> : s.value}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">{s.label}</p>
+                    {!loading && <p className="mt-0.5 truncate text-[11px] text-muted-foreground/70">{s.sub}</p>}
                   </div>
                 </CardBody>
               </Card>
@@ -225,30 +219,36 @@ function StudentDashboard({ user }: { user: Profile }) {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* AI Top Picks */}
-        <div className="lg:col-span-2">
-          <SectionHeader
-            icon={Sparkles}
-            title="AI Top Picks for you"
-            action={<Link to="/app/insights" className="text-sm font-medium text-primary hover:underline">View all matches</Link>}
-          />
-          <div className="space-y-3">
+        {/* Left column */}
+        <div className="space-y-6 lg:col-span-2">
+          {/* AI Top Picks — horizontal, scannable */}
+          <section>
+            <SectionHeader
+              icon={Sparkles}
+              title="AI Top Picks for you"
+              action={<Link to="/app/insights" className="text-sm font-medium text-primary hover:underline">View all matches</Link>}
+            />
             {loading ? (
-              Array.from({ length: 3 }).map((_, i) => <MatchSkeleton key={i} />)
+              <div className="-mx-1 flex gap-3 overflow-hidden pb-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <MatchSkeleton key={i} />
+                ))}
+              </div>
             ) : topPicks.length === 0 ? (
-              <TopPicksEmpty hasCv={!!(user.cv_text || user.cv_filename)} />
+              <TopPicksEmpty hasCv={hasCv} />
             ) : (
-              topPicks.map((m) => {
-                const job = jobs.find((j) => j.id === m.job_id)!
-                const company = { company_name: job.company_name, avatar_url: job.company_avatar_url } as Profile
-                return <MatchRow key={m.job_id} job={job} match={m} company={company} />
-              })
+              <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2">
+                {topPicks.map((m) => {
+                  const job = jobs.find((j) => j.id === m.job_id)!
+                  return <MatchCard key={m.job_id} job={job} match={m} />
+                })}
+              </div>
             )}
-          </div>
+          </section>
 
           {/* Application pipeline */}
           {!loading && apps.length > 0 && (
-            <Card className="mt-6">
+            <Card>
               <CardBody>
                 <h3 className="mb-3 flex items-center gap-2 font-semibold">
                   <TrendingUp className="h-4 w-4 text-primary" /> Application pipeline
@@ -266,138 +266,19 @@ function StudentDashboard({ user }: { user: Profile }) {
               </CardBody>
             </Card>
           )}
-        </div>
-
-        {/* Right rail */}
-        <div className="space-y-6">
-          {/* Profile completeness */}
-          <Card>
-            <CardBody>
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="font-semibold">Profile strength</h3>
-                <span className="text-sm font-bold text-accent">{completeness}%</span>
-              </div>
-              <Progress value={completeness} />
-              {gaps.length > 0 ? (
-                <>
-                  <p className="mt-3 text-xs text-muted-foreground">Finish these to improve your match accuracy:</p>
-                  <div className="mt-2 space-y-1.5">
-                    {gaps.slice(0, 3).map((g) => (
-                      <Link
-                        key={g.label}
-                        to={g.to}
-                        className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm transition-colors hover:border-primary/40 hover:bg-muted/50"
-                      >
-                        <span className="flex min-w-0 items-center gap-2">
-                          <g.icon className="h-3.5 w-3.5 shrink-0 text-primary" />
-                          <span className="truncate">{g.label}</span>
-                        </span>
-                        <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      </Link>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <p className="mt-3 inline-flex items-center gap-1.5 text-xs text-success">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Fully complete — nice work!
-                </p>
-              )}
-              <Link to="/app/profile">
-                <Button variant="outline" size="sm" className="mt-4 w-full">
-                  Edit profile
-                </Button>
-              </Link>
-            </CardBody>
-          </Card>
-
-          {/* Placeholder cards while the first data load is in flight, so the
-              right rail doesn't jump around once Closing soon / Followed load. */}
-          {loading && (
-            <>
-              <Card>
-                <CardBody>
-                  <Skeleton className="mb-3 h-4 w-32" />
-                  <div className="space-y-2">
-                    <Skeleton className="h-10 w-full" />
-                    <Skeleton className="h-10 w-full" />
-                  </div>
-                </CardBody>
-              </Card>
-              <Card>
-                <CardBody>
-                  <Skeleton className="mb-3 h-4 w-32" />
-                  <div className="space-y-2">
-                    <Skeleton className="h-10 w-full" />
-                    <Skeleton className="h-10 w-full" />
-                  </div>
-                </CardBody>
-              </Card>
-            </>
-          )}
-
-          {/* Closing soon */}
-          {!loading && closingSoon.length > 0 && (
-            <Card>
-              <CardBody>
-                <h3 className="mb-3 flex items-center gap-2 font-semibold">
-                  <Clock className="h-4 w-4 text-warning" /> Closing soon
-                </h3>
-                <div className="space-y-1">
-                  {closingSoon.map(({ job, dl }) => (
-                    <Link
-                      key={job.id}
-                      to={`/app/jobs?job=${job.id}`}
-                      className="-mx-2 flex items-center justify-between gap-2 rounded-lg p-2 hover:bg-muted"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{job.title}</p>
-                        <p className="truncate text-xs text-muted-foreground">{job.original_company_name || job.company_name}</p>
-                      </div>
-                      <Badge tone={dl <= 3 ? 'danger' : 'warning'} className="shrink-0">
-                        {dl === 0 ? 'Today' : `${dl}d`}
-                      </Badge>
-                    </Link>
-                  ))}
-                </div>
-              </CardBody>
-            </Card>
-          )}
-
-          {/* From companies you follow */}
-          {!loading && followedRoles.length > 0 && (
-            <Card>
-              <CardBody>
-                <h3 className="mb-3 flex items-center gap-2 font-semibold">
-                  <Users className="h-4 w-4 text-primary" /> From companies you follow
-                </h3>
-                <div className="space-y-1">
-                  {followedRoles.map((job) => (
-                    <Link
-                      key={job.id}
-                      to={`/app/jobs?job=${job.id}`}
-                      className="-mx-2 flex items-center gap-3 rounded-lg p-2 hover:bg-muted"
-                    >
-                      <Avatar name={job.original_company_name || job.company_name} src={job.original_company_logo_url || job.company_avatar_url} size={32} />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{job.title}</p>
-                        <p className="truncate text-xs text-muted-foreground">{job.original_company_name || job.company_name} · {job.location}</p>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              </CardBody>
-            </Card>
-          )}
 
           {/* Recent applications */}
           <Card>
             <CardBody>
-              <h3 className="mb-3 font-semibold">Recent applications</h3>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="font-semibold">Recent applications</h3>
+                <Link to="/app/applications" className="text-sm font-medium text-primary hover:underline">View all</Link>
+              </div>
               {apps.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No applications yet.</p>
+                <p className="text-sm text-muted-foreground">No applications yet — your applied roles will appear here.</p>
               ) : (
                 <div className="space-y-3">
-                  {apps.slice(0, 3).map((a) => {
+                  {apps.slice(0, 4).map((a) => {
                     const job = jobs.find((j) => j.id === a.job_id)
                     return (
                       <Link
@@ -417,52 +298,221 @@ function StudentDashboard({ user }: { user: Profile }) {
                   })}
                 </div>
               )}
-              <Link to="/app/applications">
-                <Button variant="ghost" size="sm" className="mt-3 w-full">
-                  View all
+            </CardBody>
+          </Card>
+        </div>
+
+        {/* Right rail */}
+        <div className="space-y-6">
+          {/* Profile strength (slim) */}
+          <Card>
+            <CardBody>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="font-semibold">Profile strength</h3>
+                <span className="text-sm font-bold text-accent">{completeness}%</span>
+              </div>
+              <Progress value={completeness} />
+              <p className="mt-3 text-xs text-muted-foreground">
+                {completeness === 100
+                  ? 'Fully complete — nice work!'
+                  : `Finish your profile to get more accurate matches.`}
+              </p>
+              <Link to="/app/profile">
+                <Button variant="outline" size="sm" className="mt-4 w-full">
+                  Edit profile
                 </Button>
               </Link>
             </CardBody>
           </Card>
+
+          {/* Opportunities — consolidates Closing soon + Following */}
+          <Card>
+            <CardBody className="space-y-4">
+              <h3 className="font-semibold">Opportunities</h3>
+              {!loading && closingSoon.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Closing soon</p>
+                  <div className="space-y-1">
+                    {closingSoon.map(({ job, dl }) => (
+                      <Link
+                        key={job.id}
+                        to={`/app/jobs?job=${job.id}`}
+                        className="-mx-2 flex items-center justify-between gap-2 rounded-lg p-2 hover:bg-muted"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{job.title}</p>
+                          <p className="truncate text-xs text-muted-foreground">{job.original_company_name || job.company_name}</p>
+                        </div>
+                        <Badge tone={dl <= 3 ? 'danger' : 'warning'} className="shrink-0">
+                          {dl === 0 ? 'Today' : `${dl}d`}
+                        </Badge>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!loading && followedRoles.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">From companies you follow</p>
+                  <div className="space-y-1">
+                    {followedRoles.map((job) => (
+                      <Link
+                        key={job.id}
+                        to={`/app/jobs?job=${job.id}`}
+                        className="-mx-2 flex items-center gap-3 rounded-lg p-2 hover:bg-muted"
+                      >
+                        <Avatar name={job.original_company_name || job.company_name} src={job.original_company_logo_url || job.company_avatar_url} size={32} />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">{job.title}</p>
+                          <p className="truncate text-xs text-muted-foreground">{job.original_company_name || job.company_name} · {job.location}</p>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!loading && closingSoon.length === 0 && followedRoles.length === 0 && (
+                <p className="text-sm text-muted-foreground">Nothing urgent right now — check back later.</p>
+              )}
+            </CardBody>
+          </Card>
         </div>
       </div>
-
     </div>
   )
 }
 
-function MatchRow({
-  job,
-  match,
-  company,
+/* ============================ new blocks ============================ */
+
+function Hero({ user, completeness }: { user: Profile; completeness: number }) {
+  return (
+    <Card className="overflow-hidden">
+      <div className="relative bg-gradient-to-br from-primary/10 via-card to-accent/10 p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
+            <Avatar name={user.full_name} src={user.avatar_url} size={56} className="ring-4 ring-card" />
+            <div>
+              <p className="text-sm text-muted-foreground">{greeting()},</p>
+              <h1 className="text-2xl font-bold tracking-tight">{user.full_name.split(' ')[0]} 👋</h1>
+              <p className="mt-1 text-sm text-muted-foreground">Profile {completeness}% complete · {user.plan === 'free' ? 'Free plan' : user.plan}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {user.plan === 'free' ? (
+              <Link to="/app/usage">
+                <Button variant="subtle" className="gap-1.5">
+                  <Crown className="h-4 w-4" /> Upgrade
+                </Button>
+              </Link>
+            ) : (
+              <Badge tone="primary" className="gap-1">
+                <Crown className="h-3 w-3" /> {user.plan.toUpperCase()}
+              </Badge>
+            )}
+            <Link to="/app/jobs">
+              <Button className="gap-1.5">
+                Browse jobs <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+function NextBestAction({
+  hasCv,
+  gaps,
+  matches,
 }: {
-  job: JobListing
-  match: AiMatch
-  company?: Profile
+  hasCv: boolean
+  gaps: { label: string; to: string; icon: typeof FileText }[]
+  matches: AiMatch[]
 }) {
+  const action = useMemo(() => {
+    if (!hasCv)
+      return {
+        icon: FileText,
+        title: 'Upload your CV to unlock AI matches',
+        desc: 'Your CV is the strongest signal we use to rank roles for you.',
+        cta: 'Upload CV',
+        to: '/app/profile',
+        variant: 'default' as const,
+      }
+    if (gaps.some((g) => g.label.toLowerCase().includes('skill')))
+      return {
+        icon: Sparkles,
+        title: 'Add your skills for better matches',
+        desc: "Tell us what you're good at and we'll surface more relevant roles.",
+        cta: 'Add skills',
+        to: '/app/profile',
+        variant: 'outline' as const,
+      }
+    if (matches.length === 0)
+      return {
+        icon: TrendingUp,
+        title: 'Browse roles to get matched',
+        desc: 'Open roles are waiting — apply and we’ll learn what fits you best.',
+        cta: 'Browse jobs',
+        to: '/app/jobs',
+        variant: 'outline' as const,
+      }
+    return {
+      icon: Target,
+      title: `${matches.length} roles match you well`,
+      desc: 'Review your personalized shortlist and apply to your top pick.',
+      cta: 'View matches',
+      to: '/app/insights',
+      variant: 'outline' as const,
+    }
+  }, [hasCv, gaps, matches.length])
+
+  return (
+    <Card className="border-primary/30 bg-primary/5">
+      <CardBody className="flex items-center gap-4">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+          <action.icon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold leading-tight">{action.title}</p>
+          <p className="truncate text-sm text-muted-foreground">{action.desc}</p>
+        </div>
+        <Link to={action.to} className="shrink-0">
+          <Button variant={action.variant} size="sm" className="gap-1.5">
+            {action.cta} <ArrowRight className="h-4 w-4" />
+          </Button>
+        </Link>
+      </CardBody>
+    </Card>
+  )
+}
+
+// Compact, reason-led match card for the horizontal Top Picks row.
+function MatchCard({ job, match }: { job: JobListing; match: AiMatch }) {
   const dl = daysUntil(job.deadline)
   return (
-    <Card className="transition-shadow hover:shadow-card">
-      <CardBody className="flex items-center gap-4">
-        <Link to={`/app/jobs?job=${job.id}`}>
-          <ScoreRing score={match.score} size={58} showLabel />
-        </Link>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <Link to={`/app/jobs?job=${job.id}`} className="truncate font-semibold hover:text-primary">
-              {job.title}
-            </Link>
-            {job.posted_by_role === 'school' && <Badge tone="accent">School</Badge>}
+    <Link to={`/app/jobs?job=${job.id}`} className="group relative w-[260px] shrink-0 snap-start">
+      <Card className="h-full transition-shadow hover:shadow-card">
+        <CardBody className="flex h-full flex-col gap-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <Avatar name={job.original_company_name || job.company_name} src={job.original_company_logo_url || job.company_avatar_url} size={28} />
+              <span className="truncate text-xs text-muted-foreground">{job.original_company_name || job.company_name}</span>
+            </div>
+            <ScoreRing score={match.score} size={44} />
           </div>
-          <div className="mt-0.5 flex items-center gap-2 text-sm text-muted-foreground">
-            <Link to={`/app/companies/${job.company_id}`} className="flex min-w-0 items-center gap-2 hover:text-primary">
-              <Avatar name={job.original_company_name || company?.company_name} src={job.original_company_logo_url || company?.avatar_url} size={18} />
-              <span className="truncate hover:underline">{job.original_company_name || company?.company_name}</span>
-            </Link>
-            <span>·</span>
-            <span className="truncate">{job.location}</span>
+          <div>
+            <p className="font-semibold leading-tight group-hover:text-primary">{job.title}</p>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">{job.location}</p>
           </div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
+          {match.reasons[0] && (
+            <p className="flex items-start gap-1.5 text-xs text-muted-foreground line-clamp-2">
+              <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
+              <span>{match.reasons[0]}</span>
+            </p>
+          )}
+          <div className="mt-auto flex flex-wrap gap-1.5">
             {match.matched_skills.slice(0, 3).map((s) => (
               <Badge key={s} tone="success" className="text-[11px]">
                 {s}
@@ -474,35 +524,34 @@ function MatchRow({
               </Badge>
             )}
           </div>
-          {match.reasons[0] && (
-            <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
-              <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
-              <span className="line-clamp-1">{match.reasons[0]}</span>
-            </p>
-          )}
-        </div>
-        <Link to="/app/research" className="hidden shrink-0 sm:block">
-          <Button variant="outline" size="sm" className="gap-1.5">
-            <Sparkles className="h-4 w-4 text-primary" /> AI Research
-          </Button>
-        </Link>
-      </CardBody>
-    </Card>
+        </CardBody>
+      </Card>
+    </Link>
   )
 }
 
 function MatchSkeleton() {
   return (
-    <Card>
-      <CardBody className="flex items-center gap-4">
-        <div className="skeleton h-14 w-14 rounded-full" />
-        <div className="flex-1 space-y-2">
+    <div className="w-[260px] shrink-0">
+      <Card>
+        <CardBody className="flex h-full flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="skeleton h-7 w-7 rounded-full" />
+              <Skeleton className="h-3 w-20" />
+            </div>
+            <div className="skeleton h-11 w-11 rounded-full" />
+          </div>
           <Skeleton className="h-4 w-2/3" />
           <Skeleton className="h-3 w-1/2" />
-          <Skeleton className="h-3 w-1/3" />
-        </div>
-      </CardBody>
-    </Card>
+          <Skeleton className="h-3 w-full" />
+          <div className="mt-auto flex gap-1.5">
+            <Skeleton className="h-5 w-14 rounded-full" />
+            <Skeleton className="h-5 w-14 rounded-full" />
+          </div>
+        </CardBody>
+      </Card>
+    </div>
   )
 }
 
@@ -516,7 +565,7 @@ function TopPicksEmpty({ hasCv }: { hasCv: boolean }) {
         {hasCv ? (
           <>
             <p className="font-medium">No matches just yet</p>
-            <p className="max-w-xs text-sm text-muted-foreground">As new roles are posted, your best-fit picks will show up here.</p>
+            <p className="max-w-xs text-sm text-muted-foreground">As new roles are posted, your best-fit picks will show up here automatically.</p>
             <Link to="/app/jobs"><Button size="sm" className="gap-1.5">Browse all roles <ArrowRight className="h-4 w-4" /></Button></Link>
           </>
         ) : (
