@@ -615,6 +615,13 @@ ai.get('/insights', async (req, res) => {
   res.json(payload)
 })
 
+// Cheap, AI-free nudges (DB-derived) so the Insights Snapshot can show the
+// "application progress" card without re-running the full scoring pass.
+ai.get('/outcome-nudges', async (req, res) => {
+  const uid = req.user!.id
+  res.json(await outcomeNudges(uid))
+})
+
 /* ---------- §8.3 Company research ---------- */
 ai.post('/company', async (req, res) => {
   const { company, role } = req.body ?? {}

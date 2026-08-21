@@ -886,20 +886,6 @@ export interface CompassRec {
   stretch: string
   actions: string[]
 }
-export interface InsightsData {
-  readiness: number
-  total: number
-  distribution: { excellent: number; strong: number; stretch: number; weak: number }
-  gaps: { name: string; count: number }[]
-  strengths: { name: string; count: number }[]
-  demand: { name: string; count: number }[]
-  topMatches: { job_id: string; title: string; company_id: string; listing_type: string; location: string; score: number }[]
-  doNext: string[]
-  outcomeNudges?: { title: string; message: string; status: string }[]
-  reachable?: { job_id: string; title: string; company_id: string; listing_type: string; location: string; score: number; missing: string[]; bridge: string }[]
-  unlocks?: { skill: string; count: number; roles: string[] }[]
-}
-
 async function aiPost(path: string, body: unknown) {
   return apiFetch(path, { method: 'POST', body: JSON.stringify(body) })
 }
@@ -964,12 +950,6 @@ async function streamAi(label: string, path: string, body: unknown, onToken: (t:
   })
 }
 
-const EMPTY_INSIGHTS: InsightsData = {
-  readiness: 0, total: 0,
-  distribution: { excellent: 0, strong: 0, stretch: 0, weak: 0 },
-  gaps: [], strengths: [], demand: [], topMatches: [], doNext: [],
-}
-
 // Honest error surfaced when a real Claude call fails WITH a key present. The
 // server returns its hardcoded safety-net (HTTP 200) only when there is no API
 // key, so reaching these catch blocks means a genuine failure — never mask it
@@ -1017,12 +997,13 @@ export const aiApi = {
     })
   },
 
-  /** Aggregate insights (skill gaps, demand, do-next) — server-computed. */
-  async insights(_jobs: JobListing[], _student: Profile): Promise<InsightsData> {
+  /** Application-progress nudges (DB-derived, no AI) — cheap, so the Insights
+   *  Snapshot can render them without re-scoring every role. */
+  async outcomeNudges(): Promise<{ title: string; message: string; status: string }[]> {
     try {
-      return (await trackAi('Analyzing your skill gaps & demand', () => apiFetch('/ai/insights'))) as InsightsData
+      return (await apiFetch('/ai/outcome-nudges')) as { title: string; message: string; status: string }[]
     } catch {
-      return EMPTY_INSIGHTS
+      return []
     }
   },
 
