@@ -52,14 +52,32 @@ function SnapshotTab({ user }: { user: Profile }) {
   const [data, setData] = useState<InsightsData | null>(null)
   const [jobsById, setJobsById] = useState<Map<string, JobListing>>(new Map())
   const [loading, setLoading] = useState(true)
+  const [progress, setProgress] = useState(0)
+  const [total, setTotal] = useState(0)
+
+  // The /ai/insights endpoint returns one response (it scores every role server-side),
+  // so there's no per-role progress stream. We ease an estimated bar toward ~92% while
+  // waiting so the wait feels alive, then snap to 100% once the data actually arrives.
+  useEffect(() => {
+    if (!loading) { setProgress(0); return }
+    setProgress(0)
+    const start = Date.now()
+    const t = setInterval(() => {
+      const elapsed = Date.now() - start
+      setProgress(Math.min(92, Math.round((elapsed / 6000) * 92)))
+    }, 150)
+    return () => clearInterval(t)
+  }, [loading])
 
   async function load() {
     setLoading(true)
     // Jobs already embed company_name/avatar, so we skip the full company + school
     // directory fetch (thousands of rows) that was only used to print a brand label.
     const jobs = await jobsApi.list(user)
+    setTotal(jobs.length)
     setJobsById(new Map(jobs.map((j) => [j.id, j])))
     setData(await aiApi.insights(jobs, user))
+    setProgress(100)
     setLoading(false)
   }
   useEffect(() => { void load() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [user.id])
@@ -69,7 +87,13 @@ function SnapshotTab({ user }: { user: Profile }) {
       <Card>
         <CardBody className="flex flex-col items-center justify-center gap-3 py-16 text-center">
           <Sparkles className="h-7 w-7 animate-pulse text-primary" />
-          <p className="text-sm text-muted-foreground">Reading your profile and scoring every open role…</p>
+          <p className="text-sm text-muted-foreground">
+            {total ? `Scoring your ${total} open role${total === 1 ? '' : 's'}…` : 'Reading your profile and scoring every open role…'}
+          </p>
+          <div className="w-56">
+            <Progress value={progress} />
+            <p className="mt-1.5 text-xs font-medium text-muted-foreground">{progress}%</p>
+          </div>
         </CardBody>
       </Card>
     )
