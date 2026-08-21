@@ -50,15 +50,15 @@ function readinessLabel(n: number) {
 
 function SnapshotTab({ user }: { user: Profile }) {
   const [data, setData] = useState<InsightsData | null>(null)
-  const [companies, setCompanies] = useState<Record<string, Profile>>({})
+  const [jobsById, setJobsById] = useState<Map<string, JobListing>>(new Map())
   const [loading, setLoading] = useState(true)
 
   async function load() {
     setLoading(true)
-    const [jobs, cs, sc] = await Promise.all([jobsApi.list(user), profilesApi.list('company'), profilesApi.list('school')])
-    const cmap: Record<string, Profile> = {}
-    ;[...cs, ...sc].forEach((c) => (cmap[c.id] = c))
-    setCompanies(cmap)
+    // Jobs already embed company_name/avatar, so we skip the full company + school
+    // directory fetch (thousands of rows) that was only used to print a brand label.
+    const jobs = await jobsApi.list(user)
+    setJobsById(new Map(jobs.map((j) => [j.id, j])))
     setData(await aiApi.insights(jobs, user))
     setLoading(false)
   }
@@ -242,7 +242,8 @@ function SnapshotTab({ user }: { user: Profile }) {
             </div>
             <div className="mt-3 space-y-2">
               {data.topMatches.map((t) => {
-                const brand = companies[t.company_id]?.company_name ?? companies[t.company_id]?.full_name
+                const jt = jobsById.get(t.job_id)
+                const brand = jt?.original_company_name || jt?.company_name
                 return (
                   <Link key={t.job_id} to={`/app/jobs?job=${t.job_id}`} className="flex items-center gap-3 rounded-xl border border-border p-3 transition-colors hover:border-primary/40">
                     <ScoreRing score={t.score} size={44} />
@@ -364,19 +365,12 @@ function ChatTab() {
 function MatchesTab({ user }: { user: Profile }) {
   const { phase, done, total, label, matches } = useMatchProgress()
   const [jobs, setJobs] = useState<JobListing[]>([])
-  const [companies, setCompanies] = useState<Record<string, Profile>>({})
 
-  // Load jobs + companies once for rendering. Matching itself is driven by the
-  // global store, so it keeps running — and stays visible in the AI activity
-  // panel — even if you switch tabs or leave and come back to this page.
+  // Load jobs once for rendering. Jobs embed company_name/avatar, so no separate
+  // directory fetch is needed. Matching is driven by the global store (visible in
+  // the AI activity panel) and keeps running even when you switch tabs.
   useEffect(() => {
-    ;(async () => {
-      const [js, cs, sc] = await Promise.all([jobsApi.list(user), profilesApi.list('company'), profilesApi.list('school')])
-      const cmap: Record<string, Profile> = {}
-      ;[...cs, ...sc].forEach((c) => (cmap[c.id] = c))
-      setJobs(js)
-      setCompanies(cmap)
-    })()
+    jobsApi.list(user).then(setJobs)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id])
 
@@ -384,7 +378,6 @@ function MatchesTab({ user }: { user: Profile }) {
   const rows = matches
     .map((m) => ({ job: jobsById.get(m.job_id), match: m }))
     .filter((r): r is { job: JobListing; match: AiMatch } => !!r.job)
-    .map((r) => ({ ...r, company: companies[r.job.company_id] }))
     .sort((a, b) => b.match.score - a.match.score)
 
   const run = () => useMatchProgress.getState().run(user.id, true)
@@ -425,12 +418,12 @@ function MatchesTab({ user }: { user: Profile }) {
           </CardBody>
         </Card>
       )}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{rows.length} role{rows.length === 1 ? '' : 's'} scored{phase === 'running' ? ' so far' : ' · sorted by fit'}</p>
-        <Button variant="outline" size="sm" className="gap-1.5" onClick={run} disabled={phase === 'running'}><RefreshCw className="h-4 w-4" /> {phase === 'running' ? 'Running…' : 'Re-run'}</Button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="min-w-0 text-sm text-muted-foreground">{rows.length} role{rows.length === 1 ? '' : 's'} scored{phase === 'running' ? ' so far' : ' · sorted by fit'}</p>
+        <Button variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={run} disabled={phase === 'running'}><RefreshCw className="h-4 w-4" /> {phase === 'running' ? 'Running…' : 'Re-run'}</Button>
       </div>
-      {rows.map(({ job, match, company }) => {
-        const brand = job.original_company_name || company?.company_name
+      {rows.map(({ job, match }) => {
+        const brand = job.original_company_name || job.company_name
         return (
           <Card key={job.id} className="transition-shadow hover:shadow-card">
             <CardBody className="flex items-center gap-4">
@@ -474,7 +467,7 @@ function TipsTab({ user }: { user: Profile }) {
             <h2 className="flex items-center gap-2 font-semibold"><FileText className="h-5 w-5 text-primary" /> Personalized CV Tips</h2>
             <p className="text-sm text-muted-foreground">AI suggestions based on your profile{user.cv_filename ? ` and ${user.cv_filename}` : ''}.</p>
           </div>
-          <Button onClick={generate} loading={loading} className="gap-1.5"><Sparkles className="h-4 w-4" /> {tips ? 'Regenerate' : 'Generate tips'}</Button>
+          <Button onClick={generate} loading={loading} className="w-full gap-1.5 sm:w-auto"><Sparkles className="h-4 w-4" /> {tips ? 'Regenerate' : 'Generate tips'}</Button>
         </div>
         {tips && (
           <ol className="mt-5 space-y-3">

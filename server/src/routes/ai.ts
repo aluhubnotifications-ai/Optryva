@@ -1,6 +1,7 @@
 import { Router } from '@/lib/http'
 import { sb, must, j } from '@/db'
 import { requireAuth } from '@/lib/auth'
+import { cacheGet, cacheSet } from '@/lib/cache'
 import { getUsageSummary } from '@/lib/usage'
 import { now } from '@/lib/util'
 import { claudeText, claudeJson, claudeTextWithSearch, streamClaude, extractJson, hasClaude, MODELS } from '@/lib/claude'
@@ -512,6 +513,12 @@ async function outcomeNudges(uid: string): Promise<{ title: string; message: str
 /* ---------- §8.2 Insights — one engine, aggregated (skill gaps, demand, do-next) ---------- */
 ai.get('/insights', async (req, res) => {
   const uid = req.user!.id
+  // Score-every-role is expensive (N AI calls). Cache the aggregate for a short
+  // window so re-opening Insights or switching back to the tab is instant, while
+  // staying fresh enough for day-to-day use.
+  const cacheKey = `insights:${uid}`
+  const cached = cacheGet<Record<string, unknown>>(cacheKey)
+  if (cached) return res.json(cached)
   const viewer = await studentRow(uid)
   const ready = matchReadiness(viewer)
   if (!ready.ready) return res.status(409).json({ error: 'profile_incomplete', missing: ready.missing })
@@ -603,7 +610,9 @@ ai.get('/insights', async (req, res) => {
     if (list.length) doNext = list.slice(0, 5)
   }
 
-  res.json({ readiness, total: rows.length, distribution, gaps, strengths, demand, topMatches, doNext, outcomeNudges: nudges, reachable, unlocks })
+  const payload = { readiness, total: rows.length, distribution, gaps, strengths, demand, topMatches, doNext, outcomeNudges: nudges, reachable, unlocks }
+  cacheSet(cacheKey, payload, 60_000)
+  res.json(payload)
 })
 
 /* ---------- §8.3 Company research ---------- */
