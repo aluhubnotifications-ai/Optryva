@@ -81,6 +81,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState(false)
+  const [assignmentPreview, setAssignmentPreview] = useState(false)
   const logoRef = useRef<HTMLInputElement>(null)
 
   async function onLogoFile(file?: File) {
@@ -421,6 +422,9 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
               {!assignment && (
                 <Button type="button" size="sm" variant="ghost" onClick={draftAssignment}><Sparkles className="h-4 w-4 text-accent" /> Draft template</Button>
               )}
+              {assignment && (
+                <Button type="button" size="sm" variant="ghost" className="gap-1.5" onClick={() => setAssignmentPreview(true)}><Eye className="h-4 w-4" /> Preview</Button>
+              )}
               <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setStudioOpen((v) => !v)}><Sparkles className="h-4 w-4 text-accent" /> {studioOpen ? 'Hide AI studio' : 'Generate with AI'}</Button>
             </div>
           </div>
@@ -553,12 +557,6 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
             {isSchool && <ReviewRow label="Audience" value={f.students_only ? 'Only my students' : (f.fromOther ? `Forwarded: ${f.original_company_name || '—'}` : 'School posting')} />}
             <ReviewRow label="Assignment" value={assignment?.prompt.trim() ? `${assignment.questions.length} question(s) · ${assignment.rubric.length} rubric` : 'None'} />
           </div>
-
-          {assignment?.prompt.trim() && (
-            <div className="rounded-xl border border-border p-4">
-              <AssignmentView assignment={{ title: assignment.title.trim() || 'Practical challenge', prompt: assignment.prompt.trim(), due_before_interview: assignment.dueBeforeInterview, rubric: assignment.rubric, questions: assignment.questions }} />
-            </div>
-          )}
         </section>
       )}
 
@@ -575,6 +573,14 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
       </div>
 
       <PostingPreview open={preview} onClose={() => setPreview(false)} f={f} assignment={assignment} isSchool={isSchool} user={user} />
+
+      <Modal open={assignmentPreview} onClose={() => setAssignmentPreview(false)} size="xl" title="Preview — candidate assignment">
+        {assignment?.prompt.trim() ? (
+          <AssignmentView assignment={{ title: assignment.title.trim() || 'Practical challenge', prompt: assignment.prompt.trim(), due_before_interview: assignment.dueBeforeInterview, rubric: assignment.rubric, questions: assignment.questions }} />
+        ) : (
+          <p className="text-sm text-muted-foreground">Add an assignment first to preview it.</p>
+        )}
+      </Modal>
     </div>
   )
 }
