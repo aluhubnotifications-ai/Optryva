@@ -373,6 +373,24 @@ fit, wasting a prior and risking inconsistent judgments.
   scope** — it is a fairness/privacy concern and must not silently influence a new
   employer's view without explicit consent.
 
+### D3 — Students can see their own assessment score + feedback
+
+**Decision:** a student may view the AI-assisted evaluation of **their own**
+submitted assessment, because it supports the platform's explainability and
+learning mission and is fairer than a hidden, untraceable score.
+
+Guardrails (implemented):
+- Shown **only after the employer has reviewed** — gated on `assignment_score !=
+  null` (the employer ran the AI review). It never appears for other candidates.
+- Clearly labelled **advisory**: the panel states it is one input the employer
+  used, and the human decision (status badge + employer note at the top) is the
+  actual verdict and may differ.
+- Surfaced in the student's `ApplicationDetail` page (score ring + recommendation
+  + overall feedback + per-question feedback reconciled to the real question/rubric
+  text). A subtle "Scored" badge on the `Applications` list signals availability.
+- Authorization is unchanged: `GET /applications/:id` already allows only the
+  owner student, the job's company, or an admin.
+
 ## Non-Negotiable Product Rules
 
 - AI must not invent résumé experience or evidence.

@@ -15,6 +15,7 @@ import type { Application, JobListing, Profile } from '@/types'
 import { Card, CardBody, Badge, Avatar } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
+import { ScoreRing } from '@/components/ScoreRing'
 import { AppProgressSteps } from '@/components/AppProgressSteps'
 import { AIResearchPanel } from '@/components/AIResearchPanel'
 import { DocumentList } from '@/components/DocumentList'
@@ -143,6 +144,42 @@ export default function ApplicationDetail() {
               </div>
             )}
             {job.assignment && <div className="mt-6 border-t border-border pt-4"><h3 className="flex items-center gap-2 font-semibold"><ClipboardCheck className="h-4 w-4 text-accent" /> {job.assignment.title}</h3><p className="mt-1 text-xs text-muted-foreground">{app.assignment_status === 'submitted' ? 'Submitted with your application' : 'Pending submission'}</p><div className="mt-3 space-y-2">{(job.assignment.questions?.length ? job.assignment.questions.map((question) => ({ id: question.id, label: question.prompt })) : job.assignment.rubric.map((criterion) => ({ id: criterion.id, label: criterion.label }))).map((item) => { const answer = app.assignment_answers?.find((entry) => (entry.question_id ?? entry.criterion_id) === item.id)?.answer; const text = Array.isArray(answer) ? answer.join(', ') : answer?.startsWith('data:') ? 'File attached' : answer; return <div key={item.id}><p className="text-sm font-medium">{item.label}</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{text || 'No answer submitted.'}</p></div> })}</div></div>}
+
+            {/* Assessment evaluation — shown only once the employer has reviewed,
+                and clearly labelled advisory. The human decision (status above +
+                employer note) is the actual verdict and may differ from this. */}
+            {app.assignment_score != null && (
+              <div className="mt-6 border-t border-border pt-4">
+                <h3 className="flex items-center gap-2 font-semibold"><Sparkles className="h-4 w-4 text-primary" /> Your assessment evaluation</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  This AI-assisted evaluation is one input the employer used. The final decision shown at the top is made by a human and may differ.
+                </p>
+                <div className="mt-3 flex items-center gap-4">
+                  <ScoreRing score={app.assignment_score} size={64} showLabel />
+                  <div className="text-sm">
+                    <p className="font-medium">Recommendation: <span className="capitalize">{app.ai_recommendation ?? '—'}</span></p>
+                    {app.decision_reason && <p className="mt-1 text-muted-foreground">Employer note: {app.decision_reason}</p>}
+                  </div>
+                </div>
+                {app.assignment_ai_feedback?.overall && (
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{app.assignment_ai_feedback.overall}</p>
+                )}
+                {app.assignment_ai_feedback?.perQuestion?.length ? (
+                  <div className="mt-3 space-y-2">
+                    {app.assignment_ai_feedback.perQuestion.map((pq) => {
+                      const q = job.assignment?.questions?.find((x) => x.id === pq.id) ?? job.assignment?.rubric?.find((x) => x.id === pq.id)
+                      const qLabel = (q as any)?.prompt ?? (q as any)?.label ?? 'Question'
+                      return (
+                        <div key={pq.id}>
+                          <p className="text-sm font-medium">{qLabel}</p>
+                          <p className="whitespace-pre-wrap text-sm text-muted-foreground">{pq.feedback}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            )}
           </CardBody>
         </Card>
 

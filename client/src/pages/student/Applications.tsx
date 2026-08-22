@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { FileText, ArrowRight, Briefcase } from 'lucide-react'
+import { FileText, ArrowRight, Briefcase, Sparkles } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
 import { applicationsApi, jobsApi, profilesApi } from '@/lib/api'
 import type { Application, ApplicationStatus, JobListing, Profile } from '@/types'
@@ -122,6 +122,9 @@ export default function Applications() {
                           </div>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
+                          {a.assignment_score != null && (
+                            <Badge tone="outline" className="gap-1 capitalize"><Sparkles className="h-3 w-3" /> Scored</Badge>
+                          )}
                           <Badge tone={statusTone[a.status]} className="capitalize">{a.status === 'hired' ? 'Accepted' : a.status}</Badge>
                           <ArrowRight className="hidden h-4 w-4 text-muted-foreground sm:block" />
                         </div>
