@@ -13,6 +13,7 @@ import {
   Clock,
   GraduationCap,
   Target,
+  Loader2,
 } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
 import { applicationsApi, followsApi, jobsApi } from '@/lib/api'
@@ -120,6 +121,9 @@ function StudentDashboard({ user }: { user: Profile }) {
 
   // Match scores from the shared store (same source as Jobs & Insights).
   const storeMatches = useMatchProgress((s) => s.matches)
+  const matchPhase = useMatchProgress((s) => s.phase)
+  const matchDone = useMatchProgress((s) => s.done)
+  const matchTotal = useMatchProgress((s) => s.total)
   const matches = useMemo(() => [...storeMatches].sort((a, b) => b.score - a.score), [storeMatches])
 
   // Log once the match scores actually land (Top Picks can render).
@@ -237,6 +241,8 @@ function StudentDashboard({ user }: { user: Profile }) {
                   <MatchSkeleton key={i} />
                 ))}
               </div>
+            ) : matchPhase === 'running' ? (
+              <TopPicksLoading done={matchDone} total={matchTotal} />
             ) : topPicks.length === 0 ? (
               <TopPicksEmpty hasCv={hasCv} />
             ) : (
@@ -562,6 +568,20 @@ function MatchSkeleton() {
         </CardBody>
       </Card>
     </div>
+  )
+}
+
+function TopPicksLoading({ done, total }: { done: number; total: number }) {
+  return (
+    <Card>
+      <CardBody className="flex flex-col items-center gap-3 py-10 text-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="font-medium">Finding your top picks…</p>
+        <p className="text-sm text-muted-foreground">
+          {total > 0 ? `Scoring ${done} of ${total} roles` : 'Reading your profile…'}
+        </p>
+      </CardBody>
+    </Card>
   )
 }
 
