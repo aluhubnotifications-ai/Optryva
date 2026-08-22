@@ -1,7 +1,7 @@
 import { Router } from '@/lib/http'
 import { requireAuth } from '@/lib/auth'
 import { claudeJsonBlocks, parseDataUrl, extractDocxText, hasClaude, MODELS } from '@/lib/claude'
-import { mistralJsonBlocks, hasMistral, MISTRAL_MODEL } from '@/lib/mistral'
+import { mistralJsonBlocks, hasMistral, MISTRAL_MODEL, MISTRAL_VISION_MODEL, extractPdfText } from '@/lib/mistral'
 
 export function registerAssignment(r: Router) {
   /* ---------- §8.x AI assignment studio ----------
@@ -13,25 +13,34 @@ export function registerAssignment(r: Router) {
   r.post('/assignment/generate', async (req, res) => {
     const { job, sources, instruction, existing } = req.body ?? {}
     try {
-      const content = await buildAssignmentContent(job, sources, instruction, existing)
-      if (!content.length) {
+      const jobCtx = buildJobContext(job)
+      const docs = Array.isArray(sources) ? sources.slice(0, 5) : []
+      if (!jobCtx && !docs.length) {
         return res.status(400).json({ error: 'no_input', message: 'Upload a document or describe the role first.' })
       }
 
       // Provider order: Mistral (smartest model) for assignment design, then
-      // Claude, then the deterministic template if no key is configured.
+      // Claude, then the deterministic template. When MISTRAL_API_KEY is set,
+      // Mistral designs the assignment — reading images via pixtral and extracting
+      // PDF text locally (unpdf) — and falls back to Claude if it returns nothing.
       if (hasMistral()) {
-        const result = await mistralJsonBlocks<GeneratedAssignment>({
-          model: MISTRAL_MODEL,
-          maxTokens: 2000,
-          system: ASSIGNMENT_SYSTEM,
-          content,
-          schema: ASSIGNMENT_SCHEMA,
-          temperature: 0.4,
-        })
-        if (result) return res.json(normalize(result))
+        const parts = await buildMistralContent(job, docs, instruction, existing)
+        if (parts.length) {
+          const hasImage = parts.some((p) => p.type === 'image_url')
+          const model = hasImage ? MISTRAL_VISION_MODEL : MISTRAL_MODEL
+          const result = await mistralJsonBlocks<GeneratedAssignment>({
+            model,
+            maxTokens: 2000,
+            system: ASSIGNMENT_SYSTEM,
+            content: parts,
+            schema: ASSIGNMENT_SCHEMA,
+            temperature: 0.4,
+          })
+          if (result) return res.json(normalize(result))
+        }
       }
       if (hasClaude()) {
+        const content = await buildAssignmentContent(job, docs, instruction, existing)
         const result = await claudeJsonBlocks<GeneratedAssignment>({
           model: MODELS.chat,
           maxTokens: 2000,
@@ -85,6 +94,67 @@ async function buildAssignmentContent(job: any, sources: any, instruction?: stri
       'file or video submission question. The rubric should have 3-5 criteria whose points sum to 100.',
   })
   return content
+}
+
+/** Assemble Mistral content parts (role context + sources + revise/instruction).
+ *  Images become `image_url` parts (read by pixtral); PDFs/docx/txt become extracted
+ *  text. This is what lets Mistral actually *see* a brief instead of a placeholder. */
+async function buildMistralContent(job: any, docs: any[], instruction?: string, existing?: any): Promise<any[]> {
+  const parts: any[] = []
+  const jobCtx = buildJobContext(job)
+  if (jobCtx) parts.push({ type: 'text', text: jobCtx })
+
+  for (const src of docs) {
+    const part = await sourceToMistralPart(src)
+    if (part) parts.push(part)
+  }
+  if (existing?.questions?.length || existing?.rubric?.length) {
+    parts.push({
+      type: 'text',
+      text:
+        'CURRENT ASSIGNMENT TO REVISE:\n' +
+        JSON.stringify({ questions: existing.questions ?? [], rubric: existing.rubric ?? [] }, null, 2),
+    })
+  }
+  parts.push({
+    type: 'text',
+    text:
+      (instruction?.trim() ? `EMPLOYER INSTRUCTION: ${instruction.trim()}\n\n` : '') +
+      'Design a candidate assignment for this role based on the material above. ' +
+      'Return ONLY the JSON requested. Make questions specific to the content (not generic), ' +
+      'with a realistic mix of essay, single/multiple choice, true/false, and optionally one ' +
+      'file or video submission question. The rubric should have 3-5 criteria whose points sum to 100.',
+  })
+  return parts
+}
+
+/** Turn an uploaded source into a Mistral content part (image_url / extracted text). */
+async function sourceToMistralPart(src: SourceInput): Promise<any | null> {
+  if (!src?.dataUrl) return null
+  const parsed = parseDataUrl(src.dataUrl)
+  if (!parsed) return null
+  const { mediaType, data } = parsed
+
+  if (mediaType.startsWith('image/')) {
+    return { type: 'image_url', image_url: { url: `data:${mediaType};base64,${data}` } }
+  }
+  if (mediaType === 'application/pdf') {
+    const text = await extractPdfText(data)
+    if (text) return { type: 'text', text: `CONTENT OF ${src.name ?? 'PDF'}:\n${text.slice(0, 20000)}` }
+    return null
+  }
+  const isDocx = mediaType.includes('officedocument.wordprocessingml') || mediaType === 'application/vnd.ms-word'
+  const looksLikeZip = mediaType !== 'application/pdf' && /^UEsDB/.test(data)
+  if (isDocx || looksLikeZip) {
+    const text = extractDocxText(data)
+    if (text) return { type: 'text', text: `CONTENT OF ${src.name ?? 'document'}:\n${text.slice(0, 20000)}` }
+    return null
+  }
+  if (mediaType.startsWith('text/')) {
+    const text = Buffer.from(data, 'base64').toString('utf-8')
+    return { type: 'text', text: `CONTENT OF ${src.name ?? 'document'}:\n${text.slice(0, 20000)}` }
+  }
+  return null
 }
 
 /** Turn an uploaded source into a Claude content block (image / PDF / extracted text). */

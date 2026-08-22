@@ -1,14 +1,22 @@
 import { recordUsage } from '@/lib/usage'
 import { extractJson } from '@/lib/claude'
+import { extractText } from 'unpdf'
 
 // ----------------------------------------------------------------------------
 // Mistral AI client (assessment generation). Used as an alternative provider to
-// Claude for designing candidate assignments. The smartest generally-available
-// Mistral model is `mistral-large-latest`; override via MISTRAL_MODEL.
+// Claude for designing candidate assignments.
+//   - Text-only briefs run on MISTRAL_MODEL (mistral-large-latest, the smartest).
+//   - When the brief includes images, we switch to MISTRAL_VISION_MODEL
+//     (pixtral-large-latest) which can *see* images directly, and we extract text
+//     from PDFs locally (unpdf) so Mistral reads the real brief, not a placeholder.
 // ----------------------------------------------------------------------------
 
-/** Mistral's top model. Can be overridden with the MISTRAL_MODEL env var. */
+/** Mistral's top text model. Override with the MISTRAL_MODEL env var. */
 export const MISTRAL_MODEL = process.env.MISTRAL_MODEL || 'mistral-large-latest'
+
+/** Mistral's multimodal model — reads images. Used automatically when a source
+ *  image is present. Override with MISTRAL_VISION_MODEL. */
+export const MISTRAL_VISION_MODEL = process.env.MISTRAL_VISION_MODEL || 'pixtral-large-latest'
 
 export function hasMistral(): boolean {
   return !!process.env.MISTRAL_API_KEY
@@ -17,15 +25,16 @@ export function hasMistral(): boolean {
 const ENDPOINT = 'https://api.mistral.ai/v1/chat/completions'
 
 /**
- * Core text→JSON call. Mistral's API supports a `json_object` response format
- * which reliably steers the model to emit parseable JSON (we also tolerate
- * fenced/prose output via `extractJson`). Returns the parsed object, or null on
- * any failure (no key, network, non-JSON) so callers can fall back.
+ * Core call. The user turn is a content-part array (text and/or image_url) so the
+ * same function serves text-only and vision requests. `response_format:
+ * json_object` steers the model to emit parseable JSON; we also tolerate
+ * fenced/prose output via `extractJson`. Returns the parsed object, or null on any
+ * failure (no key, network, non-JSON) so callers can fall back.
  */
 async function mistralJson<T>(opts: {
   model?: string
   system: string
-  user: string
+  content: any[]
   maxTokens?: number
   temperature?: number
 }): Promise<T | null> {
@@ -42,7 +51,7 @@ async function mistralJson<T>(opts: {
         model,
         messages: [
           { role: 'system', content: opts.system },
-          { role: 'user', content: opts.user },
+          { role: 'user', content: opts.content },
         ],
         response_format: { type: 'json_object' },
         max_tokens: opts.maxTokens ?? 1200,
@@ -67,21 +76,12 @@ async function mistralJson<T>(opts: {
   }
 }
 
-/** Convert a Claude-style content block into plain text for a text-only model. */
-function blockToText(block: any): string {
-  if (!block) return ''
-  if (block.type === 'text') return block.text ?? ''
-  if (block.type === 'image') return '(An image was uploaded but this model cannot view images — design from the role context and any extracted text.)'
-  if (block.type === 'document') return '(A document/PDF was uploaded but this model cannot read files — design from the role context and any extracted text.)'
-  return ''
-}
-
 /**
- * Like `mistralJson` but the user turn is a content-block array (matching the
- * Claude wrappers) so callers can pass the same multimodal input. Mistral Large
- * is text-only, so images/PDFs are summarised as "not readable" notes; extracted
- * text and role context are passed through. `schema` is appended to the system
- * prompt as a shape hint (Mistral does not hard-enforce it).
+ * Structured completion where the user turn is a content-part array — callers
+ * pass Mistral parts: `{ type:'text', text }` and/or `{ type:'image_url',
+ * image_url:{ url } }` (data URLs). When `schema` is given it's appended to the
+ * system prompt as a shape hint (Mistral does not hard-enforce it). Falls back to
+ * null on any failure so the route can try the next provider.
  */
 export async function mistralJsonBlocks<T>(opts: {
   model?: string
@@ -92,10 +92,21 @@ export async function mistralJsonBlocks<T>(opts: {
   temperature?: number
 }): Promise<T | null> {
   if (!hasMistral()) return null
-  const userText = opts.content.map(blockToText).filter(Boolean).join('\n\n')
-  if (!userText.trim()) return null
+  if (!opts.content?.length) return null
   const system = opts.schema
     ? `${opts.system}\n\nReturn ONLY valid JSON matching this schema (no prose, no code fences):\n${JSON.stringify(opts.schema)}`
     : opts.system
-  return mistralJson<T>({ model: opts.model ?? MISTRAL_MODEL, system, user: userText, maxTokens: opts.maxTokens ?? 2000, temperature: opts.temperature })
+  return mistralJson<T>({ model: opts.model ?? MISTRAL_MODEL, system, content: opts.content, maxTokens: opts.maxTokens ?? 2000, temperature: opts.temperature })
+}
+
+/** Extract plain text from a PDF stored as a base64 string (briefs are usually
+ *  text-based). Returns null for scanned/image-only PDFs or on failure. */
+export async function extractPdfText(b64: string): Promise<string | null> {
+  try {
+    const buf = Buffer.from(b64, 'base64')
+    const { text } = await extractText(new Uint8Array(buf), { mergePages: true })
+    return (typeof text === 'string' ? text : (text as string[]).join('\n')).trim() || null
+  } catch {
+    return null
+  }
 }
