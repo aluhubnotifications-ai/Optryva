@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Lock, ShieldCheck } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 export type ProctorViolation =
   | 'permission_denied'
@@ -7,6 +8,16 @@ export type ProctorViolation =
   | 'left_frame'
   | 'excessive_movement'
   | 'noise'
+  | 'tab_switch'
+
+export const VIOLATION_LABEL: Record<ProctorViolation, string> = {
+  permission_denied: "Camera/microphone permission is required to take this test.",
+  second_person: 'Another person was detected in the frame.',
+  left_frame: 'Your face left the camera frame.',
+  excessive_movement: 'Excessive movement was detected.',
+  noise: 'Loud noise was detected.',
+  tab_switch: 'You left the test window.',
+}
 
 const TICK_MS = 300
 const SECOND_PERSON_MS = 600
@@ -19,20 +30,13 @@ const MOTION_THRESHOLD = 12
 // Web Audio RMS (0..1). Normal room silence is ~0.01; speech is 0.1–0.3.
 const NOISE_THRESHOLD = 0.15
 
-export const VIOLATION_LABEL: Record<ProctorViolation, string> = {
-  permission_denied: "Camera/microphone permission is required to take this test.",
-  second_person: 'Another person was detected in the frame.',
-  left_frame: 'Your face left the camera frame.',
-  excessive_movement: 'Excessive movement was detected.',
-  noise: 'Loud noise was detected.',
-}
-
 /**
  * Privacy-preserving proctor: the webcam + mic feed is analysed locally in the
  * browser by a free model (TensorFlow.js / BlazeFace). Nothing is recorded and
  * nothing is sent anywhere — it only watches for integrity violations and calls
  * `onViolation` so the host can cancel the test. Cancels on: a second person,
- * the candidate leaving frame, sustained loud noise, or abnormal movement.
+ * the candidate leaving frame, sustained loud noise, abnormal movement, or
+ * leaving/switching the test tab/window.
  */
 export function ProctorMonitor({ active, onViolation }: { active: boolean; onViolation: (reason: ProctorViolation) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -52,6 +56,11 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
     let cancelled = false
     firedRef.current = false
     lastGrayRef.current = null
+
+    // Leaving the tab/window is treated as walking away — cancel immediately.
+    function onLeave() {
+      if (runningRef.current) violate('tab_switch')
+    }
 
     async function start() {
       try {
@@ -85,6 +94,10 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
         const model = await blazeface.load()
         if (cancelled) return
         setStatus('Proctoring active')
+
+        // Leaving the tab/window is treated as walking away — cancel immediately.
+        window.addEventListener('blur', onLeave)
+        document.addEventListener('visibilitychange', onLeave)
 
         // Grace counters (in ticks) so brief glitches don't cancel a legitimate attempt.
         let secondPerson = 0
@@ -188,6 +201,8 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
     }
 
     function cleanup() {
+      window.removeEventListener('blur', onLeave)
+      document.removeEventListener('visibilitychange', onLeave)
       streamRef.current?.getTracks().forEach((t) => t.stop())
       streamRef.current = null
       audioCtxRef.current?.close().catch(() => {})
@@ -205,16 +220,25 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
     }
   }, [active])
 
+  const ready = status === 'Proctoring active'
+  const message = !ready
+    ? 'Starting proctor… allow camera & mic'
+    : warning ?? 'Keep your head centered in the frame'
+
+  if (!active) return null
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-border bg-card p-2 text-xs">
-      <video ref={videoRef} muted playsInline className="h-10 w-14 rounded-md bg-black object-cover" />
-      <div className="flex-1">
-        <p className="flex items-center gap-1 font-medium text-success">
-          <ShieldCheck className="h-3.5 w-3.5" /> Proctoring active
-        </p>
-        <p className="text-muted-foreground">{warning ?? status}</p>
+    <div className="pointer-events-none fixed inset-0 z-50">
+      <div className="absolute bottom-4 right-4 flex flex-col items-end gap-2">
+        <div className={cn('overflow-hidden rounded-xl border-2 bg-black shadow-lg', warning ? 'border-danger' : 'border-primary/70')}>
+          <video ref={videoRef} autoPlay muted playsInline className="h-60 w-80 object-cover" />
+        </div>
+        <div className={cn('max-w-xs rounded-lg px-4 py-2 text-center text-lg font-semibold shadow', warning ? 'bg-danger text-white' : 'bg-primary/95 text-primary-foreground')}>
+          {message}
+        </div>
+        <div className="flex items-center gap-1 rounded-full bg-black/75 px-3 py-1 text-xs font-medium text-white">
+          <Lock className="h-3.5 w-3.5" /> Screen locked — leaving the tab cancels the test
+        </div>
       </div>
-      {warning && <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />}
       <canvas ref={canvasRef} className="hidden" />
     </div>
   )

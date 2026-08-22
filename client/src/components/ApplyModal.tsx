@@ -305,13 +305,15 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
     )
   }
 
+  const proctoring = active === 'assessment' && hasAssignment && !proctorCancelled
+
   return (
     <div className="space-y-5">
-      <ProctorMonitor active={active === 'assessment' && hasAssignment && !proctorCancelled} onViolation={handleProctorViolation} />
+      <ProctorMonitor active={proctoring} onViolation={handleProctorViolation} />
         <nav className="flex flex-wrap items-center gap-1 sm:gap-2">
           {sections.map((s, i) => (
             <Fragment key={s.id}>
-              <button type="button" onClick={() => setActive(s.id)} className={cn('flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium', active === s.id ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/40')}>
+              <button type="button" disabled={proctoring} onClick={() => setActive(s.id)} className={cn('flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium', active === s.id ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/40', proctoring && 'pointer-events-none opacity-50')}>
                 <span className={cn('flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold', s.done || active === s.id ? 'bg-primary text-primary-foreground' : 'bg-muted')}>
                   {s.done ? <Check className="h-3.5 w-3.5" /> : i + 1}
                 </span>
@@ -469,11 +471,11 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
         )}
 
         <div className="flex items-center gap-2 border-t border-border pt-4">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose} disabled={proctoring}>Cancel</Button>
           <Button variant="outline" type="button" onClick={saveDraft} loading={savingDraft}>Save draft</Button>
           <div className="ml-auto flex gap-2">
             {active !== 'info' && (
-              <Button variant="outline" type="button" onClick={() => { if (prevId) setActive(prevId) }}>Back</Button>
+              <Button variant="outline" type="button" disabled={proctoring} onClick={() => { if (prevId) setActive(prevId) }}>Back</Button>
             )}
             {active === 'submission' ? (
               <Button onClick={submit} disabled={!valid} loading={submitting}>Submit application</Button>
