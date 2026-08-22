@@ -24,6 +24,7 @@ export function ResumeWorkspace() {
   const [resumes, setResumes] = useState<ResumeProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
+  const [pendingResumeId, setPendingResumeId] = useState<string | null>(null)
   const [skillInputs, setSkillInputs] = useState<Record<string, string>>({})
   const [countryInputs, setCountryInputs] = useState<Record<string, string>>({})
 
@@ -32,9 +33,11 @@ export function ResumeWorkspace() {
   }, [toast])
 
   async function create() {
+    if (pendingResumeId) return
     try {
       const created = await resumesApi.create(blank(resumes[0]))
       setResumes((current) => [...current, created])
+      setPendingResumeId(created.id)
     } catch (error) {
       toast({ title: 'Could not create résumé', description: error instanceof Error ? error.message : undefined, tone: 'error' })
     }
@@ -45,6 +48,7 @@ export function ResumeWorkspace() {
     try {
       const updated = await resumesApi.update(resume.id, resume)
       setResumes((current) => current.map((item) => item.id === updated.id ? updated : item))
+      if (pendingResumeId === resume.id) setPendingResumeId(null)
       toast({ title: `${resume.name} saved`, tone: 'success' })
     } catch (error) {
       toast({ title: 'Could not save résumé', description: error instanceof Error ? error.message : undefined, tone: 'error' })
@@ -57,6 +61,7 @@ export function ResumeWorkspace() {
     try {
       await resumesApi.remove(resume.id)
       setResumes((current) => current.filter((item) => item.id !== resume.id))
+      if (pendingResumeId === resume.id) setPendingResumeId(null)
       toast({ title: 'Résumé removed', tone: 'info' })
     } catch (error) {
       toast({ title: 'Could not remove résumé', description: error instanceof Error ? error.message : undefined, tone: 'error' })
@@ -113,10 +118,10 @@ export function ResumeWorkspace() {
             <div className="flex items-center gap-2"><FileText className="h-5 w-5 text-primary" /><h2 className="font-semibold">Résumé workspace</h2><Badge tone="outline">Career directions</Badge></div>
             <p className="mt-1 text-sm text-muted-foreground">Create multiple résumé profiles from one master profile. Each direction can have its own roles, skills, locations, and opportunity preferences.</p>
           </div>
-          <Button onClick={create} className="gap-1.5"><Plus className="h-4 w-4" /> New résumé</Button>
+          <Button onClick={create} disabled={!!pendingResumeId} title={pendingResumeId ? 'Save the current résumé before creating another' : 'Create a résumé'} className="gap-1.5"><Plus className="h-4 w-4" /> New résumé</Button>
         </div>
         {resumes.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border p-6 text-center"><p className="text-sm text-muted-foreground">No résumé profiles yet.</p><Button onClick={create} variant="outline" className="mt-3 gap-1.5"><Plus className="h-4 w-4" /> Create your first direction</Button></div>
+          <div className="rounded-xl border border-dashed border-border p-6 text-center"><p className="text-sm text-muted-foreground">No résumé profiles yet.</p><Button onClick={create} disabled={!!pendingResumeId} variant="outline" className="mt-3 gap-1.5"><Plus className="h-4 w-4" /> Create your first direction</Button></div>
         ) : (
           <div className="space-y-4">
             {resumes.map((resume) => (
@@ -133,7 +138,7 @@ export function ResumeWorkspace() {
                 onCountryInput={(value) => setCountryInputs((current) => ({ ...current, [resume.id]: value }))}
                 onUpload={(file) => upload(resume, file)}
                 onView={() => view(resume)}
-                initiallyOpen={false}
+                initiallyOpen={pendingResumeId === resume.id}
               />
             ))}
           </div>
@@ -159,6 +164,9 @@ function ResumeCard({ resume, saving, skillInput, countryInput, onPatch, onSave,
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [open, setOpen] = useState(initiallyOpen)
+  useEffect(() => {
+    if (initiallyOpen) setOpen(true)
+  }, [initiallyOpen])
   const toggle = (field: 'target_roles' | 'preferred_industries' | 'pref_listing_types' | 'pref_countries', value: string) => {
     const values = resume[field] as string[]
     onPatch({ [field]: values.includes(value) ? values.filter((item) => item !== value) : [...values, value] })
