@@ -103,6 +103,16 @@ applications.post('/', async (req, res) => {
     }
   } catch { /* no cached score — leave null */ }
 
+  // Each (re)submission consumes an attempt. A previously cancelled application
+  // is a consumed attempt; a successful resubmit of an already-applied row is not.
+  const prevAttempts = dup?.attempts ?? 0
+  const isResubmitOfApplied = !!dup && dup.status === 'pending'
+  const maxAttempts = job.assignment?.max_attempts && job.assignment.max_attempts > 0 ? job.assignment.max_attempts : 10
+  const attempts = isResubmitOfApplied ? prevAttempts : prevAttempts + 1
+  if (!isResubmitOfApplied && prevAttempts >= maxAttempts) {
+    return res.status(403).json({ error: 'attempts_exhausted' })
+  }
+
   const id = dup?.id ?? uid('a')
   const timeline = j.parse<any[]>(dup?.timeline ?? '[]', [])
   timeline.push({ status: 'applied', at: ts })
@@ -113,6 +123,7 @@ applications.post('/', async (req, res) => {
     school: b.school ?? null, year: b.year ?? null, linkedin: b.linkedin ?? null,
     assignment_answers: j.stringify(b.assignment_answers ?? []),
     assignment_status: job.assignment ? (b.assignment_answers?.length ? 'submitted' : 'pending') : 'not_required',
+    attempts,
     match_score: matchScore,
     match_rationale: matchRationale,
     created_at: dup?.created_at ?? ts,
@@ -131,7 +142,7 @@ applications.post('/', async (req, res) => {
 /** Load the student's saved draft for a job (or null). Used to resume an
  *  application the candidate started earlier. */
 applications.get('/draft/:jobId', async (req, res) => {
-  const r = must(await sb.from('applications').select('*').eq('student_id', req.user!.id).eq('job_id', req.params.jobId).eq('status', 'draft').maybeSingle())
+  const r = must(await sb.from('applications').select('*').eq('student_id', req.user!.id).eq('job_id', req.params.jobId).in('status', ['draft', 'cancelled']).maybeSingle())
   res.json(r ? rowToApplication(r) : null)
 })
 
@@ -142,7 +153,9 @@ applications.put('/draft', async (req, res) => {
   const job = must(await sb.from('job_listings').select('*').eq('id', b.job_id).maybeSingle()) as any
   if (!job) return res.status(404).json({ error: 'job_not_found' })
   const existing = must(await sb.from('applications').select('*').eq('student_id', req.user!.id).eq('job_id', b.job_id).maybeSingle()) as any
-  if (existing && existing.status !== 'draft') return res.status(409).json({ error: 'already_applied' })
+  // Block saving a draft only once the application has actually been submitted.
+  // A cancelled (failed-attempt) application can be resumed as a new draft retry.
+  if (existing && existing.status === 'pending') return res.status(409).json({ error: 'already_applied' })
   const documentError = validateDocuments(b.documents ?? [])
   if (documentError) return res.status(400).json({ error: documentError })
   const documents = await Promise.all((b.documents ?? []).map(async (document: any) => {
@@ -159,6 +172,7 @@ applications.put('/draft', async (req, res) => {
     school: b.school ?? null, year: b.year ?? null, linkedin: b.linkedin ?? null,
     assignment_answers: j.stringify(b.assignment_answers ?? []),
     assignment_status: job.assignment ? (b.assignment_answers?.length ? 'submitted' : 'pending') : 'not_required',
+    attempts: existing?.attempts ?? 0,
     created_at: existing?.created_at ?? ts,
     updated_at: ts,
     timeline: existing?.timeline ?? j.stringify([{ status: 'draft', at: ts }]),
@@ -243,31 +257,43 @@ applications.post('/:id/score-assignment', async (req, res) => {
 })
 
 // Records a proctor integrity violation (e.g. camera/mic denied, a second person
-// detected, the candidate left frame, loud noise, excessive movement) so the
-// candidate can't re-take the test for this job. We store a cancelled
-// application row: the already-applied guard treats any non-draft status as
-// final, so re-applying is blocked and the employer sees the cancellation.
+// detected, the candidate left frame, sustained loud noise, excessive movement, or
+// leaving the test tab). Each violation consumes one attempt; the candidate may
+// retry until they hit the employer-set limit (assignment.max_attempts, default 10).
+// The cancelled application row is kept so the employer sees the violation history.
 applications.post('/proctor-cancel', async (req, res) => {
   const { job_id, reason } = req.body ?? {}
   if (!job_id) return res.status(400).json({ error: 'missing_job' })
-  const job = must(await sb.from('job_listings').select('id').eq('id', job_id).maybeSingle())
+  const job = must(await sb.from('job_listings').select('id, assignment').eq('id', job_id).maybeSingle()) as any
   if (!job) return res.status(404).json({ error: 'job_not_found' })
+  const maxAttempts = job.assignment?.max_attempts && job.assignment.max_attempts > 0 ? job.assignment.max_attempts : 10
   const existing = must(await sb.from('applications').select('*').eq('student_id', req.user!.id).eq('job_id', job_id).maybeSingle()) as any
-  if (existing) return res.json(rowToApplication(existing))
+  const ts = now()
+  if (existing) {
+    // Already submitted successfully — nothing to cancel.
+    if (existing.status === 'pending') return res.json(rowToApplication(existing))
+    const attempts = (existing.attempts ?? 0) + 1
+    const timeline = j.parse<any[]>(existing.timeline ?? '[]', [])
+    timeline.push({ status: 'cancelled', at: ts, reason: reason ?? 'violation' })
+    must(await sb.from('applications').update({ status: 'cancelled', attempts, assignment_status: 'cancelled', timeline: j.stringify(timeline) }).eq('id', existing.id))
+    const updated = must(await sb.from('applications').select('*').eq('id', existing.id).maybeSingle())
+    return res.json(rowToApplication(updated))
+  }
   const profile = must(await sb.from('profiles').select('full_name,email,school,year').eq('id', req.user!.id).maybeSingle()) as any
   const id = uid('a')
-  const ts = now()
+  const timeline = [{ status: 'cancelled', at: ts, reason: reason ?? 'violation' }]
   must(await sb.from('applications').insert({
     id,
     student_id: req.user!.id,
     job_id,
     status: 'cancelled',
     assignment_status: 'cancelled',
+    attempts: 1,
     full_name: profile?.full_name ?? '',
     email: profile?.email ?? '',
     school: profile?.school ?? null,
     year: profile?.year ?? null,
-    timeline: j.stringify([{ status: 'cancelled', at: ts, reason: reason ?? 'violation' }]),
+    timeline: j.stringify(timeline),
     created_at: ts,
   }))
   const created = must(await sb.from('applications').select('*').eq('id', id).maybeSingle())

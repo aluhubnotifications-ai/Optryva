@@ -83,6 +83,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
   const [alreadyApplied, setAlreadyApplied] = useState<Application | null>(null)
   const [savingDraft, setSavingDraft] = useState(false)
   const [proctorCancelled, setProctorCancelled] = useState<ProctorViolation | null>(null)
+  const [proctorResult, setProctorResult] = useState<Application | null>(null)
 
   // Resume a previously saved draft (and detect an already-submitted application)
   // so a candidate can come back later and pick up where they left off.
@@ -90,6 +91,8 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
     if (!job?.id) return
     let cancelled = false
     setAlreadyApplied(null)
+    setProctorCancelled(null)
+    setProctorResult(null)
     setAssignmentAnswers({})
     setAssignmentFileNames({})
     setInterviewFirst(false)
@@ -97,8 +100,14 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
       .byStudent(user.id)
       .then((list) => {
         if (cancelled) return
+        const maxAttempts = job?.assignment?.max_attempts ?? 10
         const existing = list.find((a) => a.job_id === job.id && a.status !== 'draft')
-        if (existing) setAlreadyApplied(existing)
+        if (existing) {
+          // A cancelled attempt can be retried until attempts run out; only block
+          // (already-applied) when it's a real submission or attempts are exhausted.
+          if (existing.status === 'cancelled' && (existing.attempts ?? 0) < maxAttempts) setAlreadyApplied(null)
+          else setAlreadyApplied(existing)
+        }
       })
       .catch(() => {})
     applicationsApi
@@ -270,17 +279,15 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
   ]
 
   if (alreadyApplied) {
-    const cancelled = alreadyApplied.status === 'cancelled'
-    const reason = alreadyApplied.timeline?.[0]?.reason as ProctorViolation | undefined
+    const exhausted = alreadyApplied.status === 'cancelled'
+    const maxAttempts = assignment?.max_attempts ?? 10
     return (
-      <div className={`space-y-4 rounded-2xl border p-6 text-center ${cancelled ? 'border-danger/30 bg-danger/5' : 'border-border bg-card'}`}>
-        {cancelled && <AlertTriangle className="mx-auto h-8 w-8 text-danger" />}
-        <p className="text-lg font-semibold">{cancelled ? 'Application cancelled' : "You've already applied to this role"}</p>
+      <div className={`space-y-4 rounded-2xl border p-6 text-center ${exhausted ? 'border-danger/30 bg-danger/5' : 'border-border bg-card'}`}>
+        {exhausted && <AlertTriangle className="mx-auto h-8 w-8 text-danger" />}
+        <p className="text-lg font-semibold">{exhausted ? 'No attempts left' : "You've already applied to this role"}</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          {cancelled
-            ? reason
-              ? VIOLATION_LABEL[reason]
-              : 'An integrity violation was recorded for this test.'
+          {exhausted
+            ? `You've used all ${maxAttempts} attempts for this test. An integrity violation was recorded — contact the employer if you believe this was a mistake.`
             : 'You can track its status from your applications list. We’ll notify you of any updates.'}
         </p>
         <Button className="mt-3" onClick={() => onClose?.()}>Back</Button>
@@ -290,17 +297,28 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
 
   function handleProctorViolation(reason: ProctorViolation) {
     setProctorCancelled(reason)
-    if (job?.id) applicationsApi.proctorCancel({ job_id: job.id, reason }).catch(() => {})
+    if (job?.id) applicationsApi.proctorCancel({ job_id: job.id, reason }).then(setProctorResult).catch(() => {})
   }
 
   if (proctorCancelled) {
+    const maxAttempts = assignment?.max_attempts ?? 10
+    const used = proctorResult?.attempts ?? 1
+    const canRetry = used < maxAttempts
     return (
       <div className="space-y-4 rounded-2xl border border-danger/30 bg-danger/5 p-6 text-center">
         <AlertTriangle className="mx-auto h-8 w-8 text-danger" />
-        <p className="text-lg font-semibold">Test cancelled</p>
+        <p className="text-lg font-semibold">{canRetry ? 'Test cancelled — you can retry' : 'Test cancelled — no attempts left'}</p>
         <p className="mt-1 text-sm text-muted-foreground">{VIOLATION_LABEL[proctorCancelled]}</p>
-        <p className="text-xs text-muted-foreground">This application cannot be continued. The integrity violation has been recorded.</p>
-        <Button className="mt-3" onClick={() => onClose?.()}>Back</Button>
+        <p className="text-xs text-muted-foreground">
+          {canRetry
+            ? `Attempt ${used} of ${maxAttempts}. You can take the test again.`
+            : `You've used all ${maxAttempts} attempts for this test.`}
+        </p>
+        {canRetry ? (
+          <Button className="mt-3" onClick={() => { setProctorCancelled(null); setActive('assessment') }}>Try again</Button>
+        ) : (
+          <Button className="mt-3" onClick={() => onClose?.()}>Back</Button>
+        )}
       </div>
     )
   }

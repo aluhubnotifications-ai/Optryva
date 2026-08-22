@@ -21,6 +21,7 @@ type AssignmentDraft = {
   title: string
   prompt: string
   dueBeforeInterview: boolean
+  maxAttempts: number
   rubric: AiRubricCriterion[]
   questions: AiAssignmentQuestion[]
 }
@@ -129,6 +130,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
           title: editing.assignment.title,
           prompt: editing.assignment.prompt,
           dueBeforeInterview: editing.assignment.due_before_interview ?? true,
+          maxAttempts: editing.assignment.max_attempts ?? 10,
           rubric: editing.assignment.rubric ?? [],
           questions: editing.assignment.questions ?? [],
         })
@@ -207,6 +209,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
       title: generated.title || prev?.title || '',
       prompt: generated.prompt || prev?.prompt || '',
       dueBeforeInterview: prev?.dueBeforeInterview ?? true,
+      maxAttempts: prev?.maxAttempts ?? 10,
       rubric: generated.rubric,
       questions: generated.questions,
     }))
@@ -220,6 +223,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
       title: prev?.title || `${f.title || 'Role'} practical challenge`,
       prompt: prev?.prompt || `Show us how you would approach a realistic problem for this ${f.type || 'role'}. Share your assumptions, decisions, and what you would measure.`,
       dueBeforeInterview: prev?.dueBeforeInterview ?? true,
+      maxAttempts: prev?.maxAttempts ?? 10,
       rubric: prev?.rubric?.length ? prev.rubric : [
         { id: 'clarity', label: 'Problem framing and clarity', points: 30 },
         { id: 'approach', label: 'Technical or strategic approach', points: 40 },
@@ -249,6 +253,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
       title: a.title.trim() || 'Practical challenge',
       prompt: a.prompt.trim(),
       due_before_interview: a.dueBeforeInterview,
+      max_attempts: a.maxAttempts && a.maxAttempts > 0 ? a.maxAttempts : 10,
       rubric: a.rubric.filter((r) => r.label.trim()).map((r) => ({ ...r, label: r.label.trim(), points: Number(r.points) || 0 })),
       questions: a.questions.filter((q) => q.prompt.trim()).map((q) => ({
         ...q,
@@ -535,6 +540,18 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
               <Input value={assignment.title} onChange={(e) => setAssignment({ ...assignment, title: e.target.value })} placeholder="Assignment title" />
               <Textarea value={assignment.prompt} onChange={(e) => setAssignment({ ...assignment, prompt: e.target.value })} className="min-h-[90px]" placeholder="What should the candidate solve or submit?" />
               <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={assignment.dueBeforeInterview} onChange={(e) => setAssignment({ ...assignment, dueBeforeInterview: e.target.checked })} className="h-4 w-4 accent-primary" /> Candidate must submit before interview review</label>
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>Allowed attempts (tries):</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={assignment.maxAttempts}
+                  onChange={(e) => setAssignment({ ...assignment, maxAttempts: Math.max(1, Math.min(50, Number(e.target.value) || 10)) })}
+                  className="w-20 rounded-md border border-border bg-background px-2 py-1 text-foreground"
+                />
+                <span className="text-muted-foreground/70">default 10</span>
+              </label>
               <div className="space-y-2">
                 <p className="text-sm font-medium">Rubric</p>
                 {assignment.rubric.map((criterion, i) => (
@@ -633,7 +650,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
 
       <Modal open={assignmentPreview} onClose={() => setAssignmentPreview(false)} size="xl" title="Preview — candidate assignment">
         {assignment?.prompt.trim() ? (
-          <AssignmentView assignment={{ title: assignment.title.trim() || 'Practical challenge', prompt: assignment.prompt.trim(), due_before_interview: assignment.dueBeforeInterview, rubric: assignment.rubric, questions: assignment.questions }} />
+          <AssignmentView assignment={{ title: assignment.title.trim() || 'Practical challenge', prompt: assignment.prompt.trim(), due_before_interview: assignment.dueBeforeInterview, max_attempts: assignment.maxAttempts ?? 10, rubric: assignment.rubric, questions: assignment.questions }} />
         ) : (
           <p className="text-sm text-muted-foreground">Add an assignment first to preview it.</p>
         )}
@@ -723,7 +740,7 @@ function PostingPreview({ open, onClose, f, assignment, user, isSchool }: { open
     posted_by_role: isSchool ? 'school' : 'company',
     original_company_name: isSchool && f.fromOther ? f.original_company_name : undefined,
     original_company_logo_url: isSchool && f.fromOther ? f.original_company_logo_url : undefined,
-    assignment: assignmentAllowed && assignment && assignment.prompt.trim() ? { title: assignment.title.trim() || 'Practical challenge', prompt: assignment.prompt.trim(), due_before_interview: assignment.dueBeforeInterview, rubric: assignment.rubric, questions: assignment.questions } as AiAssignment : undefined,
+    assignment: assignmentAllowed && assignment && assignment.prompt.trim() ? { title: assignment.title.trim() || 'Practical challenge', prompt: assignment.prompt.trim(), due_before_interview: assignment.dueBeforeInterview, max_attempts: assignment.maxAttempts ?? 10, rubric: assignment.rubric, questions: assignment.questions } as AiAssignment : undefined,
     created_at: new Date().toISOString(),
   }
   return (

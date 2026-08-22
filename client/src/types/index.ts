@@ -118,6 +118,7 @@ export interface AiAssignment {
   title: string
   prompt: string
   due_before_interview: boolean
+  max_attempts?: number
   rubric: AiRubricCriterion[]
   questions?: AiAssignmentQuestion[]
 }
@@ -170,6 +171,7 @@ export interface Application {
   decision_by?: string
   decision_reason?: string
   decided_at?: string
+  attempts?: number
   created_at: string
   timeline: { status: ApplicationStatus | 'applied'; at: string; reason?: string }[]
 }

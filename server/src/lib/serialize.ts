@@ -116,6 +116,7 @@ export function rowToApplication(r: any) {
     decision_by: r.decision_by ?? undefined,
     decision_reason: r.decision_reason ?? undefined,
     decided_at: r.decided_at ?? undefined,
+    attempts: r.attempts ?? 0,
     timeline: arr<any>(r.timeline),
     created_at: r.created_at,
   }
