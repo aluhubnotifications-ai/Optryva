@@ -1,5 +1,5 @@
 import { lazy, useEffect, useState } from 'react'
-import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
+import { createBrowserRouter, isRouteErrorResponse, Navigate, Outlet, useRouteError } from 'react-router-dom'
 import { AppShell } from '@/app/AppShell'
 import { useSession, useCurrentUser } from '@/lib/store'
 import { authApi } from '@/lib/api'
@@ -71,8 +71,33 @@ function RequireAdmin() {
   return <Outlet />
 }
 
+function RouteError() {
+  const error = useRouteError()
+  const message = error instanceof Error ? error.message : isRouteErrorResponse(error) ? error.statusText : ''
+  const chunkFailed = /dynamically imported module|importing a module script failed|failed to fetch/i.test(message)
+  return (
+    <div className="mesh-bg flex min-h-screen items-center justify-center px-5 py-12">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-7 text-center shadow-card">
+        <h1 className="text-xl font-bold">We couldn’t open this page</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {chunkFailed
+            ? 'The app was updated while this page was open. Reload to get the latest version.'
+            : 'Something went wrong while loading this page. Please try again.'}
+        </p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+        >
+          Reload page
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export const router = createBrowserRouter([
-  { path: '/', element: <Landing /> },
+  { path: '/', element: <Landing />, errorElement: <RouteError /> },
   { path: '/login', element: <Login /> },
   { path: '/register', element: <Register /> },
   { path: '/verify-email', element: <VerifyEmail /> },
@@ -81,6 +106,7 @@ export const router = createBrowserRouter([
   {
     path: '/app',
     element: <RequireAuth />,
+    errorElement: <RouteError />,
     children: [
       { index: true, element: <Dashboard /> },
       { path: 'research', element: <Research /> },
