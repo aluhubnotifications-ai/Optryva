@@ -31,7 +31,6 @@ const UserProfile = lazy(() => import('@/pages/UserProfile'))
 
 const Listings = lazy(() => import('@/pages/company/Listings'))
 const JobEditor = lazy(() => import('@/pages/company/JobEditor'))
-const AssignmentEditor = lazy(() => import('@/pages/company/AssignmentEditor'))
 const ListingApplicants = lazy(() => import('@/pages/company/ListingApplicants'))
 const Analytics = lazy(() => import('@/pages/company/Analytics'))
 const CompanyProfile = lazy(() => import('@/pages/company/CompanyProfile'))
@@ -128,7 +127,6 @@ export const router = createBrowserRouter([
       { path: 'listings', element: <Listings /> },
       { path: 'listings/new', element: <JobEditor /> },
       { path: 'listings/:id/edit', element: <JobEditor /> },
-      { path: 'listings/:id/assignment', element: <AssignmentEditor /> },
       { path: 'listings/:id', element: <ListingApplicants /> },
       { path: 'analytics', element: <Analytics /> },
       { path: 'company-profile', element: <CompanyProfile /> },

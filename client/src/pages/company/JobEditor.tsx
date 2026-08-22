@@ -2,12 +2,12 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Building2, Check, ClipboardCheck, Eye, ImagePlus, Lock, Plus, Sparkles, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { imageFileToDataUrl, cn } from '@/lib/utils'
+import { fileToDataUrl, imageFileToDataUrl, cn } from '@/lib/utils'
 import { useCurrentUser } from '@/lib/store'
-import { jobsApi } from '@/lib/api'
+import { aiApi, jobsApi } from '@/lib/api'
 import { COUNTRIES } from '@/lib/geo'
 import { JobPostingView } from '@/components/JobPostingView'
-import type { AiAssignment, JobListing, ListingType } from '@/types'
+import type { AiAssignment, AiAssignmentQuestion, AiRubricCriterion, JobListing, ListingType } from '@/types'
 import { Avatar, Input, Label, Textarea, Select, Skeleton } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -16,6 +16,14 @@ import { useToast } from '@/components/ui/toast'
 const CATEGORIES = ['Software Engineering', 'Data', 'Design', 'Marketing', 'Operations', 'Finance', 'Product']
 const LISTING_TYPES: ListingType[] = ['Internship', 'Full-time', 'Part-time', 'Fellowship']
 const LIVE_COUNTRIES = COUNTRIES.filter((c) => !c.disabled && c.code !== 'all').map((c) => c.name)
+
+type AssignmentDraft = {
+  title: string
+  prompt: string
+  dueBeforeInterview: boolean
+  rubric: AiRubricCriterion[]
+  questions: AiAssignmentQuestion[]
+}
 
 export default function JobEditor() {
   const { id } = useParams()
@@ -38,8 +46,8 @@ export default function JobEditor() {
 
   const goBack = () => navigate('/app/listings')
 
-  // After creating, land on the edit page so the assignment can be added on
-  // its own page (the listing exists and can be linked).
+  // After creating, land on the edit page so the assignment can be added/edited
+  // inline (the listing now exists and is linked).
   const handleSaved = (saved?: JobListing) => {
     if (!id && saved) navigate(`/app/listings/${saved.id}/edit`, { replace: true })
     else goBack()
@@ -86,6 +94,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
       if (logoRef.current) logoRef.current.value = ''
     }
   }
+
   const [f, setF] = useState({
     title: '', description: '', type: 'Software Engineering', listing_type: 'Internship' as ListingType,
     country: 'Remote', location: '', pay: '', duration: '', deadline: '', tags: '',
@@ -94,6 +103,8 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
     allowed_schools: '', students_only: false,
     fromOther: false, original_company_name: '', original_company_logo_url: '',
   })
+
+  const [assignment, setAssignment] = useState<AssignmentDraft | null>(null)
 
   useEffect(() => {
     setError(null)
@@ -108,8 +119,20 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
         allowed_schools: (editing.allowed_schools ?? []).join(', '), students_only: editing.students_only ?? false,
         fromOther: !!editing.original_company_name, original_company_name: editing.original_company_name ?? '', original_company_logo_url: editing.original_company_logo_url ?? '',
       })
+      if (editing.assignment) {
+        setAssignment({
+          title: editing.assignment.title,
+          prompt: editing.assignment.prompt,
+          dueBeforeInterview: editing.assignment.due_before_interview ?? true,
+          rubric: editing.assignment.rubric ?? [],
+          questions: editing.assignment.questions ?? [],
+        })
+      } else {
+        setAssignment(null)
+      }
     } else {
       setF((p) => ({ ...p, title: '', description: '', pay: '', duration: '', deadline: '', tags: '', responsibilities: [], benefits: [], qualifications: [], apply_url: '', allowed_years: [], allowed_schools: '', students_only: false, fromOther: false, original_company_name: '' }))
+      setAssignment(null)
     }
   }, [editing])
 
@@ -117,9 +140,115 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
     setF((p) => ({ ...p, allowed_years: p.allowed_years.includes(y) ? p.allowed_years.filter((x) => x !== y) : [...p.allowed_years, y] }))
   }
 
+  // ---- AI assignment studio (inline): upload a brief, ask AI to design questions + rubric ----
+  const [studioOpen, setStudioOpen] = useState(false)
+  const [studioFile, setStudioFile] = useState<{ name: string; dataUrl: string; kind: string } | null>(null)
+  const [studioInstruction, setStudioInstruction] = useState('')
+  const [generating, setGenerating] = useState(false)
+  const [genError, setGenError] = useState<string | null>(null)
+  const [generated, setGenerated] = useState<{ title: string; prompt: string; questions: any[]; rubric: any[] } | null>(null)
+  const studioFileRef = useRef<HTMLInputElement>(null)
+
+  function studioKindFromFile(file: File): string {
+    if (file.type === 'application/pdf') return 'pdf'
+    if (file.type.includes('wordprocessingml') || file.type === 'application/msword') return 'doc'
+    if (file.type.startsWith('image/')) return 'image'
+    if (file.type.startsWith('text/')) return 'text'
+    return 'doc'
+  }
+
+  async function onStudioFile(file?: File) {
+    if (!file) return
+    try {
+      const dataUrl = await fileToDataUrl(file, 12 * 1024 * 1024)
+      setStudioFile({ name: file.name, dataUrl, kind: studioKindFromFile(file) })
+      setGenError(null)
+    } catch (e) {
+      toast({ title: 'Could not read that file', description: e instanceof Error ? e.message : undefined, tone: 'error' })
+    } finally {
+      if (studioFileRef.current) studioFileRef.current.value = ''
+    }
+  }
+
+  async function runGeneration(refine: boolean) {
+    setGenerating(true)
+    setGenError(null)
+    try {
+      const payload: any = {
+        job: { title: f.title, description: f.description, type: f.type, tags: f.tags.split(',').map((t: string) => t.trim()).filter(Boolean) },
+        instruction: studioInstruction,
+        sources: studioFile ? [studioFile] : [],
+      }
+      if (refine && generated) payload.existing = { questions: generated.questions, rubric: generated.rubric }
+      else if (assignment) payload.existing = { questions: assignment.questions, rubric: assignment.rubric }
+      const res = await aiApi.generateAssignment(payload)
+      setGenerated({
+        title: res.title,
+        prompt: res.prompt,
+        questions: (res.questions ?? []).map((q: any, i: number) => ({ ...q, id: `q-${Date.now()}-${i}` })),
+        rubric: (res.rubric ?? []).map((c: any, i: number) => ({ ...c, id: `rc-${Date.now()}-${i}` })),
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not generate.'
+      setGenError(msg === 'unauthorized' ? 'Your session expired — please sign in again.' : `AI generation failed: ${msg}`)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  function useGenerated() {
+    if (!generated) return
+    setAssignment((prev) => ({
+      title: generated.title || prev?.title || '',
+      prompt: generated.prompt || prev?.prompt || '',
+      dueBeforeInterview: prev?.dueBeforeInterview ?? true,
+      rubric: generated.rubric,
+      questions: generated.questions,
+    }))
+    toast({ title: 'Assignment updated with AI suggestions', tone: 'success' })
+  }
+
+  function draftAssignment() {
+    setAssignment((prev) => ({
+      title: prev?.title || `${f.title || 'Role'} practical challenge`,
+      prompt: prev?.prompt || `Show us how you would approach a realistic problem for this ${f.type || 'role'}. Share your assumptions, decisions, and what you would measure.`,
+      dueBeforeInterview: prev?.dueBeforeInterview ?? true,
+      rubric: prev?.rubric?.length ? prev.rubric : [
+        { id: 'clarity', label: 'Problem framing and clarity', points: 30 },
+        { id: 'approach', label: 'Technical or strategic approach', points: 40 },
+        { id: 'communication', label: 'Communication and trade-offs', points: 30 },
+      ],
+      questions: prev?.questions?.length ? prev.questions : [{ id: 'question-1', type: 'essay', prompt: '', required: true }],
+    }))
+  }
+
+  async function removeAssignment() {
+    setSaving(true)
+    try {
+      if (editing) await jobsApi.update(editing.id, { assignment: null })
+      setAssignment(null)
+      toast({ title: 'Assignment removed', tone: 'info' })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not remove.'
+      setError(msg === 'unauthorized' ? 'Your session expired — please sign in again.' : `Could not remove: ${msg}`)
+      toast({ title: 'Could not remove assignment', description: msg, tone: 'error' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function cleanAssignment(a: AssignmentDraft): AiAssignment {
+    return {
+      title: a.title.trim() || 'Practical challenge',
+      prompt: a.prompt.trim(),
+      due_before_interview: a.dueBeforeInterview,
+      rubric: a.rubric.filter((r) => r.label.trim()).map((r) => ({ ...r, label: r.label.trim(), points: Number(r.points) || 0 })),
+      questions: a.questions.filter((q) => q.prompt.trim()).map((q) => ({ ...q, prompt: q.prompt.trim(), options: q.options?.filter(Boolean) })),
+    }
+  }
+
   async function submit() {
     if (!f.title.trim() || !f.description.trim()) { setError('Title and description are required.'); return }
-    if (f.applyMode === 'external' && !f.apply_url) { setError('External apply needs a URL.'); return }
     setError(null)
     setSaving(true)
     const payload = {
@@ -141,6 +270,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
       posted_by_role: (isSchool ? 'school' : 'company') as 'school' | 'company',
       original_company_name: isSchool && f.fromOther ? f.original_company_name : undefined,
       original_company_logo_url: isSchool && f.fromOther ? f.original_company_logo_url : undefined,
+      assignment: assignment && assignment.prompt.trim() ? cleanAssignment(assignment) : null,
     }
     try {
       const saved = editing ? await jobsApi.update(editing.id, payload) : await jobsApi.create(payload)
@@ -156,7 +286,8 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
     }
   }
 
-  const sectionOrder = ['details', 'assessment'] as const
+  // ---- Section stepper ----
+  const sectionOrder = ['details', 'assessment', 'submission'] as const
   const [active, setActive] = useState<(typeof sectionOrder)[number]>('details')
   const sectionIndex = sectionOrder.indexOf(active)
   const prevId = sectionIndex > 0 ? sectionOrder[sectionIndex - 1] : null
@@ -164,7 +295,8 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
 
   const sections: { id: (typeof sectionOrder)[number]; label: string; desc: string; icon: LucideIcon; done: boolean }[] = [
     { id: 'details', label: 'Job details', desc: 'Role, category, location, pay', icon: ClipboardCheck, done: !!(f.title.trim() && f.description.trim()) },
-    { id: 'assessment', label: 'Assessment', desc: 'Optional candidate task', icon: Sparkles, done: !!editing?.assignment },
+    { id: 'assessment', label: 'Assessment', desc: 'Optional candidate task', icon: Sparkles, done: !!assignment?.prompt.trim() },
+    { id: 'submission', label: 'Submission', desc: 'Review & preview', icon: Eye, done: false },
   ]
 
   return (
@@ -273,35 +405,146 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
 
       {active === 'assessment' && (
         <section className="space-y-4">
-          <div className="rounded-xl border border-accent/30 bg-accent/5 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <ClipboardCheck className="h-4 w-4 text-accent" />
-                <span className="font-semibold">AI candidate assignment</span>
-              </div>
-              {editing ? (
-                <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => navigate(`/app/listings/${editing.id}/assignment`)}>
-                  <Sparkles className="h-4 w-4 text-accent" /> {editing.assignment ? 'Edit assignment' : 'Add assignment'}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <ClipboardCheck className="h-5 w-5 text-accent" />
+              <h2 className="text-xl font-semibold">Candidate assignment</h2>
+            </div>
+            <div className="flex gap-2">
+              {!assignment && (
+                <Button type="button" size="sm" variant="ghost" onClick={draftAssignment}><Sparkles className="h-4 w-4 text-accent" /> Draft template</Button>
+              )}
+              <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setStudioOpen((v) => !v)}><Sparkles className="h-4 w-4 text-accent" /> {studioOpen ? 'Hide AI studio' : 'Generate with AI'}</Button>
+            </div>
+          </div>
+
+          {studioOpen && (
+            <div className="space-y-3 rounded-xl border border-accent/30 bg-accent/5 p-3">
+              <p className="text-xs text-muted-foreground">Upload a brief (PDF, Word, image, or text) and/or describe what you want. AI designs the questions and rubric; video submissions are reviewed by a human.</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <input ref={studioFileRef} type="file" accept=".pdf,.doc,.docx,.txt,image/*,text/*" className="hidden" onChange={(e) => onStudioFile(e.target.files?.[0])} />
+                <Button type="button" size="sm" variant="outline" onClick={() => studioFileRef.current?.click()}>
+                  <ImagePlus className="h-4 w-4" /> {studioFile ? `Change (${studioFile.name})` : 'Upload document'}
                 </Button>
-              ) : (
-                <span className="text-xs text-muted-foreground">Save the listing first to add an assignment.</span>
+                {studioFile && (<Button type="button" size="sm" variant="ghost" onClick={() => setStudioFile(null)}>Remove</Button>)}
+              </div>
+              <Textarea value={studioInstruction} onChange={(e) => setStudioInstruction(e.target.value)} className="min-h-[70px]" placeholder="Optional instruction — e.g. 'Make it a take-home coding task', 'Focus on system design', 'Harder, for senior candidates'." />
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" onClick={() => runGeneration(false)} loading={generating}>
+                  <Sparkles className="h-4 w-4" /> {generated ? 'Regenerate' : 'Generate questions'}
+                </Button>
+                {generated && (<Button type="button" size="sm" variant="outline" onClick={() => runGeneration(true)} loading={generating}>Refine with instruction</Button>)}
+              </div>
+              {genError && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{genError}</p>}
+              {generated && (
+                <div className="space-y-3 rounded-lg border border-border p-3">
+                  <div>
+                    <p className="text-sm font-semibold">{generated.title}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{generated.prompt}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Questions</p>
+                    <ul className="mt-1 space-y-1 text-sm">
+                      {generated.questions.map((q: any, i: number) => (
+                        <li key={q.id} className="flex items-start gap-2">
+                          <span className="mt-0.5 rounded bg-accent/10 px-1.5 text-[10px] font-medium uppercase text-accent">{q.type.replace('_', ' ')}</span>
+                          <span>{q.prompt}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Rubric</p>
+                    <div className="mt-1 flex flex-wrap gap-2 text-xs">
+                      {generated.rubric.map((c: any) => (<span key={c.id} className="rounded-lg border border-border px-2 py-1">{c.label} · {c.points}</span>))}
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setGenerated(null)}>Discard</Button>
+                    <Button type="button" size="sm" onClick={useGenerated}>Use these</Button>
+                  </div>
+                </div>
               )}
             </div>
-            {editing?.assignment ? (
-              <p className="mt-2 text-xs text-muted-foreground">
-                {editing.assignment.questions?.length ?? 0} question{(editing.assignment.questions?.length ?? 0) === 1 ? '' : 's'} · {editing.assignment.rubric?.length ?? 0} rubric criteria
-              </p>
-            ) : (
-              <p className="mt-2 text-xs text-muted-foreground">Give applicants a consistent practical task before you decide who to interview.</p>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground">The assignment is built on its own page with the AI studio — upload a brief and let AI draft the questions and rubric, then fine-tune them. You can return here any time.</p>
+          )}
 
+          {assignment ? (
+            <div className="space-y-3">
+              <Input value={assignment.title} onChange={(e) => setAssignment({ ...assignment, title: e.target.value })} placeholder="Assignment title" />
+              <Textarea value={assignment.prompt} onChange={(e) => setAssignment({ ...assignment, prompt: e.target.value })} className="min-h-[90px]" placeholder="What should the candidate solve or submit?" />
+              <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={assignment.dueBeforeInterview} onChange={(e) => setAssignment({ ...assignment, dueBeforeInterview: e.target.checked })} className="h-4 w-4 accent-primary" /> Candidate must submit before interview review</label>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Rubric</p>
+                {assignment.rubric.map((criterion, i) => (
+                  <div key={criterion.id} className="flex gap-2">
+                    <Input value={criterion.label} onChange={(e) => setAssignment({ ...assignment, rubric: assignment.rubric.map((r, idx) => idx === i ? { ...r, label: e.target.value } : r) })} placeholder="What are you scoring?" />
+                    <Input type="number" min="0" className="w-24" value={criterion.points} onChange={(e) => setAssignment({ ...assignment, rubric: assignment.rubric.map((r, idx) => idx === i ? { ...r, points: Number(e.target.value) } : r) })} aria-label={`Points for criterion ${i + 1}`} />
+                    <Button type="button" variant="ghost" size="icon" onClick={() => setAssignment({ ...assignment, rubric: assignment.rubric.filter((_, idx) => idx !== i) })} aria-label="Remove rubric criterion"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" onClick={() => setAssignment({ ...assignment, rubric: [...assignment.rubric, { id: `criterion-${assignment.rubric.length + 1}`, label: '', points: 10 }] })}>Add criterion</Button>
+              </div>
+              <div className="space-y-3 border-t border-border pt-3">
+                <p className="text-sm font-medium">Questions</p>
+                {assignment.questions.map((question, i) => (
+                  <div key={question.id} className="space-y-2 rounded-lg border border-border p-3">
+                    <div className="flex gap-2">
+                      <Select value={question.type} onChange={(e) => setAssignment({ ...assignment, questions: assignment.questions.map((q, idx) => idx === i ? { ...q, type: e.target.value as AiAssignmentQuestion['type'], options: ['single_choice', 'multiple_choice'].includes(e.target.value) ? q.options ?? ['', ''] : undefined } : q) })}>
+                        <option value="essay">Essay</option>
+                        <option value="single_choice">Single choice</option>
+                        <option value="multiple_choice">Multiple choice</option>
+                        <option value="true_false">True / False</option>
+                        <option value="file">File upload</option>
+                        <option value="video">Video upload</option>
+                      </Select>
+                      <Button type="button" variant="ghost" size="icon" onClick={() => setAssignment({ ...assignment, questions: assignment.questions.filter((_, idx) => idx !== i) })} aria-label="Remove question"><Trash2 className="h-4 w-4" /></Button>
+                    </div>
+                    <Input value={question.prompt} onChange={(e) => setAssignment({ ...assignment, questions: assignment.questions.map((q, idx) => idx === i ? { ...q, prompt: e.target.value } : q) })} placeholder={`Question ${i + 1}`} />
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={question.required} onChange={(e) => setAssignment({ ...assignment, questions: assignment.questions.map((q, idx) => idx === i ? { ...q, required: e.target.checked } : q) })} className="h-4 w-4 accent-primary" /> Required</label>
+                    {(question.type === 'single_choice' || question.type === 'multiple_choice') && (
+                      <div className="space-y-2">
+                        {(question.options ?? ['', '']).map((option, optionIndex) => (
+                          <Input key={optionIndex} value={option} onChange={(e) => setAssignment({ ...assignment, questions: assignment.questions.map((q, idx) => idx === i ? { ...q, options: (q.options ?? []).map((o, oi) => oi === optionIndex ? e.target.value : o) } : q) })} placeholder={`Choice ${optionIndex + 1}`} />
+                        ))}
+                        <Button type="button" variant="outline" size="sm" onClick={() => setAssignment({ ...assignment, questions: assignment.questions.map((q, idx) => idx === i ? { ...q, options: [...(q.options ?? []), ''] } : q) })}>Add choice</Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" onClick={() => setAssignment({ ...assignment, questions: [...assignment.questions, { id: `question-${assignment.questions.length + 1}`, type: 'essay', prompt: '', required: true }] })}>Add question</Button>
+              </div>
+              {editing && (
+                <Button type="button" variant="ghost" className="text-danger" onClick={removeAssignment} disabled={saving}>Remove assignment</Button>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-border p-6 text-center">
+              <p className="text-sm text-muted-foreground">No assignment yet. Use <span className="font-medium">Draft template</span> or <span className="font-medium">Generate with AI</span> above to add a practical task for candidates.</p>
+            </div>
+          )}
+        </section>
+      )}
+
+      {active === 'submission' && (
+        <section className="space-y-4">
           {error && (<p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>)}
           <div className="rounded-xl border border-border p-4">
             <p className="text-sm font-medium">Review your listing</p>
-            <p className="mt-1 text-xs text-muted-foreground">Preview exactly how students will see this opportunity before you post it.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Check everything below, then preview it exactly as students will see it (including the assignment) before you post.</p>
             <Button variant="outline" type="button" onClick={() => setPreview(true)} className="mt-3 gap-1.5"><Eye className="h-4 w-4" /> Preview listing</Button>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ReviewRow label="Title" value={f.title} />
+            <ReviewRow label="Type" value={`${f.type} · ${f.listing_type}`} />
+            <ReviewRow label="Location" value={f.location || (f.country === 'Remote' ? 'Remote (Global)' : f.country)} />
+            <ReviewRow label="Pay / Duration" value={[f.pay, f.duration].filter(Boolean).join(' · ') || '—'} />
+            <ReviewRow label="Deadline" value={f.deadline || '—'} />
+            <ReviewRow label="Apply mode" value={f.applyMode === 'external' ? 'External URL' : 'In-app form'} />
+            <ReviewRow label="Tags" value={f.tags || '—'} />
+            <ReviewRow label="Restrict years" value={f.allowed_years.length ? f.allowed_years.map((y) => `Year ${y}`).join(', ') : 'All'} />
+            <ReviewRow label="Schools" value={f.allowed_schools || 'All'} />
+            {isSchool && <ReviewRow label="Audience" value={f.students_only ? 'Only my students' : (f.fromOther ? `Forwarded: ${f.original_company_name || '—'}` : 'School posting')} />}
+            <ReviewRow label="Assignment" value={assignment?.prompt.trim() ? `${assignment.questions.length} question(s) · ${assignment.rubric.length} rubric` : 'None'} />
           </div>
         </section>
       )}
@@ -310,15 +553,24 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
         <Button variant="ghost" onClick={onCancel}>Cancel</Button>
         <div className="ml-auto flex gap-2">
           {active !== 'details' && (<Button variant="outline" type="button" onClick={() => { if (prevId) setActive(prevId) }}>Back</Button>)}
-          {active === 'details' ? (
-            <Button type="button" onClick={() => { if (nextId) setActive(nextId) }} className="gap-1.5">Next <ArrowRight className="h-4 w-4" /></Button>
-          ) : (
+          {active === 'submission' ? (
             <Button onClick={submit} loading={saving}>{editing ? 'Save changes' : 'Post listing'}</Button>
+          ) : (
+            <Button type="button" onClick={() => { if (nextId) setActive(nextId) }} className="gap-1.5">Next <ArrowRight className="h-4 w-4" /></Button>
           )}
         </div>
       </div>
 
-      <PostingPreview open={preview} onClose={() => setPreview(false)} f={f} user={user} isSchool={isSchool} assignment={editing?.assignment} />
+      <PostingPreview open={preview} onClose={() => setPreview(false)} f={f} assignment={assignment} isSchool={isSchool} user={user} />
+    </div>
+  )
+}
+
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-0.5 truncate text-sm font-medium" title={value}>{value}</p>
     </div>
   )
 }
@@ -373,9 +625,8 @@ function ListField({
   )
 }
 
-/** Live preview of the posting (from the create/edit form) exactly as students will see it. */
-function PostingPreview({ open, onClose, f, user, isSchool, assignment }: { open: boolean; onClose: () => void; f: any; user: any; isSchool: boolean; assignment?: AiAssignment | null }) {
-  if (!open) return null
+/** Live preview of the posting exactly as students will see it (rendered in a modal). */
+function PostingPreview({ open, onClose, f, assignment, user, isSchool }: { open: boolean; onClose: () => void; f: any; assignment: AssignmentDraft | null; user: any; isSchool: boolean }) {
   const job: JobListing = {
     id: 'preview', company_id: user.id,
     title: f.title || 'Untitled role', description: f.description || '',
@@ -395,7 +646,7 @@ function PostingPreview({ open, onClose, f, user, isSchool, assignment }: { open
     posted_by_role: isSchool ? 'school' : 'company',
     original_company_name: isSchool && f.fromOther ? f.original_company_name : undefined,
     original_company_logo_url: isSchool && f.fromOther ? f.original_company_logo_url : undefined,
-    assignment: assignment ?? undefined,
+    assignment: assignment && assignment.prompt.trim() ? { title: assignment.title.trim() || 'Practical challenge', prompt: assignment.prompt.trim(), due_before_interview: assignment.dueBeforeInterview, rubric: assignment.rubric, questions: assignment.questions } as AiAssignment : undefined,
     created_at: new Date().toISOString(),
   }
   return (
