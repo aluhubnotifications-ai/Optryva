@@ -205,6 +205,8 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
       rubric: generated.rubric,
       questions: generated.questions,
     }))
+    setGenerated(null)
+    setStudioOpen(false)
     toast({ title: 'Assignment updated with AI suggestions', tone: 'success' })
   }
 
@@ -293,9 +295,9 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
   const prevId = sectionIndex > 0 ? sectionOrder[sectionIndex - 1] : null
   const nextId = sectionIndex < sectionOrder.length - 1 ? sectionOrder[sectionIndex + 1] : null
 
-  const sections: { id: (typeof sectionOrder)[number]; label: string; desc: string; icon: LucideIcon; done: boolean }[] = [
+  const sections: { id: (typeof sectionOrder)[number]; label: string; desc: string; icon: LucideIcon; done: boolean; optional?: boolean }[] = [
     { id: 'details', label: 'Job details', desc: 'Role, category, location, pay', icon: ClipboardCheck, done: !!(f.title.trim() && f.description.trim()) },
-    { id: 'assessment', label: 'Assessment', desc: 'Optional candidate task', icon: Sparkles, done: !!assignment?.prompt.trim() },
+    { id: 'assessment', label: 'Assessment', desc: 'Optional practical task', icon: Sparkles, done: !!assignment?.prompt.trim(), optional: true },
     { id: 'submission', label: 'Submission', desc: 'Review & preview', icon: Eye, done: false },
   ]
 
@@ -309,6 +311,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
                 {s.done ? <Check className="h-3.5 w-3.5" /> : i + 1}
               </span>
               {s.label}
+              {s.optional && !s.done && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Optional</span>}
             </button>
             {i < sections.length - 1 && <span className="h-px w-5 bg-border sm:w-8" />}
           </Fragment>
@@ -317,8 +320,8 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
 
       {active === 'details' && (
         <section className="space-y-4">
-          <div><Label>Title</Label><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="e.g. Frontend Engineer Intern" /></div>
-          <div><Label>Description</Label><Textarea value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} className="min-h-[100px]" placeholder="What the role involves…" /></div>
+          <div><Label>Title <span className="text-danger">*</span></Label><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="e.g. Frontend Engineer Intern" /></div>
+          <div><Label>Description <span className="text-danger">*</span></Label><Textarea value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} className="min-h-[100px]" placeholder="What the role involves…" /></div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div><Label>Category</Label><Select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</Select></div>
@@ -406,9 +409,13 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
       {active === 'assessment' && (
         <section className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <ClipboardCheck className="h-5 w-5 text-accent" />
-              <h2 className="text-xl font-semibold">Candidate assignment</h2>
+            <div>
+              <div className="flex items-center gap-2">
+                <ClipboardCheck className="h-5 w-5 text-accent" />
+                <h2 className="text-xl font-semibold">Candidate assignment</h2>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Optional</span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">Add a practical task for candidates, or skip and post the listing as-is.</p>
             </div>
             <div className="flex gap-2">
               {!assignment && (
