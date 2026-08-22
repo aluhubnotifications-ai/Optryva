@@ -27,6 +27,7 @@ export function MatchesTab({ user }: { user: Profile }) {
     .sort((a, b) => b.match.score - a.match.score)
 
   const run = () => useMatchProgress.getState().run(user.id, true)
+  const refresh = () => useMatchProgress.getState().refresh(user.id)
   const pct = total > 0 ? Math.round((done / total) * 100) : 0
 
   // Idle / first run (or an error with nothing scored yet) — the click target.
@@ -66,6 +67,7 @@ export function MatchesTab({ user }: { user: Profile }) {
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="min-w-0 text-sm text-muted-foreground">{rows.length} role{rows.length === 1 ? '' : 's'} scored{phase === 'running' ? ' so far' : ' · sorted by fit'}</p>
+        <Button variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={refresh} disabled={phase === 'running'}><RefreshCw className="h-4 w-4" /> Refresh scores</Button>
         <Button variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={run} disabled={phase === 'running'}><RefreshCw className="h-4 w-4" /> {phase === 'running' ? 'Running…' : 'Re-run'}</Button>
       </div>
       {rows.map(({ job, match }) => {

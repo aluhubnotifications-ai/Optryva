@@ -219,6 +219,16 @@ export interface AssignmentScoreResult {
   feedback: { overall: string; perQuestion: { id: string; feedback: string }[] }
 }
 
+/** The candidate's EXISTING match score (computed earlier by the matcher from
+ *  their résumé + this role). The employer's review AI uses it as a prior signal
+ *  of role-fit so it doesn't re-derive fit from scratch — it only freshly
+ *  evaluates the submitted assessment against the rubric. */
+export interface MatchContext {
+  score?: number | null
+  rationale?: string | null
+  matchedSkills?: string[]
+}
+
 const SCORE_SYSTEM = `You are an assistant to a human reviewer hiring for early-career roles. You evaluate a candidate's submitted assessment answers against the employer's approved rubric. You are rigorous and fair, you never invent information that is not in the answers, and you keep feedback specific and actionable.
 
 Return ONLY JSON matching the requested schema. Score is 0..100. Recommendation must be one of: advance (strong evidence), consider (mixed), hold (weak or incomplete). Per-question feedback is a short sentence.`
@@ -247,6 +257,7 @@ export async function scoreAssignmentWithAI(
   assignment: any,
   answers: { question_id?: string; criterion_id?: string; answer: string | string[] }[],
   job?: any,
+  matchContext?: MatchContext | null,
 ): Promise<AssignmentScoreResult> {
   const questions = assignment?.questions?.length
     ? assignment.questions
@@ -254,13 +265,25 @@ export async function scoreAssignmentWithAI(
   const answeredCount = answers.filter((a) => (Array.isArray(a.answer) ? a.answer.length > 0 : !!String(a.answer ?? '').trim())).length
   const completion = questions.length ? answeredCount / questions.length : 0
 
+  // The employer's review AI reasons from the candidate's already-computed match
+  // fit (résumé + role), not from scratch. This is the "judge them on their
+  // previous score" rule: the fit prior is the basis, the assessment is the fresh evidence.
+  const priorBlock = matchContext && matchContext.score != null
+    ? 'CANDIDATE’S EXISTING MATCH SCORE (from the matcher, grounded in their résumé + this role — treat as a prior, do NOT re-derive fit):\n' +
+      `• Role fit: ${matchContext.score}%\n` +
+      (matchContext.rationale ? `• Why this fit was assigned: ${matchContext.rationale}\n` : '') +
+      (matchContext.matchedSkills?.length ? `• Skills that drove the fit: ${matchContext.matchedSkills.join(', ')}\n` : '') +
+      '\nYou are evaluating ONLY the submitted assessment against the rubric. Reconcile it with the fit prior above: if the assessment confirms or contradicts that prior, say so explicitly. Never invent résumé facts the matcher did not already establish.'
+    : ''
+
   if (!hasClaude()) {
     const score = Math.round(40 + completion * 50)
+    const priorNote = matchContext?.score != null ? ` The candidate's existing match fit was ${matchContext.score}%.` : ''
     return {
       score,
       recommendation: score >= 75 ? 'advance' : score >= 55 ? 'consider' : 'hold',
       feedback: {
-        overall: 'AI scoring is unavailable right now — this score is a transparent estimate based on how much of the assignment was completed. A human should review the answers directly before deciding.',
+        overall: 'AI scoring is unavailable right now — this score is a transparent estimate based on how much of the assignment was completed. A human should review the answers directly before deciding.' + priorNote,
         perQuestion: questions.map((q: any) => ({ id: q.id, feedback: 'Not auto-evaluated — please review manually.' })),
       },
     }
@@ -278,6 +301,7 @@ export async function scoreAssignmentWithAI(
     { type: 'text', text: `ROLE: ${job?.title ?? 'role'}\n${job?.description ? job.description.slice(0, 3000) : ''}` },
     { type: 'text', text: `ASSIGNMENT:\n${JSON.stringify({ title: assignment?.title, prompt: assignment?.prompt, questions: assignment?.questions, rubric: assignment?.rubric }, null, 2)}` },
     { type: 'text', text: `CANDIDATE SUBMISSION:\n${answerText}` },
+    ...(priorBlock ? [{ type: 'text', text: priorBlock }] : []),
     { type: 'text', text: 'Evaluate the submission against the approved rubric. Return ONLY the requested JSON.' },
   ]
 

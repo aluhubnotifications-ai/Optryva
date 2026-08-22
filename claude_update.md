@@ -330,6 +330,49 @@ Suggested ALU pilot:
 - `OpportunityVerification`
 - `Outcome`
 
+## Engineering Decisions (built, pending deploy)
+
+### D1 — Re-matching after a student edits their résumé (won't kill the system)
+
+**Problem:** a student gets matches, notices gaps in their fit, edits the résumé,
+and wants fresh scores. Naively re-scoring every role on every save would
+stampede the Claude scorer.
+
+**Decision:**
+- Matching stays **lazy + cached**. Editing a résumé only sets `stale = 1` on the
+  student's `ai_match_cache` rows (`server/src/routes/profiles.ts`) — it never
+  recomputes anything. Re-scoring happens on-demand, and only the *real* Claude
+  score is cached (a distilled estimate is shown but never cached, so it is
+  replaced the instant Claude is available).
+- Add an explicit, **bounded** "Refresh scores" action: `POST /ai/matches/refresh`
+  re-scores only the student's *existing* cache rows (their already-matched roles),
+  with a **concurrency cap of 3**, and writes the new current-engine score back
+  (`stale = 0`). This is the safe answer to "do I need to re-match?": yes, but only
+  your existing matches — not the whole catalog.
+- The full "Re-run" (re-discovery funnel) stays available but is heavier; it is
+  concurrency-capped at 5 on the server. "Refresh scores" is the recommended path
+  after a CV edit.
+- Client: `aiApi.refreshMatches()` + `useMatchProgress.refresh()`; a "Refresh
+  scores" button sits next to "Re-run" in the student Insights → Matches tab.
+
+### D2 — Employer AI judges a candidate on their previous (match) score
+
+**Problem:** the employer's review AI (`scoreAssignmentWithAI`) only scored the
+submitted assessment. It re-derived nothing from the candidate's already-computed
+fit, wasting a prior and risking inconsistent judgments.
+
+**Decision:**
+- The stored `match_score` + `match_rationale` (captured at apply time, migration
+  `0028_application_match_rationale`) are passed into `scoreAssignmentWithAI` as a
+  **fit prior**. The AI is instructed to treat that prior as the basis for role-fit
+  and to only *freshly evaluate the submitted assessment* against the rubric —
+  reconciling the two (confirm/contract) rather than re-deriving fit from scratch.
+- This keeps the human as the final decision authority (override + required reject
+  reason + audit are unchanged) and makes the AI suggestion consistent and cheaper.
+- Cross-employer outcome history (prior rejections/hires elsewhere) is **out of
+  scope** — it is a fairness/privacy concern and must not silently influence a new
+  employer's view without explicit consent.
+
 ## Non-Negotiable Product Rules
 
 - AI must not invent résumé experience or evidence.

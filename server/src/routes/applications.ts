@@ -162,7 +162,13 @@ applications.post('/:id/score-assignment', async (req, res) => {
   if (!job.assignment) return res.status(400).json({ error: 'no_assignment' })
   const answers = j.parse<any[]>(r.assignment_answers ?? '[]', [])
   if (!answers.length) return res.status(400).json({ error: 'no_answers' })
-  const result = await scoreAssignmentWithAI(job.assignment, answers, { title: job.title, type: job.type, description: job.description })
+  // Feed the candidate's already-computed match fit (résumé + role) into the
+  // review AI as a prior, so the employer's scoring reasons from it instead of
+  // re-deriving fit from scratch.
+  const matchContext = r.match_score != null
+    ? { score: r.match_score, rationale: r.match_rationale ?? null }
+    : null
+  const result = await scoreAssignmentWithAI(job.assignment, answers, { title: job.title, type: job.type, description: job.description }, matchContext)
   must(
     await sb
       .from('applications')

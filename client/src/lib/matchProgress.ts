@@ -34,6 +34,10 @@ interface MatchProgressState {
    *  The result is upserted into `matches`, so a scored role "joins matches"
    *  everywhere the store is read. Returns the match, or null on failure. */
   scoreOne: (job: JobListing) => Promise<AiMatch | null>
+  /** Bounded re-score of the student's EXISTING matches only (after a CV edit),
+   *  then reload the fresh cached scores into the store. Cheaper and safer than
+   *  a full Re-run — the server caps concurrency. */
+  refresh: (userId: string) => Promise<void>
   /** Drop results (e.g. on logout) so a fresh user starts clean. */
   reset: () => void
 }
@@ -149,4 +153,19 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
   },
 
   reset: () => set({ userId: null, phase: 'idle', done: 0, total: 0, label: '', matches: [], missing: [], scoring: [] }),
+
+  refresh: async (userId) => {
+    set({ phase: 'running', label: 'Refreshing your scores…', total: 0, done: 0 })
+    const act = useAiActivity.getState()
+    const taskId = act.start('Refreshing your match scores')
+    try {
+      await aiApi.refreshMatches()
+      const fresh = await aiApi.cachedMatches()
+      act.finish(taskId, fresh.length ? undefined : 'nothing to refresh')
+      set({ userId, phase: 'done', matches: fresh, done: fresh.length, total: fresh.length, label: '', missing: [], scoring: [] })
+    } catch {
+      set({ phase: 'done', label: '' })
+      act.finish(taskId, 'refresh failed')
+    }
+  },
 }))

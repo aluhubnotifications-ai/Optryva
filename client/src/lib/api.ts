@@ -1031,6 +1031,17 @@ export const aiApi = {
     }
   },
 
+  /** Bounded re-score of the student's EXISTING matches only (their already-
+   *  matched roles) — cheap and concurrency-capped on the server, so fixing a CV
+   *  and refreshing never re-runs the full discovery funnel. */
+  async refreshMatches(): Promise<{ refreshed: number; total: number }> {
+    try {
+      return (await apiFetch('/ai/matches/refresh', { method: 'POST' })) as { refreshed: number; total: number }
+    } catch {
+      return { refreshed: 0, total: 0 }
+    }
+  },
+
   /** AI usage metering — per-model token totals + estimated credits for the
    *  current user. Used by the Usage page. Returns an empty summary on failure. */
   async usage(): Promise<UsageSummary> {

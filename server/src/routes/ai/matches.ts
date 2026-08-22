@@ -6,6 +6,7 @@ import type { AiMatch } from '@/lib/matching'
 import {
   studentRow,
   rowToMatchJob,
+  loadJob,
   getMatch,
   cacheMap,
   matchReadiness,
@@ -118,5 +119,43 @@ export function registerMatches(r: Router) {
   r.get('/outcome-nudges', async (req, res) => {
     const uid = req.user!.id
     res.json(await outcomeNudges(uid))
+  })
+
+  /* Bounded, on-demand re-score of a student's EXISTING matches only (the roles
+   * already in their cache) — used after they edit their CV and want fresh scores
+   * without re-running the full discovery funnel. Concurrency-capped (3) so it
+   * can't stampede Claude. Re-scores even stale rows and writes the new current-
+   * engine score back into the cache. This is the safe answer to "I fixed my gaps,
+   * do I need to re-match?": yes, but only your existing matches, not the world. */
+  r.post('/matches/refresh', async (req, res) => {
+    if (!hasClaude()) return res.status(503).json({ error: 'ai_unavailable' })
+    const uid = req.user!.id
+    const viewer = await studentRow(uid)
+    const rp = await ensureResumeProfile(viewer)
+    const cm = await cacheMap(uid)
+    const ids = [...cm.keys()]
+    if (!ids.length) return res.json({ refreshed: 0, total: 0 })
+    const CONCURRENCY = 3
+    let cursor = 0
+    let refreshed = 0
+    const pool = Array.from({ length: Math.min(CONCURRENCY, ids.length) }, async () => {
+      while (true) {
+        const i = cursor++
+        if (i >= ids.length) break
+        const jobId = ids[i]
+        try {
+          const row = await loadJob(jobId)
+          if (!row) continue
+          // cache:false forces a fresh score; the existing cache row is passed as
+          // ctx so we don't re-query it, and the new score is upserted with stale=0.
+          const m = await getMatch(uid, rowToMatchJob(row), { cache: false }, { row: viewer, rp, cached: cm.get(jobId) })
+          if (m) refreshed++
+        } catch {
+          /* a single failure must not abort the whole refresh */
+        }
+      }
+    })
+    await Promise.all(pool)
+    res.json({ refreshed, total: ids.length })
   })
 }
