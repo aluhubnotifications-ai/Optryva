@@ -11,11 +11,13 @@ import { AppProgressSteps } from '@/components/AppProgressSteps'
 import { formatDate } from '@/lib/utils'
 
 const statusTone = {
+  draft: 'outline',
   pending: 'default',
   reviewed: 'primary',
   shortlisted: 'accent',
   hired: 'success',
   rejected: 'danger',
+  cancelled: 'danger',
 } as const
 
 const FILTERS: { key: ApplicationStatus | 'all'; label: string }[] = [

@@ -323,6 +323,17 @@ export const applicationsApi = {
     invalidateCache(`apps:student:${app.student_id}`)
     return (await apiFetch('/applications', { method: 'POST', body: JSON.stringify(app) })) as Application
   },
+  async saveDraft(app: Omit<Application, 'id' | 'created_at' | 'timeline' | 'status'>): Promise<Application> {
+    invalidateCache(`apps:student:${app.student_id}`)
+    return (await apiFetch('/applications/draft', { method: 'PUT', body: JSON.stringify(app) })) as Application
+  },
+  async getDraft(jobId: string): Promise<Application | null> {
+    try {
+      return (await apiFetch(`/applications/draft/${jobId}`)) as Application
+    } catch {
+      return null
+    }
+  },
   async setStatus(id: string, status: ApplicationStatus, reason?: string): Promise<Application | null> {
     invalidateCache()
     return (await apiFetch(`/applications/${id}/status`, { method: 'PATCH', body: JSON.stringify(reason !== undefined ? { status, reason } : { status }) })) as Application
@@ -339,6 +350,11 @@ export const applicationsApi = {
     invalidateCache()
     await apiFetch(`/applications/${id}`, { method: 'DELETE' })
     return true
+  },
+  // Records an integrity violation (e.g. proctor cancel) so the candidate can't
+  // re-take the test for this job. Returns the (cancelled) application.
+  async proctorCancel(app: { job_id: string; reason: string }): Promise<Application> {
+    return (await apiFetch('/applications/proctor-cancel', { method: 'POST', body: JSON.stringify(app) })) as Application
   },
 }
 

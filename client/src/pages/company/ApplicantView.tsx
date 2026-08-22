@@ -30,7 +30,7 @@ import { DocumentList } from '@/components/DocumentList'
 import { useToast } from '@/components/ui/toast'
 import { cn, daysUntil, formatDate } from '@/lib/utils'
 
-const statusTone = { pending: 'default', reviewed: 'primary', shortlisted: 'accent', hired: 'success', rejected: 'danger' } as const
+const statusTone = { draft: 'outline', pending: 'default', reviewed: 'primary', shortlisted: 'accent', hired: 'success', rejected: 'danger', cancelled: 'danger' } as const
 type StepId = 'candidate' | 'assessment' | 'scoring' | 'decision'
 
 function band(score?: number): 'success' | 'accent' | 'default' | 'danger' {

@@ -52,11 +52,13 @@ export default function Dashboard() {
 /* ============================ STUDENT ============================ */
 
 const statusTone = {
+  draft: 'outline',
   pending: 'default',
   reviewed: 'primary',
   shortlisted: 'accent',
   hired: 'success',
   rejected: 'danger',
+  cancelled: 'danger',
 } as const
 
 function StudentDashboard({ user }: { user: Profile }) {

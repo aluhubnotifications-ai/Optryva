@@ -381,19 +381,6 @@ export async function scoreAssignmentWithAI(
       '\nYou are evaluating ONLY the submitted assessment against the rubric. Reconcile it with the fit prior above: if the assessment confirms or contradicts that prior, say so explicitly. Never invent résumé facts the matcher did not already establish.'
     : ''
 
-  if (!hasClaude()) {
-    const score = Math.round(40 + completion * 50)
-    const priorNote = matchContext?.score != null ? ` The candidate's existing match fit was ${matchContext.score}%.` : ''
-    return {
-      score,
-      recommendation: score >= 75 ? 'advance' : score >= 55 ? 'consider' : 'hold',
-      feedback: {
-        overall: 'AI scoring is unavailable right now — this score is a transparent estimate based on how much of the assignment was completed. A human should review the answers directly before deciding.' + priorNote,
-        perQuestion: questions.map((q: any) => ({ id: q.id, feedback: 'Not auto-evaluated — please review manually.' })),
-      },
-    }
-  }
-
   const answerText = answers
     .map((a) => {
       const q = questions.find((x: any) => x.id === (a.question_id ?? a.criterion_id))
@@ -410,19 +397,48 @@ export async function scoreAssignmentWithAI(
     { type: 'text', text: 'Evaluate the submission against the approved rubric. Return ONLY the requested JSON.' },
   ]
 
-  try {
-    const result = await claudeJsonBlocks<any>({ model: MODELS.chat, maxTokens: 1500, system: SCORE_SYSTEM, content, schema: SCORE_SCHEMA })
-    if (!result) throw new Error('ai_unavailable')
-    const score = Math.max(0, Math.min(100, Math.round(Number(result.score) || 0)))
-    const recommendation = ['advance', 'consider', 'hold'].includes(result.recommendation) ? result.recommendation : (score >= 75 ? 'advance' : score >= 55 ? 'consider' : 'hold')
-    const perQuestion = (result.per_question ?? []).map((p: any) => ({ id: String(p.id), feedback: String(p.feedback ?? '') }))
-    return { score, recommendation, feedback: { overall: String(result.overall_feedback ?? ''), perQuestion } }
-  } catch {
+  // Transparent fallback used when no AI provider succeeds: a completion-based
+  // estimate, clearly labelled so the employer knows it isn't a real evaluation.
+  const estimate = (): AssignmentScoreResult => {
     const score = Math.round(40 + completion * 50)
+    const priorNote = matchContext?.score != null ? ` The candidate's existing match fit was ${matchContext.score}%.` : ''
     return {
       score,
       recommendation: score >= 75 ? 'advance' : score >= 55 ? 'consider' : 'hold',
-      feedback: { overall: 'Automated evaluation failed — score estimated from completion. Please review the answers manually.', perQuestion: questions.map((q: any) => ({ id: q.id, feedback: 'Auto-evaluation failed — review manually.' })) },
+      feedback: {
+        overall: 'AI scoring is unavailable right now — this score is a transparent estimate based on how much of the assignment was completed. A human should review the answers directly before deciding.' + priorNote,
+        perQuestion: questions.map((q: any) => ({ id: q.id, feedback: 'Not auto-evaluated — please review manually.' })),
+      },
     }
   }
+
+  // Mistral is preferred for scoring (so its behaviour is observable to the
+  // employer during testing), then Claude, then the transparent estimate.
+  if (hasMistral()) {
+    try {
+      const result = await mistralJsonBlocks<any>({ model: MISTRAL_MODEL, maxTokens: 1500, system: SCORE_SYSTEM, content, schema: SCORE_SCHEMA })
+      if (result) {
+        const score = Math.max(0, Math.min(100, Math.round(Number(result.score) || 0)))
+        const recommendation = ['advance', 'consider', 'hold'].includes(result.recommendation) ? result.recommendation : (score >= 75 ? 'advance' : score >= 55 ? 'consider' : 'hold')
+        const perQuestion = (result.per_question ?? []).map((p: any) => ({ id: String(p.id), feedback: String(p.feedback ?? '') }))
+        return { score, recommendation, feedback: { overall: String(result.overall_feedback ?? ''), perQuestion } }
+      }
+    } catch {
+      /* fall through to Claude */
+    }
+  }
+  if (hasClaude()) {
+    try {
+      const result = await claudeJsonBlocks<any>({ model: MODELS.chat, maxTokens: 1500, system: SCORE_SYSTEM, content, schema: SCORE_SCHEMA })
+      if (result) {
+        const score = Math.max(0, Math.min(100, Math.round(Number(result.score) || 0)))
+        const recommendation = ['advance', 'consider', 'hold'].includes(result.recommendation) ? result.recommendation : (score >= 75 ? 'advance' : score >= 55 ? 'consider' : 'hold')
+        const perQuestion = (result.per_question ?? []).map((p: any) => ({ id: String(p.id), feedback: String(p.feedback ?? '') }))
+        return { score, recommendation, feedback: { overall: String(result.overall_feedback ?? ''), perQuestion } }
+      }
+    } catch {
+      /* fall through to estimate */
+    }
+  }
+  return estimate()
 }

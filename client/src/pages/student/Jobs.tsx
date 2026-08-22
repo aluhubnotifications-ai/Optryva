@@ -28,7 +28,6 @@ import { useGeo } from '@/lib/geo'
 import { jobsApi, profilesApi } from '@/lib/api'
 import type { AiMatch, JobListing, Profile } from '@/types'
 import { AIResearchPanel } from '@/components/AIResearchPanel'
-import { ApplyModal } from '@/components/ApplyModal'
 import { MatchRunner } from '@/components/MatchRunner'
 import { useMatchRun, needsMatchRun } from '@/lib/matchRun'
 import { useMatchProgress } from '@/lib/matchProgress'
@@ -95,7 +94,6 @@ export default function Jobs() {
   const [listQ, setListQ] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [researchJob, setResearchJob] = useState<JobListing | null>(null)
-  const [applyJob, setApplyJob] = useState<JobListing | null>(null)
   const [mobileDetail, setMobileDetail] = useState<JobListing | null>(null)
   const [saved, setSaved] = useState<Set<string>>(new Set())
   const [params, setParams] = useSearchParams()
@@ -219,7 +217,7 @@ export default function Jobs() {
     if (job.apply_url) {
       jobsApi.trackOpen(job.id) // count this person as an external apply open
       window.open(job.apply_url, '_blank', 'noopener,noreferrer')
-    } else setApplyJob(job)
+    } else navigate('/app/apply/' + job.id)
   }
 
   function toggleSave(id: string) {
@@ -412,7 +410,6 @@ export default function Jobs() {
         user={user}
       />
 
-      <ApplyModal open={!!applyJob} onClose={() => setApplyJob(null)} job={applyJob} user={user} />
     </div>
   )
 }

@@ -16,6 +16,7 @@ const Dashboard = lazy(() => import('@/pages/Dashboard'))
 const Research = lazy(() => import('@/pages/Research'))
 const Jobs = lazy(() => import('@/pages/student/Jobs'))
 const JobDetail = lazy(() => import('@/pages/student/JobDetail'))
+const Apply = lazy(() => import('@/pages/student/Apply'))
 const Applications = lazy(() => import('@/pages/student/Applications'))
 const ApplicationDetail = lazy(() => import('@/pages/student/ApplicationDetail'))
 const Insights = lazy(() => import('@/pages/student/Insights'))
@@ -121,6 +122,7 @@ export const router = createBrowserRouter([
       { path: 'research', element: <Research /> },
       { path: 'jobs', element: <Jobs /> },
       { path: 'jobs/:id', element: <JobDetail /> },
+      { path: 'apply/:jobId', element: <Apply /> },
       { path: 'applications', element: <ApplicationsRoute /> },
       { path: 'applications/:id', element: <ApplicationDetail /> },
       { path: 'insights', element: <Insights /> },

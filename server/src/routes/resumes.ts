@@ -105,10 +105,10 @@ resumes.post('/', async (req, res) => {
   }
   if (existingPath) {
     row.cv_storage_path = existingPath
-  } else if (b.cv_url) {
+  } else if (typeof b.cv_url === 'string' && b.cv_url.startsWith('data:')) {
     if (!await storageColumnExists()) return res.status(503).json({ error: 'document_storage_unavailable' })
     const stored = await storeDocument(req.user!.id, 'resume', b.cv_filename ?? 'resume', b.cv_url)
-    row.cv_url = documentUrl(stored.path)
+    row.cv_url = documentUrl(stored.path!)
     row.cv_storage_path = stored.path
   }
   for (const field of arrays) row[field] = j.stringify(Array.isArray(b[field]) ? b[field] : [])
@@ -130,9 +130,9 @@ resumes.patch('/:id', async (req, res) => {
     if (existingPath) {
       update.cv_url = documentUrl(existingPath)
       update.cv_storage_path = existingPath
-    } else {
+    } else if (typeof b.cv_url === 'string' && b.cv_url.startsWith('data:')) {
       const stored = await storeDocument(req.user!.id, 'resume', b.cv_filename ?? current.cv_filename ?? 'resume', b.cv_url)
-      update.cv_url = documentUrl(stored.path)
+      update.cv_url = documentUrl(stored.path!)
       update.cv_storage_path = stored.path
     }
   }

@@ -134,7 +134,7 @@ export interface AiAssignmentQuestion {
   maxWords?: number | null
 }
 
-export type ApplicationStatus = 'pending' | 'reviewed' | 'shortlisted' | 'hired' | 'rejected'
+export type ApplicationStatus = 'draft' | 'pending' | 'reviewed' | 'shortlisted' | 'hired' | 'rejected' | 'cancelled'
 
 export interface AppDocument {
   kind: 'cv' | 'cover' | 'transcript' | 'recommendation' | 'portfolio' | 'certificate' | 'id'
@@ -171,7 +171,7 @@ export interface Application {
   decision_reason?: string
   decided_at?: string
   created_at: string
-  timeline: { status: ApplicationStatus | 'applied'; at: string }[]
+  timeline: { status: ApplicationStatus | 'applied'; at: string; reason?: string }[]
 }
 
 export interface MatchBreakdown {

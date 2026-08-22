@@ -75,14 +75,17 @@ applications.post('/', async (req, res) => {
   if (documentError) return res.status(400).json({ error: documentError })
   const job = must(await sb.from('job_listings').select('*').eq('id', b.job_id).maybeSingle()) as any
   if (!job) return res.status(404).json({ error: 'job_not_found' })
-  const dup = must(await sb.from('applications').select('id').eq('student_id', req.user!.id).eq('job_id', b.job_id).maybeSingle())
-  if (dup) return res.status(409).json({ error: 'already_applied' })
+  const dup = must(await sb.from('applications').select('*').eq('student_id', req.user!.id).eq('job_id', b.job_id).maybeSingle()) as any
+  // A saved draft is resumed (turned into a real application) on submit; a real
+  // (already-submitted) application can't be re-created.
+  if (dup && dup.status !== 'draft') return res.status(409).json({ error: 'already_applied' })
+
   const documents = await Promise.all((b.documents ?? []).map(async (document: any) => {
     const stored = await storeDocument(req.user!.id, document.kind ?? 'document', document.name ?? 'document', document.url)
-    return { ...document, url: stored.url, storage_path: stored.path, mime: stored.mime, size: stored.size }
+    // Keep the original mime/size when the file was already stored (e.g. a resumed draft).
+    return { ...document, url: stored.url, storage_path: stored.path, ...(stored.path ? { mime: stored.mime, size: stored.size } : {}) }
   }))
 
-  const id = uid('a')
   const ts = now()
   // Carry the AI match score + rationale we showed the student at apply time onto
   // the application so the employer can see the same evidence during review.
@@ -99,7 +102,11 @@ applications.post('/', async (req, res) => {
       matchRationale = parts.length ? parts.join(' ') : null
     }
   } catch { /* no cached score — leave null */ }
-  must(await sb.from('applications').insert({
+
+  const id = dup?.id ?? uid('a')
+  const timeline = j.parse<any[]>(dup?.timeline ?? '[]', [])
+  timeline.push({ status: 'applied', at: ts })
+  const row = {
     id, student_id: req.user!.id, job_id: b.job_id, status: 'pending',
     cover_note: b.cover_note ?? null, documents: j.stringify(documents),
     full_name: b.full_name, email: b.email, phone: b.phone ?? null,
@@ -108,11 +115,61 @@ applications.post('/', async (req, res) => {
     assignment_status: job.assignment ? (b.assignment_answers?.length ? 'submitted' : 'pending') : 'not_required',
     match_score: matchScore,
     match_rationale: matchRationale,
-    timeline: j.stringify([{ status: 'applied', at: ts }]), created_at: ts,
-  }))
+    created_at: dup?.created_at ?? ts,
+    timeline: j.stringify(timeline),
+  }
+  if (dup) {
+    must(await sb.from('applications').update(row).eq('id', id))
+  } else {
+    must(await sb.from('applications').insert(row))
+  }
   await notify(job.company_id, 'new_application', 'New application received', `${b.full_name} applied to ${job.title}`, id)
   const created = must(await sb.from('applications').select('*').eq('id', id).maybeSingle())
   res.json(rowToApplication(created))
+})
+
+/** Load the student's saved draft for a job (or null). Used to resume an
+ *  application the candidate started earlier. */
+applications.get('/draft/:jobId', async (req, res) => {
+  const r = must(await sb.from('applications').select('*').eq('student_id', req.user!.id).eq('job_id', req.params.jobId).eq('status', 'draft').maybeSingle())
+  res.json(r ? rowToApplication(r) : null)
+})
+
+/** Save (upsert) a draft application for the current user + job so a candidate can
+ *  come back later. Never overwrites an already-submitted application. */
+applications.put('/draft', async (req, res) => {
+  const b = req.body ?? {}
+  const job = must(await sb.from('job_listings').select('*').eq('id', b.job_id).maybeSingle()) as any
+  if (!job) return res.status(404).json({ error: 'job_not_found' })
+  const existing = must(await sb.from('applications').select('*').eq('student_id', req.user!.id).eq('job_id', b.job_id).maybeSingle()) as any
+  if (existing && existing.status !== 'draft') return res.status(409).json({ error: 'already_applied' })
+  const documentError = validateDocuments(b.documents ?? [])
+  if (documentError) return res.status(400).json({ error: documentError })
+  const documents = await Promise.all((b.documents ?? []).map(async (document: any) => {
+    const stored = await storeDocument(req.user!.id, document.kind ?? 'document', document.name ?? 'document', document.url)
+    // Keep the original mime/size when the file was already stored (e.g. a resumed draft).
+    return { ...document, url: stored.url, storage_path: stored.path, ...(stored.path ? { mime: stored.mime, size: stored.size } : {}) }
+  }))
+  const ts = now()
+  const id = existing?.id ?? uid('a')
+  const row = {
+    id, student_id: req.user!.id, job_id: b.job_id, status: 'draft',
+    cover_note: b.cover_note ?? null, documents: j.stringify(documents),
+    full_name: b.full_name, email: b.email, phone: b.phone ?? null,
+    school: b.school ?? null, year: b.year ?? null, linkedin: b.linkedin ?? null,
+    assignment_answers: j.stringify(b.assignment_answers ?? []),
+    assignment_status: job.assignment ? (b.assignment_answers?.length ? 'submitted' : 'pending') : 'not_required',
+    created_at: existing?.created_at ?? ts,
+    updated_at: ts,
+    timeline: existing?.timeline ?? j.stringify([{ status: 'draft', at: ts }]),
+  }
+  if (existing) {
+    must(await sb.from('applications').update(row).eq('id', id))
+  } else {
+    must(await sb.from('applications').insert(row))
+  }
+  const saved = must(await sb.from('applications').select('*').eq('id', id).maybeSingle())
+  res.json(rowToApplication(saved))
 })
 
 applications.patch('/:id/status', async (req, res) => {
@@ -183,6 +240,38 @@ applications.post('/:id/score-assignment', async (req, res) => {
   )
   const updated = must(await sb.from('applications').select('*').eq('id', r.id).maybeSingle())
   res.json(rowToApplication(updated))
+})
+
+// Records a proctor integrity violation (e.g. camera/mic denied, a second person
+// detected, the candidate left frame, loud noise, excessive movement) so the
+// candidate can't re-take the test for this job. We store a cancelled
+// application row: the already-applied guard treats any non-draft status as
+// final, so re-applying is blocked and the employer sees the cancellation.
+applications.post('/proctor-cancel', async (req, res) => {
+  const { job_id, reason } = req.body ?? {}
+  if (!job_id) return res.status(400).json({ error: 'missing_job' })
+  const job = must(await sb.from('job_listings').select('id').eq('id', job_id).maybeSingle())
+  if (!job) return res.status(404).json({ error: 'job_not_found' })
+  const existing = must(await sb.from('applications').select('*').eq('student_id', req.user!.id).eq('job_id', job_id).maybeSingle()) as any
+  if (existing) return res.json(rowToApplication(existing))
+  const profile = must(await sb.from('profiles').select('full_name,email,school,year').eq('id', req.user!.id).maybeSingle()) as any
+  const id = uid('a')
+  const ts = now()
+  must(await sb.from('applications').insert({
+    id,
+    student_id: req.user!.id,
+    job_id,
+    status: 'cancelled',
+    assignment_status: 'cancelled',
+    full_name: profile?.full_name ?? '',
+    email: profile?.email ?? '',
+    school: profile?.school ?? null,
+    year: profile?.year ?? null,
+    timeline: j.stringify([{ status: 'cancelled', at: ts, reason: reason ?? 'violation' }]),
+    created_at: ts,
+  }))
+  const created = must(await sb.from('applications').select('*').eq('id', id).maybeSingle())
+  res.json(rowToApplication(created))
 })
 
 applications.delete('/:id', async (req, res) => {

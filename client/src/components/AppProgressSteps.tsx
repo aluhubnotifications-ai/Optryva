@@ -15,6 +15,8 @@ function stepIndex(status: ApplicationStatus) {
     case 'hired':
     case 'rejected':
       return 3
+    default:
+      return -1
   }
 }
 

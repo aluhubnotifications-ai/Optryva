@@ -17,6 +17,8 @@ import { Input, Label, Textarea, Select, Badge } from '@/components/ui/primitive
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/toast'
 import { aiApi, applicationsApi } from '@/lib/api'
+import { ProctorMonitor, VIOLATION_LABEL } from '@/components/ProctorMonitor'
+import type { ProctorViolation } from '@/components/ProctorMonitor'
 import { cn, fileToDataUrl, formatBytes } from '@/lib/utils'
 import type { AiAssignmentQuestion, Application, AppDocument, JobListing, Profile } from '@/types'
 
@@ -32,19 +34,23 @@ const OPTIONAL_DOCS: { kind: AppDocument['kind']; label: string }[] = [
 type CoachResult = Awaited<ReturnType<typeof aiApi.coach>>
 type Step = 'info' | 'resume' | 'assessment' | 'submission'
 
-export function ApplyModal({
-  open,
-  onClose,
-  job,
-  user,
-  onSubmitted,
-}: {
+interface ApplyModalProps {
   open: boolean
   onClose: () => void
   job: JobListing | null
   user: Profile
   onSubmitted?: (a: Application) => void
-}) {
+}
+
+export function ApplyModal({ open, onClose, job, user, onSubmitted }: ApplyModalProps) {
+  return (
+    <Modal open={open} onClose={onClose} size="xl" title={job ? `Apply — ${job.title}` : 'Apply'} description="Complete each step, then submit. Takes a couple of minutes.">
+      <ApplyForm job={job} user={user} onClose={onClose} onSubmitted={onSubmitted} />
+    </Modal>
+  )
+}
+
+export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing | null; user: Profile; onClose?: () => void; onSubmitted?: (a: Application) => void }) {
   const { toast } = useToast()
   const [form, setForm] = useState({
     full_name: user.full_name,
@@ -72,11 +78,53 @@ export function ApplyModal({
   )
   const [submitting, setSubmitting] = useState(false)
   const [assignmentAnswers, setAssignmentAnswers] = useState<Record<string, string | string[]>>({})
+  const [assignmentFileNames, setAssignmentFileNames] = useState<Record<string, string>>({})
   const [interviewFirst, setInterviewFirst] = useState(false)
+  const [alreadyApplied, setAlreadyApplied] = useState<Application | null>(null)
+  const [savingDraft, setSavingDraft] = useState(false)
+  const [proctorCancelled, setProctorCancelled] = useState<ProctorViolation | null>(null)
 
+  // Resume a previously saved draft (and detect an already-submitted application)
+  // so a candidate can come back later and pick up where they left off.
   useEffect(() => {
+    if (!job?.id) return
+    let cancelled = false
+    setAlreadyApplied(null)
     setAssignmentAnswers({})
+    setAssignmentFileNames({})
     setInterviewFirst(false)
+    applicationsApi
+      .byStudent(user.id)
+      .then((list) => {
+        if (cancelled) return
+        const existing = list.find((a) => a.job_id === job.id && a.status !== 'draft')
+        if (existing) setAlreadyApplied(existing)
+      })
+      .catch(() => {})
+    applicationsApi
+      .getDraft(job.id)
+      .then((draft) => {
+        if (cancelled || !draft) return
+        setForm({
+          full_name: draft.full_name,
+          email: draft.email,
+          phone: draft.phone ?? '',
+          school: draft.school ?? '',
+          year: draft.year ? String(draft.year) : '',
+          linkedin: draft.linkedin ?? '',
+        })
+        setCoverNote(draft.cover_note ?? '')
+        const d: Record<string, AppDocument> = {}
+        for (const doc of draft.documents ?? []) d[doc.kind] = doc
+        setDocs(d)
+        // The test (assessment) is intentionally NOT restored from a draft — it is
+        // only ever completed and submitted, so a student can't pre-fill answers
+        // offline and resume them. assignmentAnswers / assignmentFileNames stay empty.
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
   }, [job?.id])
 
   // AI coach
@@ -133,6 +181,7 @@ export function ApplyModal({
     if (!file) return
     const url = await fileToDataUrl(file)
     setAssignmentAnswers((current) => ({ ...current, [question.id]: url }))
+    setAssignmentFileNames((current) => ({ ...current, [question.id]: file.name }))
   }
 
   async function submit() {
@@ -158,15 +207,49 @@ export function ApplyModal({
         school: form.school,
         year: form.year ? Number(form.year) : undefined,
         linkedin: form.linkedin || undefined,
-        assignment_answers: hasAssignment ? (questions.length ? questions.map((question) => ({ question_id: question.id, answer: assignmentAnswers[question.id] ?? '' })) : assignment.rubric.map((criterion) => ({ criterion_id: criterion.id, answer: assignmentAnswers[criterion.id] ?? '' }))) : [],
+        assignment_answers: hasAssignment
+          ? questions.length
+            ? questions.map((question) => ({
+                question_id: question.id,
+                answer: assignmentAnswers[question.id] ?? '',
+                ...(question.type === 'file' || question.type === 'video' ? { file_name: assignmentFileNames[question.id] } : {}),
+              }))
+            : assignment.rubric.map((criterion) => ({ criterion_id: criterion.id, answer: assignmentAnswers[criterion.id] ?? '' }))
+          : [],
       })
       toast({ title: 'Application submitted! 🎉', description: `${job.title} — good luck!`, tone: 'success' })
       onSubmitted?.(app)
-      onClose()
+      onClose?.()
     } catch (e) {
       toast({ title: 'Could not submit application', description: e instanceof Error ? e.message : 'Please try again.', tone: 'error' })
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  // Persist a resumable draft (incomplete is fine) so the candidate can return later.
+  async function saveDraft() {
+    if (!job) return
+    try {
+      setSavingDraft(true)
+      const documents = Object.values(docs).map((d) => ({ ...d }))
+      await applicationsApi.saveDraft({
+        student_id: user.id,
+        job_id: job.id,
+        cover_note: coverNote || undefined,
+        documents,
+        full_name: form.full_name,
+        email: form.email,
+        phone: form.phone || undefined,
+        school: form.school,
+        year: form.year ? Number(form.year) : undefined,
+        linkedin: form.linkedin || undefined,
+      })
+      toast({ title: 'Draft saved', description: 'You can come back and finish later.', tone: 'success' })
+    } catch (e) {
+      toast({ title: 'Could not save draft', description: e instanceof Error ? e.message : 'Please try again.', tone: 'error' })
+    } finally {
+      setSavingDraft(false)
     }
   }
 
@@ -186,15 +269,45 @@ export function ApplyModal({
     { id: 'submission', label: 'Submit', done: false },
   ]
 
+  if (alreadyApplied) {
+    const cancelled = alreadyApplied.status === 'cancelled'
+    const reason = alreadyApplied.timeline?.[0]?.reason as ProctorViolation | undefined
+    return (
+      <div className={`space-y-4 rounded-2xl border p-6 text-center ${cancelled ? 'border-danger/30 bg-danger/5' : 'border-border bg-card'}`}>
+        {cancelled && <AlertTriangle className="mx-auto h-8 w-8 text-danger" />}
+        <p className="text-lg font-semibold">{cancelled ? 'Application cancelled' : "You've already applied to this role"}</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {cancelled
+            ? reason
+              ? VIOLATION_LABEL[reason]
+              : 'An integrity violation was recorded for this test.'
+            : 'You can track its status from your applications list. We’ll notify you of any updates.'}
+        </p>
+        <Button className="mt-3" onClick={() => onClose?.()}>Back</Button>
+      </div>
+    )
+  }
+
+  function handleProctorViolation(reason: ProctorViolation) {
+    setProctorCancelled(reason)
+    if (job?.id) applicationsApi.proctorCancel({ job_id: job.id, reason }).catch(() => {})
+  }
+
+  if (proctorCancelled) {
+    return (
+      <div className="space-y-4 rounded-2xl border border-danger/30 bg-danger/5 p-6 text-center">
+        <AlertTriangle className="mx-auto h-8 w-8 text-danger" />
+        <p className="text-lg font-semibold">Test cancelled</p>
+        <p className="mt-1 text-sm text-muted-foreground">{VIOLATION_LABEL[proctorCancelled]}</p>
+        <p className="text-xs text-muted-foreground">This application cannot be continued. The integrity violation has been recorded.</p>
+        <Button className="mt-3" onClick={() => onClose?.()}>Back</Button>
+      </div>
+    )
+  }
+
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      size="xl"
-      title={job ? `Apply — ${job.title}` : 'Apply'}
-      description="Complete each step, then submit. Takes a couple of minutes."
-    >
-      <div className="space-y-5">
+    <div className="space-y-5">
+      <ProctorMonitor active={active === 'assessment' && hasAssignment && !proctorCancelled} onViolation={handleProctorViolation} />
         <nav className="flex flex-wrap items-center gap-1 sm:gap-2">
           {sections.map((s, i) => (
             <Fragment key={s.id}>
@@ -271,6 +384,7 @@ export function ApplyModal({
                 <div className="min-w-0">
                   <p className="font-semibold">{assignment.title}</p>
                   <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{assignment.prompt}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">Your test answers aren't saved as a draft — complete and submit to record them.</p>
                   {assignment.due_before_interview ? (
                     <p className="mt-2 text-xs font-medium text-accent">Required with your application — it's reviewed before your interview.</p>
                   ) : (
@@ -356,6 +470,7 @@ export function ApplyModal({
 
         <div className="flex items-center gap-2 border-t border-border pt-4">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" type="button" onClick={saveDraft} loading={savingDraft}>Save draft</Button>
           <div className="ml-auto flex gap-2">
             {active !== 'info' && (
               <Button variant="outline" type="button" onClick={() => { if (prevId) setActive(prevId) }}>Back</Button>
@@ -368,7 +483,6 @@ export function ApplyModal({
           </div>
         </div>
       </div>
-    </Modal>
   )
 }
 

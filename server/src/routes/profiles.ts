@@ -117,7 +117,7 @@ profiles.patch('/:id', async (req, res) => {
     if (documentError) return res.status(400).json({ error: documentError })
     if (!await cvStorageColExists()) return res.status(503).json({ error: 'document_storage_unavailable' })
     const stored = await storeDocument(req.user!.id, 'cv', b.cv_filename ?? 'resume', incomingCvUrl)
-    update.cv_url = documentUrl(stored.path)
+    update.cv_url = documentUrl(stored.path!)
     update.cv_storage_path = stored.path
   }
 

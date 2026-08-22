@@ -33,6 +33,9 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 
 export function validateDocumentUrl(value: unknown, filename?: unknown): string | null {
   if (typeof value !== 'string' || !value) return 'document_url_invalid'
+  // Already-stored URLs (served via /api/documents/…) are accepted as-is; they
+  // were validated when first uploaded and don't need re-decoding.
+  if (/^https?:\/\//.test(value) || value.startsWith('/')) return null
   const match = DATA_URL_RE.exec(value)
   if (!match) return 'document_format_invalid'
   const extension = typeof filename === 'string' ? filename.toLowerCase().split('.').pop() : ''
@@ -54,8 +57,11 @@ export function validateDocuments(value: unknown): string | null {
     const error = validateDocumentUrl((document as { url?: unknown }).url, (document as { name?: unknown }).name)
     if (error) return error
     const url = (document as { url: string }).url
-    const payload = url.slice(url.indexOf(',') + 1).replace(/\s/g, '')
-    totalBytes += Math.floor(payload.length * 3 / 4) - (payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0)
+    // Already-stored URLs aren't base64 payloads, so skip byte accounting for them.
+    if (url.includes(',')) {
+      const payload = url.slice(url.indexOf(',') + 1).replace(/\s/g, '')
+      totalBytes += Math.floor(payload.length * 3 / 4) - (payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0)
+    }
   }
   return totalBytes > 20 * 1024 * 1024 ? 'documents_too_large' : null
 }
@@ -87,6 +93,11 @@ export function documentUrl(path: string): string {
 }
 
 export async function storeDocument(ownerId: string, kind: string, name: string, dataUrl: string) {
+  // Already-stored URLs are passed through untouched (path stays null so callers
+  // know the bytes live in Supabase Storage already, not re-uploaded).
+  if (/^https?:\/\//.test(dataUrl) || dataUrl.startsWith('/')) {
+    return { path: null, url: dataUrl, mime: '', size: 0 }
+  }
   const { mime, bytes } = decodeDataUrl(dataUrl)
   const path = `${ownerId}/${uid('document')}-${kind}-${name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
   const { error } = await sb.storage.from(DOCUMENT_BUCKET).upload(path, bytes, { contentType: mime, upsert: false })
