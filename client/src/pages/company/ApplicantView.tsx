@@ -20,6 +20,7 @@ import {
   Users,
 } from 'lucide-react'
 import { applicationsApi, jobsApi } from '@/lib/api'
+import { useCompanyData } from '@/lib/companyData'
 import { useCurrentUser } from '@/lib/store'
 import type { Application, ApplicationStatus, JobListing } from '@/types'
 import { Card, CardBody, Badge, Avatar, Label, Textarea, Input } from '@/components/ui/primitives'
@@ -110,20 +111,24 @@ export default function ApplicantView() {
   const sectionIndex = sectionOrder.indexOf(active)
   const go = (s: StepId) => { setActive(s); refs[s].current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
 
+  // After changing an applicant, mark the company's cached listings/applications
+  // stale so returning to "Listings & applications" silently revalidates.
+  const markStale = () => useCompanyData.getState().invalidate()
+
   async function setStatus(s: ApplicationStatus) {
     if (s === 'rejected' && !decisionNote.trim()) {
       toast({ title: 'Add a reason before rejecting', description: 'A rejection reason is required and recorded for audit.', tone: 'error' })
       setActive('decision'); return
     }
     const updated = await applicationsApi.setStatus(app!.id, s, decisionNote.trim() || undefined)
-    if (updated) { setApp(updated); toast({ title: `Marked ${s === 'hired' ? 'hired' : s}`, tone: 'success' }) }
+    if (updated) { setApp(updated); markStale(); toast({ title: `Marked ${s === 'hired' ? 'hired' : s}`, tone: 'success' }) }
   }
 
   async function runAiScore() {
     setScoreBusy(true)
     try {
       const updated = await applicationsApi.scoreAssignment(app!.id)
-      if (updated) { setApp(updated); toast({ title: 'AI assessment review complete', tone: 'success' }) }
+      if (updated) { setApp(updated); markStale(); toast({ title: 'AI assessment review complete', tone: 'success' }) }
     } catch (e) {
       toast({ title: 'Could not score assignment', description: e instanceof Error ? e.message : undefined, tone: 'error' })
     } finally { setScoreBusy(false) }
@@ -133,12 +138,12 @@ export default function ApplicantView() {
     const num = Number(overrideScore)
     if (Number.isNaN(num)) return
     const updated = await applicationsApi.review(app!.id, { assignment_score: Math.max(0, Math.min(100, Math.round(num))), decision_reason: decisionNote.trim() || undefined })
-    if (updated) { setApp(updated); setOverrideScore(''); toast({ title: 'Score override saved', tone: 'success' }) }
+    if (updated) { setApp(updated); setOverrideScore(''); markStale(); toast({ title: 'Score override saved', tone: 'success' }) }
   }
 
   async function saveNote() {
     const updated = await applicationsApi.review(app!.id, { decision_reason: decisionNote.trim() || undefined })
-    if (updated) { setApp(updated); toast({ title: 'Decision note saved', tone: 'success' }) }
+    if (updated) { setApp(updated); markStale(); toast({ title: 'Decision note saved', tone: 'success' }) }
   }
 
   const actions: { label: string; status: ApplicationStatus; icon: typeof Mail; variant: 'outline' | 'default' | 'success' | 'danger' }[] = [

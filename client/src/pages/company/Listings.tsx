@@ -11,7 +11,8 @@ import {
   Users,
 } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
-import { applicationsApi, jobsApi } from '@/lib/api'
+import { jobsApi } from '@/lib/api'
+import { useCompanyData } from '@/lib/companyData'
 import { JobPostingView } from '@/components/JobPostingView'
 import type { Application, JobListing } from '@/types'
 import { Badge, Card, CardBody, Skeleton } from '@/components/ui/primitives'
@@ -38,13 +39,11 @@ export default function Listings() {
   const navigate = useNavigate()
   const { toast } = useToast()
 
-  const [jobs, setJobs] = useState<JobListing[]>([])
-  const [apps, setApps] = useState<Application[]>([])
-  const [opens, setOpens] = useState<Record<string, number>>({})
-  const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<PanelTab>(params.get('tab') === 'details' ? 'details' : 'applicants')
 
   const selection: Selection = routeListingId ?? 'all'
+
+  const { jobs, apps, opens, loading, load, invalidate } = useCompanyData()
 
   const inAppJobs = useMemo(() => jobs.filter((j) => !j.apply_url), [jobs])
   const externalJobs = useMemo(() => jobs.filter((j) => j.apply_url), [jobs])
@@ -58,21 +57,13 @@ export default function Listings() {
   )
   const pendingTotal = useMemo(() => apps.filter((a) => a.status === 'pending').length, [apps])
 
-  const reload = useCallback(async () => {
-    const [j, a, o] = await Promise.all([
-      jobsApi.byCompany(user.id),
-      applicationsApi.byCompany(user.id),
-      jobsApi.openCounts(),
-    ])
-    setJobs(j)
-    setApps(a)
-    setOpens(o)
-    setLoading(false)
-  }, [user.id])
-
+  // Session-cached: returns instantly if we already have data (e.g. navigating
+  // back from an applicant); silently revalidates only when stale.
   useEffect(() => {
-    reload()
-  }, [reload])
+    load(user.id)
+  }, [user.id, load])
+
+  const reload = useCallback(() => load(user.id, true), [load])
 
   function chooseListing(id: Selection) {
     setTab('applicants')

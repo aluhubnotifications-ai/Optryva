@@ -391,6 +391,25 @@ Guardrails (implemented):
 - Authorization is unchanged: `GET /applications/:id` already allows only the
   owner student, the job's company, or an admin.
 
+### D4 — Listings & applications stay cached across navigation (no reload on return)
+
+**Decision:** the company "Listings & applications" page must not refetch (or flash
+a loading state) every time the user navigates back to it — e.g. after opening an
+applicant.
+
+Implementation:
+- A session-level Zustand store (`client/src/lib/companyData.ts`) holds the
+  company's `jobs` + `apps` + `opens` in memory for the whole session.
+- `Listings.tsx` reads from the store instead of local `useState`. On mount it
+  calls `load()` which returns **instantly if already loaded** (no spinner, no
+  network) and only **silently revalidates** when the data is older than 60s.
+- The read API calls were already cached at the request layer (`jobs:company`,
+  `apps:company`, `jobs:opens`, 60s TTL) and invalidated on mutations.
+- Mutations in `ApplicantView` (status change, AI score, override, note) call
+  `useCompanyData.invalidate()` so returning to the list silently refreshes with
+  the new state — no stale "pending" badge.
+- Different-account / re-login resets the store via a `userId` guard.
+
 ## Non-Negotiable Product Rules
 
 - AI must not invent résumé experience or evidence.
