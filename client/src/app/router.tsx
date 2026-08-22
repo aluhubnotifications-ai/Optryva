@@ -32,9 +32,10 @@ const UserProfile = lazy(() => import('@/pages/UserProfile'))
 const Listings = lazy(() => import('@/pages/company/Listings'))
 const JobEditor = lazy(() => import('@/pages/company/JobEditor'))
 const CompanyApplications = lazy(() => import('@/pages/company/Applications'))
-const Analytics = lazy(() => import('@/pages/company/Analytics'))
 const CompanyProfile = lazy(() => import('@/pages/company/CompanyProfile'))
 const ApplicantView = lazy(() => import('@/pages/company/ApplicantView'))
+// Note: company Analytics is shown inline on the Dashboard, so there is no
+// separate /app/analytics route.
 
 function RequireAuth() {
   const userId = useSession((s) => s.userId)
@@ -145,7 +146,6 @@ export const router = createBrowserRouter([
       { path: 'listings/new', element: <JobEditor /> },
       { path: 'listings/:id/edit', element: <JobEditor /> },
       { path: 'listings/:id', element: <ListingApplications /> },
-      { path: 'analytics', element: <Analytics /> },
       { path: 'company-profile', element: <CompanyProfile /> },
       { path: 'applicants/:id', element: <ApplicantView /> },
     ],

@@ -105,7 +105,6 @@ const companyNav: NavItem[] = [
   { to: '/app/listings', label: 'My Listings', icon: Briefcase },
   { to: '/app/applications', label: 'Applications', icon: FileText },
   { to: '/app/research', label: 'Research', icon: Search },
-  { to: '/app/analytics', label: 'Analytics', icon: LayoutDashboard },
   { to: '/app/messages', label: 'Messages', icon: MessageSquare },
   { to: '/app/company-profile', label: 'Company Profile', icon: Building2 },
 ]
