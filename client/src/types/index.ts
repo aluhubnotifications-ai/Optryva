@@ -102,7 +102,32 @@ export interface JobListing {
   original_company_logo_url?: string
   company_name?: string // display name of the posting entity (company or school)
   company_avatar_url?: string // avatar/logo of the posting entity
+  assignment?: AiAssignment | null
   created_at: string
+}
+
+export interface AiRubricCriterion {
+  id: string
+  label: string
+  points: number
+}
+
+export interface AiAssignment {
+  title: string
+  prompt: string
+  due_before_interview: boolean
+  rubric: AiRubricCriterion[]
+  questions?: AiAssignmentQuestion[]
+}
+
+export type AiQuestionType = 'single_choice' | 'multiple_choice' | 'true_false' | 'essay' | 'file' | 'video'
+
+export interface AiAssignmentQuestion {
+  id: string
+  type: AiQuestionType
+  prompt: string
+  required: boolean
+  options?: string[]
 }
 
 export type ApplicationStatus = 'pending' | 'reviewed' | 'shortlisted' | 'hired' | 'rejected'
@@ -128,6 +153,8 @@ export interface Application {
   school?: string
   year?: number
   linkedin?: string
+  assignment_answers?: { criterion_id?: string; question_id?: string; answer: string | string[]; file_name?: string }[]
+  assignment_status?: 'not_required' | 'pending' | 'submitted'
   created_at: string
   timeline: { status: ApplicationStatus | 'applied'; at: string }[]
 }

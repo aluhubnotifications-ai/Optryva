@@ -105,6 +105,9 @@ Capture what happens AFTER the click — the (predicted score → real outcome) 
       `reachable` (stretch roles 1–3 learnable skills away, with the bridge) + `unlocks`
       (the single skill that unlocks the most reachable roles). Rendered as a "Roles
       within reach" card in Insights + fed into the AI do-next coach. No extra LLM calls.
+- [x] **Assignment and interview prep mock**: companies can attach an AI-drafted practical
+      assignment and weighted rubric to a listing; applicants submit rubric answers with
+      their application, and reviewers see completion plus answers before interviews.
 - [ ] **Agentic sourcing & prep**: for a top match, research the company, draft an intro,
       build an interview plan.
 - [ ] **Fairness audit as a feature**: extend the honesty rubric to an LLM-judge that

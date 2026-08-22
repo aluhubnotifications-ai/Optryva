@@ -14,7 +14,7 @@ jobs.use(requireAuth)
 // the single-job detail route. Trimming them keeps the 100+ row list payload
 // small (faster transfer + parse) while cards still have everything they show.
 const LIST_COLUMNS =
-  'id,company_id,title,description,type,listing_type,location,country,remote,pay,currency,duration,deadline,tags,status,apply_url,allowed_years,allowed_schools,students_only,posted_by_role,original_company_name,original_company_logo_url,created_at'
+  'id,company_id,title,description,type,listing_type,location,country,remote,pay,currency,duration,deadline,tags,status,apply_url,allowed_years,allowed_schools,students_only,posted_by_role,original_company_name,original_company_logo_url,assignment,created_at'
 
 // The responsibilities/benefits/qualifications columns are optional (added by a
 // later migration). Detect their presence so create/update still work before the
@@ -189,6 +189,7 @@ jobs.post('/', async (req, res) => {
     posted_by_role: viewer.user_type === 'school' ? 'school' : 'company',
     original_company_name: b.original_company_name ?? null,
     original_company_logo_url: b.original_company_logo_url ?? null,
+    assignment: b.assignment ? j.stringify(b.assignment) : null,
     created_at: ts,
   }
   if (await contentColsExist()) {
@@ -236,6 +237,7 @@ jobs.patch('/:id', async (req, res) => {
     allowed_schools: b.allowed_schools ? j.stringify(b.allowed_schools) : r.allowed_schools,
     original_company_name: b.original_company_name === undefined ? r.original_company_name : b.original_company_name,
     original_company_logo_url: b.original_company_logo_url === undefined ? r.original_company_logo_url : b.original_company_logo_url,
+    assignment: b.assignment === undefined ? r.assignment : b.assignment ? j.stringify(b.assignment) : null,
   }
   if (await contentColsExist()) {
     merged.responsibilities = b.responsibilities ? j.stringify(b.responsibilities) : r.responsibilities

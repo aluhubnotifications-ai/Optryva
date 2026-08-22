@@ -81,6 +81,7 @@ export function rowToJob(r: any) {
     original_company_logo_url: r.original_company_logo_url ?? undefined,
     company_name: r.company_name ?? undefined,
     company_avatar_url: r.company_avatar_url ?? undefined,
+    assignment: r.assignment ? j.parse(r.assignment, undefined) : undefined,
     created_at: r.created_at,
   }
 }
@@ -100,6 +101,8 @@ export function rowToApplication(r: any) {
     school: r.school ?? undefined,
     year: r.year ?? undefined,
     linkedin: r.linkedin ?? undefined,
+    assignment_answers: r.assignment_answers ? j.parse(r.assignment_answers, []) : undefined,
+    assignment_status: r.assignment_status ?? undefined,
     timeline: arr<any>(r.timeline),
     created_at: r.created_at,
   }

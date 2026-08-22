@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Upload,
   FileText,
@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   Wand2,
   ThumbsUp,
+  ClipboardCheck,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Label, Textarea, Select, Badge } from '@/components/ui/primitives'
@@ -15,7 +16,7 @@ import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/toast'
 import { aiApi, applicationsApi } from '@/lib/api'
 import { fileToDataUrl, formatBytes } from '@/lib/utils'
-import type { Application, AppDocument, JobListing, Profile } from '@/types'
+import type { AiAssignmentQuestion, Application, AppDocument, JobListing, Profile } from '@/types'
 
 const OPTIONAL_DOCS: { kind: AppDocument['kind']; label: string }[] = [
   { kind: 'cover', label: 'Cover Letter' },
@@ -67,14 +68,25 @@ export function ApplyModal({
       : {},
   )
   const [submitting, setSubmitting] = useState(false)
+  const [assignmentAnswers, setAssignmentAnswers] = useState<Record<string, string | string[]>>({})
+
+  useEffect(() => {
+    setAssignmentAnswers({})
+  }, [job?.id])
 
   // AI coach
   const [coachLoading, setCoachLoading] = useState(false)
   const [coach, setCoach] = useState<CoachResult | null>(null)
+  const assignment = job?.assignment
+  const questions = assignment?.questions ?? []
+  const answerFilled = (question: AiAssignmentQuestion) => {
+    const answer = assignmentAnswers[question.id]
+    return Array.isArray(answer) ? answer.length > 0 : !!answer?.trim()
+  }
 
   const valid = useMemo(
-    () => form.full_name && /\S+@\S+\.\S+/.test(form.email) && form.school && form.year && docs.cv,
-    [form, docs],
+    () => form.full_name && /\S+@\S+\.\S+/.test(form.email) && form.school && form.year && docs.cv && (!assignment?.due_before_interview || questions.every((question) => !question.required || answerFilled(question))),
+    [form, docs, job, assignmentAnswers],
   )
 
   async function setDoc(kind: AppDocument['kind'], file: File | null) {
@@ -97,6 +109,12 @@ export function ApplyModal({
     const res = await aiApi.coach(user, job)
     setCoach(res)
     setCoachLoading(false)
+  }
+
+  async function setAssignmentFile(question: AiAssignmentQuestion, file?: File) {
+    if (!file) return
+    const url = await fileToDataUrl(file)
+    setAssignmentAnswers((current) => ({ ...current, [question.id]: url }))
   }
 
   async function submit() {
@@ -122,6 +140,7 @@ export function ApplyModal({
         school: form.school,
         year: form.year ? Number(form.year) : undefined,
         linkedin: form.linkedin || undefined,
+        assignment_answers: assignment ? (questions.length ? questions.map((question) => ({ question_id: question.id, answer: assignmentAnswers[question.id] ?? '' })) : assignment.rubric.map((criterion) => ({ criterion_id: criterion.id, answer: assignmentAnswers[criterion.id] ?? '' }))) : [],
       })
       toast({ title: 'Application submitted! 🎉', description: `${job.title} — good luck!`, tone: 'success' })
       onSubmitted?.(app)
@@ -193,6 +212,18 @@ export function ApplyModal({
           </div>
         </div>
 
+        {assignment && (
+          <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4">
+            <div className="flex items-start gap-3">
+              <ClipboardCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+              <div><p className="font-semibold">{assignment.title}</p><p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{assignment.prompt}</p><p className="mt-2 text-xs font-medium text-accent">{assignment.due_before_interview ? 'Required before interview review' : 'Optional pre-interview exercise'}</p></div>
+            </div>
+            <div className="mt-4 space-y-3">
+              {(questions.length ? questions : assignment.rubric.map((criterion) => ({ id: criterion.id, type: 'essay' as const, prompt: criterion.label, required: true }))).map((question) => <QuestionField key={question.id} question={question} value={assignmentAnswers[question.id]} onChange={(value) => setAssignmentAnswers((current) => ({ ...current, [question.id]: value }))} onFile={(file) => setAssignmentFile(question, file)} />)}
+            </div>
+          </div>
+        )}
+
         {/* AI Application Coach */}
         <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -262,6 +293,16 @@ function Stage({ n, title, children, verdict, highlight }: { n: number; title: s
       {children}
     </div>
   )
+}
+
+function QuestionField({ question, value, onChange, onFile }: { question: AiAssignmentQuestion; value?: string | string[]; onChange: (value: string | string[]) => void; onFile: (file: File) => void }) {
+  const selected = Array.isArray(value) ? value : []
+  const choices = question.type === 'true_false' ? ['True', 'False'] : question.options ?? []
+  return <div>
+    <Label>{question.prompt || 'Assignment question'} {question.required && <span className="text-danger">*</span>}</Label>
+    {question.type === 'essay' ? <Textarea value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)} placeholder="Write your answer…" className="min-h-[100px]" /> : question.type === 'file' || question.type === 'video' ? <Input type="file" accept={question.type === 'video' ? 'video/*' : '.pdf,.doc,.docx,image/*'} onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} /> : <div className="space-y-2">{choices.map((choice) => <label key={choice} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type={question.type === 'multiple_choice' ? 'checkbox' : 'radio'} name={question.id} checked={question.type === 'multiple_choice' ? selected.includes(choice) : value === choice} onChange={() => question.type === 'multiple_choice' ? onChange(selected.includes(choice) ? selected.filter((item) => item !== choice) : [...selected, choice]) : onChange(choice)} className="h-4 w-4 accent-primary" />{choice}</label>)}</div>}
+    {(question.type === 'file' || question.type === 'video') && typeof value === 'string' && value && <p className="mt-1 text-xs text-success">File attached</p>}
+  </div>
 }
 
 function FileDrop({

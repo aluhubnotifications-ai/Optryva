@@ -62,6 +62,8 @@ applications.post('/', async (req, res) => {
     cover_note: b.cover_note ?? null, documents: j.stringify(documents),
     full_name: b.full_name, email: b.email, phone: b.phone ?? null,
     school: b.school ?? null, year: b.year ?? null, linkedin: b.linkedin ?? null,
+    assignment_answers: j.stringify(b.assignment_answers ?? []),
+    assignment_status: job.assignment ? (b.assignment_answers?.length ? 'submitted' : 'pending') : 'not_required',
     timeline: j.stringify([{ status: 'applied', at: ts }]), created_at: ts,
   }))
   await notify(job.company_id, 'new_application', 'New application received', `${b.full_name} applied to ${job.title}`, id)

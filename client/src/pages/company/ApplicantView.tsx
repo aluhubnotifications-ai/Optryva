@@ -11,6 +11,7 @@ import {
   Star,
   CheckCircle2,
   XCircle,
+  ClipboardCheck,
 } from 'lucide-react'
 import { applicationsApi, jobsApi, profilesApi } from '@/lib/api'
 import type { Application, ApplicationStatus, JobListing, Profile } from '@/types'
@@ -113,6 +114,7 @@ export default function ApplicantView() {
           {app.cover_note && (
             <Card><CardBody><h2 className="mb-2 font-semibold">Cover note</h2><p className="text-sm leading-relaxed text-muted-foreground">{app.cover_note}</p></CardBody></Card>
           )}
+          {job?.assignment && <AssignmentReview assignment={job.assignment} answers={app.assignment_answers ?? []} status={app.assignment_status} />}
           <Card>
             <CardBody>
               <h2 className="mb-3 font-semibold">Documents</h2>
@@ -123,6 +125,12 @@ export default function ApplicantView() {
       </div>
     </div>
   )
+}
+
+function AssignmentReview({ assignment, answers, status }: { assignment: NonNullable<JobListing['assignment']>; answers: NonNullable<Application['assignment_answers']>; status?: Application['assignment_status'] }) {
+  const answerMap = new Map(answers.map((answer) => [answer.question_id ?? answer.criterion_id, answer.answer]))
+  const items = assignment.questions?.length ? assignment.questions.map((question) => ({ id: question.id, label: question.prompt, points: undefined })) : assignment.rubric.map((criterion) => ({ id: criterion.id, label: criterion.label, points: criterion.points }))
+  return <Card><CardBody><div className="flex items-center justify-between gap-3"><h2 className="flex items-center gap-2 font-semibold"><ClipboardCheck className="h-4 w-4 text-accent" /> Assignment answers</h2><Badge tone={status === 'submitted' ? 'success' : 'default'} className="capitalize">{status === 'submitted' ? 'Submitted' : 'Pending'}</Badge></div><p className="mt-1 text-sm text-muted-foreground">{assignment.title}</p><div className="mt-4 space-y-3">{items.map((item) => { const answer = answerMap.get(item.id); const text = Array.isArray(answer) ? answer.join(', ') : answer?.startsWith('data:') ? 'File attached' : answer; return <div key={item.id} className="rounded-lg border border-border p-3"><div className="flex justify-between gap-3 text-sm font-medium"><span>{item.label}</span>{item.points !== undefined && <span className="shrink-0 text-xs text-muted-foreground">{item.points} pts</span>}</div><p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{text || 'No answer submitted.'}</p></div> })}</div></CardBody></Card>
 }
 
 function Info({ icon: Icon, value, link }: { icon: typeof Mail; value: string; link?: boolean }) {

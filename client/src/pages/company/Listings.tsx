@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Briefcase, Plus, Users, MapPin, Pencil, Trash2, Building2, Eye, CheckCircle2, Lock, ImagePlus } from 'lucide-react'
+import { Briefcase, Plus, Users, MapPin, Pencil, Trash2, Building2, Eye, CheckCircle2, Lock, ImagePlus, Sparkles, ClipboardCheck } from 'lucide-react'
 import { imageFileToDataUrl } from '@/lib/utils'
 import { useCurrentUser } from '@/lib/store'
 import { applicationsApi, jobsApi } from '@/lib/api'
 import { COUNTRIES } from '@/lib/geo'
 import { JobPostingView } from '@/components/JobPostingView'
-import type { JobListing, ListingType } from '@/types'
+import type { AiAssignment, AiAssignmentQuestion, AiRubricCriterion, JobListing, ListingType } from '@/types'
 import { Card, CardBody, Badge, Avatar, Input, Label, Textarea, Select, Skeleton } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -214,6 +214,9 @@ function ListingModal({ open, onClose, editing, onSaved }: { open: boolean; onCl
     applyMode: 'in_app' as 'in_app' | 'external', apply_url: '', allowed_years: [] as number[],
     allowed_schools: '', students_only: false,
     fromOther: false, original_company_name: '', original_company_logo_url: '',
+    assignmentEnabled: false, assignmentTitle: '', assignmentPrompt: '', dueBeforeInterview: true,
+    rubric: [] as AiRubricCriterion[],
+    questions: [] as AiAssignmentQuestion[],
   })
 
   useEffect(() => {
@@ -228,14 +231,32 @@ function ListingModal({ open, onClose, editing, onSaved }: { open: boolean; onCl
         applyMode: editing.apply_url ? 'external' : 'in_app', apply_url: editing.apply_url ?? '', allowed_years: editing.allowed_years,
         allowed_schools: (editing.allowed_schools ?? []).join(', '), students_only: editing.students_only ?? false,
         fromOther: !!editing.original_company_name, original_company_name: editing.original_company_name ?? '', original_company_logo_url: editing.original_company_logo_url ?? '',
+        assignmentEnabled: !!editing.assignment, assignmentTitle: editing.assignment?.title ?? '', assignmentPrompt: editing.assignment?.prompt ?? '',
+        dueBeforeInterview: editing.assignment?.due_before_interview ?? true, rubric: editing.assignment?.rubric ?? [],
+        questions: editing.assignment?.questions ?? [],
       })
     } else {
-      setF((p) => ({ ...p, title: '', description: '', pay: '', duration: '', deadline: '', tags: '', responsibilities: [], benefits: [], qualifications: [], apply_url: '', allowed_years: [], allowed_schools: '', students_only: false, fromOther: false, original_company_name: '' }))
+      setF((p) => ({ ...p, title: '', description: '', pay: '', duration: '', deadline: '', tags: '', responsibilities: [], benefits: [], qualifications: [], apply_url: '', allowed_years: [], allowed_schools: '', students_only: false, fromOther: false, original_company_name: '', assignmentEnabled: false, assignmentTitle: '', assignmentPrompt: '', dueBeforeInterview: true, rubric: [], questions: [] }))
     }
   }, [editing, open])
 
   function toggleYear(y: number) {
     setF((p) => ({ ...p, allowed_years: p.allowed_years.includes(y) ? p.allowed_years.filter((x) => x !== y) : [...p.allowed_years, y] }))
+  }
+
+  function draftAssignment() {
+    setF((p) => ({
+      ...p,
+      assignmentEnabled: true,
+      assignmentTitle: p.assignmentTitle || `${p.title || 'Role'} practical challenge`,
+      assignmentPrompt: p.assignmentPrompt || `Show us how you would approach a realistic problem for this ${p.type || 'role'}. Share your assumptions, decisions, and what you would measure.`,
+      rubric: p.rubric.length ? p.rubric : [
+        { id: 'clarity', label: 'Problem framing and clarity', points: 30 },
+        { id: 'approach', label: 'Technical or strategic approach', points: 40 },
+        { id: 'communication', label: 'Communication and trade-offs', points: 30 },
+      ],
+      questions: p.questions.length ? p.questions : [{ id: 'question-1', type: 'essay', prompt: '', required: true }],
+    }))
   }
 
   async function submit() {
@@ -262,6 +283,12 @@ function ListingModal({ open, onClose, editing, onSaved }: { open: boolean; onCl
       posted_by_role: (isSchool ? 'school' : 'company') as 'school' | 'company',
       original_company_name: isSchool && f.fromOther ? f.original_company_name : undefined,
       original_company_logo_url: isSchool && f.fromOther ? f.original_company_logo_url : undefined,
+      assignment: f.assignmentEnabled && f.assignmentPrompt.trim() ? {
+        title: f.assignmentTitle.trim() || 'Practical challenge', prompt: f.assignmentPrompt.trim(),
+        due_before_interview: f.dueBeforeInterview,
+        rubric: f.rubric.filter((r) => r.label.trim()).map((r) => ({ ...r, label: r.label.trim(), points: Number(r.points) || 0 })),
+        questions: f.questions.filter((q) => q.prompt.trim()).map((q) => ({ ...q, prompt: q.prompt.trim(), options: q.options?.filter(Boolean) })),
+      } as AiAssignment : null,
     }
     try {
       if (editing) await jobsApi.update(editing.id, payload)
@@ -293,6 +320,32 @@ function ListingModal({ open, onClose, editing, onSaved }: { open: boolean; onCl
           <div><Label>Duration</Label><Input value={f.duration} onChange={(e) => setF({ ...f, duration: e.target.value })} placeholder="6 months" /></div>
           <div><Label>Deadline</Label><Input type="date" value={f.deadline} onChange={(e) => setF({ ...f, deadline: e.target.value })} /></div>
           <div><Label>Tags (comma-separated)</Label><Input value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} placeholder="React, TypeScript, Git" /></div>
+        </div>
+
+        <div className="rounded-xl border border-accent/30 bg-accent/5 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="flex items-center gap-2 font-semibold"><ClipboardCheck className="h-4 w-4 text-accent" /> AI candidate assignment</p>
+              <p className="mt-1 text-xs text-muted-foreground">Give applicants a consistent practical task before you decide who to interview.</p>
+            </div>
+            <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={draftAssignment}><Sparkles className="h-4 w-4 text-accent" /> Draft with AI</Button>
+          </div>
+          <label className="mt-3 flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={f.assignmentEnabled} onChange={(e) => setF({ ...f, assignmentEnabled: e.target.checked })} className="h-4 w-4 accent-primary" /> Require this before interview</label>
+          {f.assignmentEnabled && <div className="mt-3 space-y-3">
+            <Input value={f.assignmentTitle} onChange={(e) => setF({ ...f, assignmentTitle: e.target.value })} placeholder="Assignment title" />
+            <Textarea value={f.assignmentPrompt} onChange={(e) => setF({ ...f, assignmentPrompt: e.target.value })} className="min-h-[90px]" placeholder="What should the candidate solve or submit?" />
+            <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={f.dueBeforeInterview} onChange={(e) => setF({ ...f, dueBeforeInterview: e.target.checked })} className="h-4 w-4 accent-primary" /> Candidate must submit before interview review</label>
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Rubric</p>
+              {f.rubric.map((criterion, i) => <div key={criterion.id} className="flex gap-2"><Input value={criterion.label} onChange={(e) => setF({ ...f, rubric: f.rubric.map((r, idx) => idx === i ? { ...r, label: e.target.value } : r) })} placeholder="What are you scoring?" /><Input type="number" min="0" className="w-24" value={criterion.points} onChange={(e) => setF({ ...f, rubric: f.rubric.map((r, idx) => idx === i ? { ...r, points: Number(e.target.value) } : r) })} aria-label={`Points for criterion ${i + 1}`} /><Button type="button" variant="ghost" size="icon" onClick={() => setF({ ...f, rubric: f.rubric.filter((_, idx) => idx !== i) })} aria-label="Remove rubric criterion"><Trash2 className="h-4 w-4" /></Button></div>)}
+              <Button type="button" variant="outline" size="sm" onClick={() => setF({ ...f, rubric: [...f.rubric, { id: `criterion-${f.rubric.length + 1}`, label: '', points: 10 }] })}>Add criterion</Button>
+            </div>
+            <div className="space-y-3 border-t border-border pt-3">
+              <p className="text-sm font-medium">Questions</p>
+              {f.questions.map((question, i) => <div key={question.id} className="space-y-2 rounded-lg border border-border p-3"><div className="flex gap-2"><Select value={question.type} onChange={(e) => setF({ ...f, questions: f.questions.map((q, idx) => idx === i ? { ...q, type: e.target.value as AiAssignmentQuestion['type'], options: ['single_choice', 'multiple_choice'].includes(e.target.value) ? q.options ?? ['', ''] : undefined } : q) })}><option value="essay">Essay</option><option value="single_choice">Single choice</option><option value="multiple_choice">Multiple choice</option><option value="true_false">True / False</option><option value="file">File upload</option><option value="video">Video upload</option></Select><Button type="button" variant="ghost" size="icon" onClick={() => setF({ ...f, questions: f.questions.filter((_, idx) => idx !== i) })} aria-label="Remove question"><Trash2 className="h-4 w-4" /></Button></div><Input value={question.prompt} onChange={(e) => setF({ ...f, questions: f.questions.map((q, idx) => idx === i ? { ...q, prompt: e.target.value } : q) })} placeholder={`Question ${i + 1}`} /><label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={question.required} onChange={(e) => setF({ ...f, questions: f.questions.map((q, idx) => idx === i ? { ...q, required: e.target.checked } : q) })} className="h-4 w-4 accent-primary" /> Required</label>{(question.type === 'single_choice' || question.type === 'multiple_choice') && <div className="space-y-2">{(question.options ?? ['', '']).map((option, optionIndex) => <Input key={optionIndex} value={option} onChange={(e) => setF({ ...f, questions: f.questions.map((q, idx) => idx === i ? { ...q, options: (q.options ?? []).map((o, oi) => oi === optionIndex ? e.target.value : o) } : q) })} placeholder={`Choice ${optionIndex + 1}`} />)}<Button type="button" variant="outline" size="sm" onClick={() => setF({ ...f, questions: f.questions.map((q, idx) => idx === i ? { ...q, options: [...(q.options ?? []), ''] } : q) })}>Add choice</Button></div>}</div>)}
+              <Button type="button" variant="outline" size="sm" onClick={() => setF({ ...f, questions: [...f.questions, { id: `question-${f.questions.length + 1}`, type: 'essay', prompt: '', required: true }] })}>Add question</Button>
+            </div>
+          </div>}
         </div>
 
         {/* Rich posting content — add items one by one; leave empty to auto-generate */}
@@ -435,6 +488,7 @@ function PostingPreview({ open, onClose, f, user, isSchool }: { open: boolean; o
     posted_by_role: isSchool ? 'school' : 'company',
     original_company_name: isSchool && f.fromOther ? f.original_company_name : undefined,
     original_company_logo_url: isSchool && f.fromOther ? f.original_company_logo_url : undefined,
+    assignment: f.assignmentEnabled ? { title: f.assignmentTitle || 'Practical challenge', prompt: f.assignmentPrompt, due_before_interview: f.dueBeforeInterview, rubric: f.rubric, questions: f.questions } : undefined,
     created_at: new Date().toISOString(),
   }
   return (

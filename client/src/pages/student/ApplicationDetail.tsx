@@ -7,6 +7,7 @@ import {
   Trash2,
   CheckCircle2,
   Clock,
+  ClipboardCheck,
 } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
 import { applicationsApi, jobsApi, profilesApi } from '@/lib/api'
@@ -141,6 +142,7 @@ export default function ApplicationDetail() {
                 <p className="text-sm leading-relaxed text-muted-foreground">{app.cover_note}</p>
               </div>
             )}
+            {job.assignment && <div className="mt-6 border-t border-border pt-4"><h3 className="flex items-center gap-2 font-semibold"><ClipboardCheck className="h-4 w-4 text-accent" /> {job.assignment.title}</h3><p className="mt-1 text-xs text-muted-foreground">{app.assignment_status === 'submitted' ? 'Submitted with your application' : 'Pending submission'}</p><div className="mt-3 space-y-2">{(job.assignment.questions?.length ? job.assignment.questions.map((question) => ({ id: question.id, label: question.prompt })) : job.assignment.rubric.map((criterion) => ({ id: criterion.id, label: criterion.label }))).map((item) => { const answer = app.assignment_answers?.find((entry) => (entry.question_id ?? entry.criterion_id) === item.id)?.answer; const text = Array.isArray(answer) ? answer.join(', ') : answer?.startsWith('data:') ? 'File attached' : answer; return <div key={item.id}><p className="text-sm font-medium">{item.label}</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{text || 'No answer submitted.'}</p></div> })}</div></div>}
           </CardBody>
         </Card>
 
