@@ -52,7 +52,11 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
     const s = get()
     if (s.userId === userId && s.matches.length > 0) return
     const cached = await aiApi.cachedMatches()
-    if (cached.length) set({ userId, phase: 'done', matches: cached, done: cached.length, total: cached.length, label: '', missing: [], scoring: [] })
+    if (cached.length) {
+      const taskId = useAiActivity.getState().start('Restoring cached match scores')
+      useAiActivity.getState().finish(taskId)
+      set({ userId, phase: 'done', matches: cached, done: cached.length, total: cached.length, label: '', missing: [], scoring: [] })
+    }
   },
 
   scoreOne: async (job) => {
@@ -79,6 +83,8 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
       if (s.userId === userId && s.matches.length > 0) return
       const cached = await aiApi.cachedMatches()
       if (cached.length) {
+        const taskId = useAiActivity.getState().start('Restoring cached match scores')
+        useAiActivity.getState().finish(taskId)
         set({ userId, phase: 'done', matches: cached, done: cached.length, total: cached.length, label: '', missing: [], scoring: [] })
         return
       }
