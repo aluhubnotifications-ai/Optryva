@@ -83,7 +83,11 @@ export function ApplyModal({
   const [coachLoading, setCoachLoading] = useState(false)
   const [coach, setCoach] = useState<CoachResult | null>(null)
   const assignment = job?.assignment
-  const hasAssignment = !!assignment
+  const externalApply = !!job?.apply_url
+  const crossPosted = !!job?.original_company_name
+  // A candidate assignment only applies to a genuine in-app application by the company
+  // itself — not to external-link listings or roles forwarded from another company.
+  const hasAssignment = !!assignment && !externalApply && !crossPosted
   const questions = assignment?.questions ?? []
   const answerFilled = (question: AiAssignmentQuestion) => {
     const answer = assignmentAnswers[question.id]
@@ -91,8 +95,8 @@ export function ApplyModal({
   }
 
   const valid = useMemo(
-    () => form.full_name && /\S+@\S+\.\S+/.test(form.email) && form.school && form.year && docs.cv && (!assignment?.due_before_interview || questions.every((question) => !question.required || answerFilled(question))),
-    [form, docs, job, assignmentAnswers],
+    () => form.full_name && /\S+@\S+\.\S+/.test(form.email) && form.school && form.year && docs.cv && (!hasAssignment || !assignment?.due_before_interview || questions.every((question) => !question.required || answerFilled(question))),
+    [form, docs, job, hasAssignment, assignment, assignmentAnswers],
   )
 
   async function setDoc(kind: AppDocument['kind'], file: File | null) {
@@ -146,7 +150,7 @@ export function ApplyModal({
         school: form.school,
         year: form.year ? Number(form.year) : undefined,
         linkedin: form.linkedin || undefined,
-        assignment_answers: assignment ? (questions.length ? questions.map((question) => ({ question_id: question.id, answer: assignmentAnswers[question.id] ?? '' })) : assignment.rubric.map((criterion) => ({ criterion_id: criterion.id, answer: assignmentAnswers[criterion.id] ?? '' }))) : [],
+        assignment_answers: hasAssignment ? (questions.length ? questions.map((question) => ({ question_id: question.id, answer: assignmentAnswers[question.id] ?? '' })) : assignment.rubric.map((criterion) => ({ criterion_id: criterion.id, answer: assignmentAnswers[criterion.id] ?? '' }))) : [],
       })
       toast({ title: 'Application submitted! 🎉', description: `${job.title} — good luck!`, tone: 'success' })
       onSubmitted?.(app)

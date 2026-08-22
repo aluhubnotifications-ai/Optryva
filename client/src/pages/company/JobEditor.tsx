@@ -290,15 +290,20 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
   }
 
   // ---- Section stepper ----
-  const sectionOrder = ['details', 'assessment', 'submission'] as const
-  const [active, setActive] = useState<(typeof sectionOrder)[number]>('details')
+  // A candidate assignment only makes sense for a genuine in-app application posted
+  // by the company itself. It is hidden for external-URL and cross-posted listings.
+  const assignmentAllowed = f.applyMode === 'in_app' && !f.fromOther
+  type StepId = 'details' | 'assessment' | 'submission'
+  const sectionOrder: StepId[] = assignmentAllowed ? ['details', 'assessment', 'submission'] : ['details', 'submission']
+  const [active, setActive] = useState<StepId>('details')
+  useEffect(() => { if (!assignmentAllowed && active === 'assessment') setActive('details') }, [assignmentAllowed, active])
   const sectionIndex = sectionOrder.indexOf(active)
   const prevId = sectionIndex > 0 ? sectionOrder[sectionIndex - 1] : null
   const nextId = sectionIndex < sectionOrder.length - 1 ? sectionOrder[sectionIndex + 1] : null
 
-  const sections: { id: (typeof sectionOrder)[number]; label: string; desc: string; icon: LucideIcon; done: boolean; optional?: boolean }[] = [
+  const sections: { id: StepId; label: string; desc: string; icon: LucideIcon; done: boolean; optional?: boolean }[] = [
     { id: 'details', label: 'Job details', desc: 'Role, category, location, pay', icon: ClipboardCheck, done: !!(f.title.trim() && f.description.trim()) },
-    { id: 'assessment', label: 'Assessment', desc: 'Optional practical task', icon: Sparkles, done: !!assignment?.prompt.trim(), optional: true },
+    ...(assignmentAllowed ? [{ id: 'assessment' as StepId, label: 'Assessment', desc: 'Optional practical task', icon: Sparkles, done: !!assignment?.prompt.trim(), optional: true }] : []),
     { id: 'submission', label: 'Submission', desc: 'Review & preview', icon: Eye, done: false },
   ]
 
@@ -555,7 +560,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
             <ReviewRow label="Restrict years" value={f.allowed_years.length ? f.allowed_years.map((y) => `Year ${y}`).join(', ') : 'All'} />
             <ReviewRow label="Schools" value={f.allowed_schools || 'All'} />
             {isSchool && <ReviewRow label="Audience" value={f.students_only ? 'Only my students' : (f.fromOther ? `Forwarded: ${f.original_company_name || '—'}` : 'School posting')} />}
-            <ReviewRow label="Assignment" value={assignment?.prompt.trim() ? `${assignment.questions.length} question(s) · ${assignment.rubric.length} rubric` : 'None'} />
+            {assignmentAllowed && <ReviewRow label="Assignment" value={assignment?.prompt.trim() ? `${assignment.questions.length} question(s) · ${assignment.rubric.length} rubric` : 'None'} />}
           </div>
         </section>
       )}
@@ -646,6 +651,7 @@ function ListField({
 
 /** Live preview of the posting exactly as students will see it (rendered in a modal). */
 function PostingPreview({ open, onClose, f, assignment, user, isSchool }: { open: boolean; onClose: () => void; f: any; assignment: AssignmentDraft | null; user: any; isSchool: boolean }) {
+  const assignmentAllowed = f.applyMode === 'in_app' && !f.fromOther
   const job: JobListing = {
     id: 'preview', company_id: user.id,
     title: f.title || 'Untitled role', description: f.description || '',
@@ -665,7 +671,7 @@ function PostingPreview({ open, onClose, f, assignment, user, isSchool }: { open
     posted_by_role: isSchool ? 'school' : 'company',
     original_company_name: isSchool && f.fromOther ? f.original_company_name : undefined,
     original_company_logo_url: isSchool && f.fromOther ? f.original_company_logo_url : undefined,
-    assignment: assignment && assignment.prompt.trim() ? { title: assignment.title.trim() || 'Practical challenge', prompt: assignment.prompt.trim(), due_before_interview: assignment.dueBeforeInterview, rubric: assignment.rubric, questions: assignment.questions } as AiAssignment : undefined,
+    assignment: assignmentAllowed && assignment && assignment.prompt.trim() ? { title: assignment.title.trim() || 'Practical challenge', prompt: assignment.prompt.trim(), due_before_interview: assignment.dueBeforeInterview, rubric: assignment.rubric, questions: assignment.questions } as AiAssignment : undefined,
     created_at: new Date().toISOString(),
   }
   return (

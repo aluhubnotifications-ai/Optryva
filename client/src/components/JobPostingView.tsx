@@ -43,7 +43,7 @@ export function JobPostingView({ job, brand, logo }: { job: JobListing; brand?: 
         <Section title="Benefits"><List items={content.benefits} /></Section>
       )}
 
-      {job.assignment && <AssignmentView assignment={job.assignment} />}
+      {job.assignment && !job.apply_url && !job.original_company_name && <AssignmentView assignment={job.assignment} />}
     </div>
   )
 }
