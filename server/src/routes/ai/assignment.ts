@@ -233,6 +233,8 @@ const ASSIGNMENT_SCHEMA = {
           prompt: { type: 'string' },
           required: { type: 'boolean' },
           options: { type: 'array', items: { type: 'string' }, description: 'Required only for single/multiple choice.' },
+          minWords: { type: 'integer', description: 'Optional minimum word count for essay answers.' },
+          maxWords: { type: 'integer', description: 'Optional maximum word count for essay answers.' },
         },
         required: ['type', 'prompt', 'required'],
         additionalProperties: false,
@@ -259,7 +261,7 @@ const ASSIGNMENT_SCHEMA = {
 interface GeneratedAssignment {
   title: string
   prompt: string
-  questions: { type: string; prompt: string; required?: boolean; options?: string[] }[]
+  questions: { type: string; prompt: string; required?: boolean; options?: string[]; minWords?: number; maxWords?: number }[]
   rubric: { label: string; points: number }[]
 }
 
@@ -292,6 +294,8 @@ function normalize(r: GeneratedAssignment) {
             return opts.length >= 2 ? opts : ['', '']
           })()
         : undefined,
+      minWords: Number(q.minWords) > 0 ? Math.floor(Number(q.minWords)) : null,
+      maxWords: Number(q.maxWords) > 0 ? Math.floor(Number(q.maxWords)) : null,
     }
   })
   const rubric = (r.rubric ?? [])

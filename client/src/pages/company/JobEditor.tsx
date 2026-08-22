@@ -250,7 +250,13 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
       prompt: a.prompt.trim(),
       due_before_interview: a.dueBeforeInterview,
       rubric: a.rubric.filter((r) => r.label.trim()).map((r) => ({ ...r, label: r.label.trim(), points: Number(r.points) || 0 })),
-      questions: a.questions.filter((q) => q.prompt.trim()).map((q) => ({ ...q, prompt: q.prompt.trim(), options: q.options?.filter(Boolean) })),
+      questions: a.questions.filter((q) => q.prompt.trim()).map((q) => ({
+        ...q,
+        prompt: q.prompt.trim(),
+        options: q.options?.filter(Boolean),
+        minWords: q.minWords && q.minWords > 0 ? q.minWords : null,
+        maxWords: q.maxWords && q.maxWords > 0 ? q.maxWords : null,
+      })),
     }
   }
 
@@ -557,6 +563,12 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
                     </div>
                     <Input value={question.prompt} onChange={(e) => setAssignment({ ...assignment, questions: assignment.questions.map((q, idx) => idx === i ? { ...q, prompt: e.target.value } : q) })} placeholder={`Question ${i + 1}`} />
                     <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={question.required} onChange={(e) => setAssignment({ ...assignment, questions: assignment.questions.map((q, idx) => idx === i ? { ...q, required: e.target.checked } : q) })} className="h-4 w-4 accent-primary" /> Required</label>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-xs text-muted-foreground">Min words</span>
+                      <Input type="number" min="0" className="w-24" value={question.minWords ?? ''} placeholder="—" onChange={(e) => setAssignment({ ...assignment, questions: assignment.questions.map((q, idx) => idx === i ? { ...q, minWords: e.target.value ? Number(e.target.value) : null } : q) })} aria-label={`Min words for question ${i + 1}`} />
+                      <span className="text-xs text-muted-foreground">Max words</span>
+                      <Input type="number" min="0" className="w-24" value={question.maxWords ?? ''} placeholder="—" onChange={(e) => setAssignment({ ...assignment, questions: assignment.questions.map((q, idx) => idx === i ? { ...q, maxWords: e.target.value ? Number(e.target.value) : null } : q) })} aria-label={`Max words for question ${i + 1}`} />
+                    </div>
                     {(question.type === 'single_choice' || question.type === 'multiple_choice') && (
                       <div className="space-y-2">
                         {(question.options ?? ['', '']).map((option, optionIndex) => (

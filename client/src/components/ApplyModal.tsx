@@ -91,6 +91,14 @@ export function ApplyModal({
   const questions = assignment?.questions ?? []
   const answerFilled = (question: AiAssignmentQuestion) => {
     const answer = assignmentAnswers[question.id]
+    if (question.type === 'essay') {
+      const text = typeof answer === 'string' ? answer : ''
+      const wc = countWords(text)
+      if (!text.trim()) return false
+      if (question.minWords && wc < question.minWords) return false
+      if (question.maxWords && wc > question.maxWords) return false
+      return true
+    }
     return Array.isArray(answer) ? answer.length > 0 : !!answer?.trim()
   }
 
@@ -386,12 +394,58 @@ function Stage({ n, title, children, verdict, highlight }: { n: number; title: s
   )
 }
 
+function countWords(s: string): number {
+  return (s.trim().match(/\S+/g) ?? []).length
+}
+
 function QuestionField({ question, value, onChange, onFile }: { question: AiAssignmentQuestion; value?: string | string[]; onChange: (value: string | string[]) => void; onFile: (file: File) => void }) {
   const selected = Array.isArray(value) ? value : []
   const choices = question.type === 'true_false' ? ['True', 'False'] : question.options ?? []
+  const limitHint =
+    question.minWords || question.maxWords
+      ? ` (${question.minWords ? `${question.minWords}–` : ''}${question.maxWords ?? ''} words${question.minWords && !question.maxWords ? ' min' : ''})`
+      : ''
   return <div>
-    <Label>{question.prompt || 'Assignment question'} {question.required && <span className="text-danger">*</span>}</Label>
-    {question.type === 'essay' ? <Textarea value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)} placeholder="Write your answer…" className="min-h-[100px]" /> : question.type === 'file' || question.type === 'video' ? <Input type="file" accept={question.type === 'video' ? 'video/*' : '.pdf,.doc,.docx,image/*'} onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} /> : <div className="space-y-2">{choices.map((choice) => <label key={choice} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type={question.type === 'multiple_choice' ? 'checkbox' : 'radio'} name={question.id} checked={question.type === 'multiple_choice' ? selected.includes(choice) : value === choice} onChange={() => question.type === 'multiple_choice' ? onChange(selected.includes(choice) ? selected.filter((item) => item !== choice) : [...selected, choice]) : onChange(choice)} className="h-4 w-4 accent-primary" />{choice}</label>)}</div>}
+    <Label>{question.prompt || 'Assignment question'} {question.required && <span className="text-danger">*</span>}{limitHint && <span className="ml-1 font-normal text-muted-foreground">{limitHint}</span>}</Label>
+    {question.type === 'essay' ? (
+      <div>
+        <Textarea
+          value={typeof value === 'string' ? value : ''}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Write your answer…"
+          className="min-h-[100px]"
+        />
+        {(question.minWords || question.maxWords) && (() => {
+          const wc = countWords(typeof value === 'string' ? value : '')
+          const over = question.maxWords ? wc > question.maxWords : false
+          const under = question.minWords ? wc < question.minWords : false
+          return (
+            <p className={`mt-1 text-xs ${over || under ? 'text-danger' : 'text-muted-foreground'}`}>
+              {wc} words{question.maxWords ? ` / ${question.maxWords} max` : ''}
+              {question.minWords ? ` · ${question.minWords} min` : ''}
+              {over ? ' — too long' : under ? ' — too short' : ''}
+            </p>
+          )
+        })()}
+      </div>
+    ) : question.type === 'file' || question.type === 'video' ? (
+      <Input type="file" accept={question.type === 'video' ? 'video/*' : '.pdf,.doc,.docx,image/*'} onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
+    ) : (
+      <div className="space-y-2">
+        {choices.map((choice) => (
+          <label key={choice} className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm hover:border-accent">
+            <input
+              type={question.type === 'multiple_choice' ? 'checkbox' : 'radio'}
+              name={question.id}
+              checked={question.type === 'multiple_choice' ? selected.includes(choice) : value === choice}
+              onChange={() => (question.type === 'multiple_choice' ? onChange(selected.includes(choice) ? selected.filter((item) => item !== choice) : [...selected, choice]) : onChange(choice))}
+              className="h-4 w-4 accent-primary"
+            />
+            {choice}
+          </label>
+        ))}
+      </div>
+    )}
     {(question.type === 'file' || question.type === 'video') && typeof value === 'string' && value && <p className="mt-1 text-xs text-success">File attached</p>}
   </div>
 }

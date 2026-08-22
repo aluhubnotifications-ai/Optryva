@@ -130,6 +130,8 @@ export interface AiAssignmentQuestion {
   prompt: string
   required: boolean
   options?: string[]
+  minWords?: number | null
+  maxWords?: number | null
 }
 
 export type ApplicationStatus = 'pending' | 'reviewed' | 'shortlisted' | 'hired' | 'rejected'
