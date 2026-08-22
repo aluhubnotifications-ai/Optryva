@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Briefcase, Plus, Users, MapPin, Pencil, Trash2, Building2, Eye, CheckCircle2, Lock, ImagePlus, Sparkles, ClipboardCheck } from 'lucide-react'
-import { imageFileToDataUrl } from '@/lib/utils'
+import { imageFileToDataUrl, fileToDataUrl } from '@/lib/utils'
 import { useCurrentUser } from '@/lib/store'
-import { applicationsApi, jobsApi } from '@/lib/api'
+import { applicationsApi, jobsApi, aiApi } from '@/lib/api'
 import { COUNTRIES } from '@/lib/geo'
 import { JobPostingView } from '@/components/JobPostingView'
 import type { AiAssignment, AiAssignmentQuestion, AiRubricCriterion, JobListing, ListingType } from '@/types'
@@ -259,6 +259,75 @@ function ListingModal({ open, onClose, editing, onSaved }: { open: boolean; onCl
     }))
   }
 
+  // ---- AI assignment studio: upload a brief, ask AI to design the questions ----
+  const [studioOpen, setStudioOpen] = useState(false)
+  const [studioFile, setStudioFile] = useState<{ name: string; dataUrl: string; kind: string } | null>(null)
+  const [studioInstruction, setStudioInstruction] = useState('')
+  const [generating, setGenerating] = useState(false)
+  const [genError, setGenError] = useState<string | null>(null)
+  const [generated, setGenerated] = useState<{ title: string; prompt: string; questions: any[]; rubric: any[] } | null>(null)
+  const studioFileRef = useRef<HTMLInputElement>(null)
+
+  function studioKindFromFile(file: File): string {
+    if (file.type === 'application/pdf') return 'pdf'
+    if (file.type.includes('wordprocessingml') || file.type === 'application/msword') return 'doc'
+    if (file.type.startsWith('image/')) return 'image'
+    if (file.type.startsWith('text/')) return 'text'
+    return 'doc'
+  }
+
+  async function onStudioFile(file?: File) {
+    if (!file) return
+    try {
+      const dataUrl = await fileToDataUrl(file, 12 * 1024 * 1024)
+      setStudioFile({ name: file.name, dataUrl, kind: studioKindFromFile(file) })
+      setGenError(null)
+    } catch (e) {
+      toast({ title: 'Could not read that file', description: e instanceof Error ? e.message : undefined, tone: 'error' })
+    } finally {
+      if (studioFileRef.current) studioFileRef.current.value = ''
+    }
+  }
+
+  async function runGeneration(refine: boolean) {
+    setGenerating(true)
+    setGenError(null)
+    try {
+      const payload: any = {
+        job: { title: f.title, description: f.description, type: f.type, tags: f.tags.split(',').map((t: string) => t.trim()).filter(Boolean) },
+        instruction: studioInstruction,
+        sources: studioFile ? [studioFile] : [],
+      }
+      if (refine && generated) payload.existing = { questions: generated.questions, rubric: generated.rubric }
+      else if (f.assignmentEnabled) payload.existing = { questions: f.questions, rubric: f.rubric }
+      const res = await aiApi.generateAssignment(payload)
+      setGenerated({
+        title: res.title,
+        prompt: res.prompt,
+        questions: (res.questions ?? []).map((q: any, i: number) => ({ ...q, id: `q-${Date.now()}-${i}` })),
+        rubric: (res.rubric ?? []).map((c: any, i: number) => ({ ...c, id: `rc-${Date.now()}-${i}` })),
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not generate.'
+      setGenError(msg === 'unauthorized' ? 'Your session expired — please sign in again.' : `AI generation failed: ${msg}`)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  function useGenerated() {
+    if (!generated) return
+    setF((p) => ({
+      ...p,
+      assignmentEnabled: true,
+      assignmentTitle: generated.title || p.assignmentTitle,
+      assignmentPrompt: generated.prompt || p.assignmentPrompt,
+      questions: generated.questions,
+      rubric: generated.rubric,
+    }))
+    toast({ title: 'Assignment updated with AI suggestions', tone: 'success' })
+  }
+
   async function submit() {
     if (!f.title.trim() || !f.description.trim()) { setError('Title and description are required.'); return }
     if (f.applyMode === 'external' && !f.apply_url) { setError('External apply needs a URL.'); return }
@@ -328,8 +397,71 @@ function ListingModal({ open, onClose, editing, onSaved }: { open: boolean; onCl
               <p className="flex items-center gap-2 font-semibold"><ClipboardCheck className="h-4 w-4 text-accent" /> AI candidate assignment</p>
               <p className="mt-1 text-xs text-muted-foreground">Give applicants a consistent practical task before you decide who to interview.</p>
             </div>
-            <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={draftAssignment}><Sparkles className="h-4 w-4 text-accent" /> Draft with AI</Button>
+            <div className="flex gap-2">
+              <Button type="button" size="sm" variant="ghost" onClick={draftAssignment}><Sparkles className="h-4 w-4 text-accent" /> Draft template</Button>
+              <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setStudioOpen((v) => !v)}><Sparkles className="h-4 w-4 text-accent" /> {studioOpen ? 'Hide AI studio' : 'Generate with AI'}</Button>
+            </div>
           </div>
+
+          {studioOpen && (
+            <div className="mt-3 space-y-3 rounded-xl border border-accent/30 bg-background p-3">
+              <p className="text-xs text-muted-foreground">Upload a brief (PDF, Word, image, or text) and/or describe what you want. AI designs the questions and rubric; video submissions are reviewed by a human.</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <input ref={studioFileRef} type="file" accept=".pdf,.doc,.docx,.txt,image/*,text/*" className="hidden" onChange={(e) => onStudioFile(e.target.files?.[0])} />
+                <Button type="button" size="sm" variant="outline" onClick={() => studioFileRef.current?.click()}>
+                  <ImagePlus className="h-4 w-4" /> {studioFile ? `Change (${studioFile.name})` : 'Upload document'}
+                </Button>
+                {studioFile && (
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setStudioFile(null)}>Remove</Button>
+                )}
+              </div>
+              <Textarea value={studioInstruction} onChange={(e) => setStudioInstruction(e.target.value)} className="min-h-[70px]" placeholder="Optional instruction — e.g. 'Make it a take-home coding task', 'Focus on system design', 'Harder, for senior candidates'." />
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" onClick={() => runGeneration(false)} loading={generating}>
+                  <Sparkles className="h-4 w-4" /> {generated ? 'Regenerate' : 'Generate questions'}
+                </Button>
+                {generated && (
+                  <Button type="button" size="sm" variant="outline" onClick={() => runGeneration(true)} loading={generating}>
+                    Refine with instruction
+                  </Button>
+                )}
+              </div>
+
+              {genError && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{genError}</p>}
+
+              {generated && (
+                <div className="space-y-3 rounded-lg border border-border p-3">
+                  <div>
+                    <p className="text-sm font-semibold">{generated.title}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{generated.prompt}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Questions</p>
+                    <ul className="mt-1 space-y-1 text-sm">
+                      {generated.questions.map((q: any, i: number) => (
+                        <li key={q.id} className="flex items-start gap-2">
+                          <span className="mt-0.5 rounded bg-accent/10 px-1.5 text-[10px] font-medium uppercase text-accent">{q.type.replace('_', ' ')}</span>
+                          <span>{q.prompt}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Rubric</p>
+                    <div className="mt-1 flex flex-wrap gap-2 text-xs">
+                      {generated.rubric.map((c: any) => (
+                        <span key={c.id} className="rounded-lg border border-border px-2 py-1">{c.label} · {c.points}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setGenerated(null)}>Discard</Button>
+                    <Button type="button" size="sm" onClick={useGenerated}>Use these</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <label className="mt-3 flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={f.assignmentEnabled} onChange={(e) => setF({ ...f, assignmentEnabled: e.target.checked })} className="h-4 w-4 accent-primary" /> Require this before interview</label>
           {f.assignmentEnabled && <div className="mt-3 space-y-3">
             <Input value={f.assignmentTitle} onChange={(e) => setF({ ...f, assignmentTitle: e.target.value })} placeholder="Assignment title" />

@@ -133,6 +133,57 @@ export async function claudeJson<T>(opts: {
 }
 
 /**
+ * Like `claudeJson` but the user turn is a full content-block array, so callers
+ * can pass multimodal input (images, PDFs, extracted text) for document-aware
+ * generation — e.g. an employer uploads a brief and Claude designs questions
+ * grounded in it. Returns the parsed object, or null on any failure.
+ */
+export async function claudeJsonBlocks<T>(opts: {
+  model?: string
+  system: string | SystemBlock[]
+  content: any[]
+  schema: unknown
+  maxTokens?: number
+  thinking?: boolean
+  temperature?: number
+}): Promise<T | null> {
+  if (!client) return null
+  try {
+    const params: any = {
+      model: opts.model ?? MODELS.score,
+      max_tokens: opts.maxTokens ?? 1200,
+      system: opts.system,
+      output_config: { format: { type: 'json_schema', schema: opts.schema } },
+      messages: [{ role: 'user', content: opts.content }],
+    }
+    if (opts.temperature != null) params.temperature = opts.temperature
+    if (opts.thinking) params.thinking = { type: 'adaptive' }
+    const res: any = await client!.messages.create(params)
+    recordUsage(params.model, res.usage)
+    if (res.stop_reason === 'refusal') return null
+    const text = (res.content ?? [])
+      .filter((b: any) => b.type === 'text')
+      .map((b: any) => b.text)
+      .join('')
+    if (!text) return null
+    try {
+      return JSON.parse(text) as T
+    } catch {
+      return extractJson<T>(text)
+    }
+  } catch {
+    return null
+  }
+}
+
+/** Parse a `data:<mime>;base64,<data>` URL into its parts (or null). */
+export function parseDataUrl(dataUrl: string): { mediaType: string; data: string } | null {
+  const m = /^data:([^;]+);base64,(.*)$/s.exec(dataUrl)
+  if (!m) return null
+  return { mediaType: m[1], data: m[2] }
+}
+
+/**
  * Text completion with the server-side web_search tool, so company/role research
  * is grounded in current information rather than stale model memory. Falls back
  * to plain text if the tool variant isn't available.
@@ -228,7 +279,7 @@ export function streamClaude(opts: {
 
 /** Extract readable text from a .docx (a ZIP of XML) — word/document.xml holds
  *  the body; text lives in <w:t> runs, paragraphs in <w:p>. No API call. */
-function extractDocxText(data: string): string | null {
+export function extractDocxText(data: string): string | null {
   try {
     const files = unzipSync(new Uint8Array(Buffer.from(data, 'base64')))
     const doc = files['word/document.xml']

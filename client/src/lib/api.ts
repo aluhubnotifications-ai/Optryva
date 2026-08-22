@@ -3,13 +3,15 @@ import { dmThreadId, seededScore, sleep, uid } from '@/lib/utils'
 import { trackAi } from '@/lib/aiActivity'
 import { cached, invalidateCache } from '@/lib/dataCache'
 import { startLoad, endLoad } from '@/lib/loadingBar'
-import type {
-  AiMatch,
-  AppNotification,
-  Application,
-  ApplicationStatus,
-  HousingRequest,
-  JobListing,
+ import type {
+   AiAssignmentQuestion,
+   AiMatch,
+   AiRubricCriterion,
+   AppNotification,
+   Application,
+   ApplicationStatus,
+   HousingRequest,
+   JobListing,
   Message,
   Payment,
   Plan,
@@ -1154,6 +1156,20 @@ export const aiApi = {
     } catch {
       return [AI_ERR]
     }
+  },
+
+  /**
+   * AI assignment studio — generate a practical candidate assignment (title,
+   * prompt, questions + rubric) from a role brief and/or uploaded document(s).
+   * Pass `existing` + `instruction` to refine the current assignment in place.
+   */
+  async generateAssignment(payload: {
+    job?: { title?: string; description?: string; type?: string; tags?: string[] }
+    sources?: { kind: string; name?: string; dataUrl: string }[]
+    instruction?: string
+    existing?: { questions?: AiAssignmentQuestion[]; rubric?: AiRubricCriterion[] }
+  }): Promise<{ title: string; prompt: string; questions: AiAssignmentQuestion[]; rubric: AiRubricCriterion[] }> {
+    return (await trackAi('Designing your assignment', () => aiPost('/ai/assignment/generate', payload))) as any
   },
 }
 

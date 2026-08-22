@@ -8,6 +8,7 @@ import { registerResearch } from './ai/research'
 import { registerChat } from './ai/chat'
 import { registerCompass } from './ai/compass'
 import { registerSource } from './ai/source'
+import { registerAssignment } from './ai/assignment'
 
 export const ai = Router()
 ai.use(requireAuth)
@@ -25,3 +26,4 @@ registerResearch(ai)
 registerChat(ai)
 registerCompass(ai)
 registerSource(ai)
+registerAssignment(ai)
