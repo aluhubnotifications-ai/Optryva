@@ -70,7 +70,7 @@ export const authApi = {
    *  (e.g. so is_admin / plan changes show up without re-logging-in). */
   async me(): Promise<Profile | null> {
     try {
-      return (await apiFetch('/auth/me')) as Profile
+      return await cached('auth:me', () => apiFetch('/auth/me') as Promise<Profile>, 60_000)
     } catch {
       return null
     }
@@ -266,18 +266,18 @@ export const jobsApi = {
     }
   },
   async byCompany(companyId: string): Promise<JobListing[]> {
-    return (await apiFetch(`/jobs/company/${companyId}`)) as JobListing[]
+    return cached('jobs:company', () => apiFetch(`/jobs/company/${companyId}`) as Promise<JobListing[]>, 60_000)
   },
   async create(job: Omit<JobListing, 'id' | 'created_at'>): Promise<JobListing> {
-    invalidateCache('jobs:list')
+    invalidateCache()
     return (await apiFetch('/jobs', { method: 'POST', body: JSON.stringify(job) })) as JobListing
   },
   async update(id: string, patch: Partial<JobListing>): Promise<JobListing | null> {
-    invalidateCache('jobs:list')
+    invalidateCache()
     return (await apiFetch(`/jobs/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })) as JobListing
   },
   async remove(id: string): Promise<boolean> {
-    invalidateCache('jobs:list')
+    invalidateCache()
     await apiFetch(`/jobs/${id}`, { method: 'DELETE' })
     return true
   },
@@ -292,7 +292,7 @@ export const jobsApi = {
   // Unique opens per listing for the current company (job_id -> count).
   async openCounts(): Promise<Record<string, number>> {
     try {
-      return (await apiFetch('/jobs/opens/mine')) as Record<string, number>
+      return await cached('jobs:opens', () => apiFetch('/jobs/opens/mine') as Promise<Record<string, number>>, 60_000)
     } catch {
       return {}
     }
@@ -307,10 +307,10 @@ export const applicationsApi = {
     return cached(`apps:student:${_studentId}`, () => apiFetch('/applications/mine') as Promise<Application[]>)
   },
   async byJob(jobId: string): Promise<Application[]> {
-    return (await apiFetch(`/applications/job/${jobId}`)) as Application[]
+    return cached(`apps:job:${jobId}`, () => apiFetch(`/applications/job/${jobId}`) as Promise<Application[]>, 60_000)
   },
   async byCompany(_companyId: string): Promise<Application[]> {
-    return (await apiFetch('/applications/company')) as Application[]
+    return cached('apps:company', () => apiFetch('/applications/company') as Promise<Application[]>, 60_000)
   },
   async get(id: string): Promise<Application | null> {
     try {

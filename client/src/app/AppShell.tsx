@@ -79,7 +79,7 @@ function useNavBadges(userId: string | null, isCompany: boolean): NavBadges {
       }
     }
     const start = window.setTimeout(load, 0)
-    const t = setInterval(load, 30_000)
+    const t = setInterval(load, 60_000)
     return () => {
       cancelled = true
       clearTimeout(start)

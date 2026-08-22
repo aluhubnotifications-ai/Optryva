@@ -10,6 +10,29 @@ import { scoreAssignmentWithAI } from '@/routes/ai/assignment'
 export const applications = Router()
 applications.use(requireAuth)
 
+/** Attach the applicant's profile fields (avatar, skills, bio) onto application
+ *  rows so reviewers see the real candidate photo/skills without one extra fetch
+ *  per applicant. Does a single profiles query for all distinct student_ids. */
+async function attachStudentProfiles(rows: any[]) {
+  const ids = Array.from(new Set((rows ?? []).map((r) => r.student_id).filter(Boolean)))
+  if (!ids.length) return
+  let profiles: any[] = []
+  try {
+    profiles = must(await sb.from('profiles').select('id, avatar_url, skills, bio').in('id', ids)) as any[]
+  } catch {
+    return // profile lookup is best-effort — never block the application list
+  }
+  const map = new Map(profiles.map((p) => [p.id, p]))
+  for (const r of rows) {
+    const p = map.get(r.student_id)
+    if (p) {
+      r.student_avatar_url = p.avatar_url ?? null
+      r.student_skills = p.skills ?? null
+      r.student_bio = p.bio ?? null
+    }
+  }
+}
+
 applications.get('/mine', async (req, res) => {
   const rows = must(await sb.from('applications').select('*').eq('student_id', req.user!.id).order('created_at', { ascending: false })) as any[]
   res.json(rows.map(rowToApplication))
@@ -20,6 +43,7 @@ applications.get('/job/:jobId', async (req, res) => {
   if (!job) return res.status(404).json({ error: 'job_not_found' })
   if (job.company_id !== req.user!.id && !isAdminEmail(req.user!.email)) return res.status(403).json({ error: 'forbidden' })
   const rows = must(await sb.from('applications').select('*').eq('job_id', req.params.jobId).order('created_at', { ascending: false })) as any[]
+  await attachStudentProfiles(rows)
   res.json(rows.map(rowToApplication))
 })
 
@@ -31,6 +55,7 @@ applications.get('/company', async (req, res) => {
   const ids = jobs.map((j2) => j2.id)
   if (!ids.length) return res.json([])
   const rows = must(await sb.from('applications').select('*').in('job_id', ids).order('created_at', { ascending: false })) as any[]
+  await attachStudentProfiles(rows)
   res.json(rows.map(rowToApplication))
 })
 
@@ -40,6 +65,7 @@ applications.get('/:id', async (req, res) => {
   const job = must(await sb.from('job_listings').select('company_id').eq('id', r.job_id).maybeSingle()) as any
   const allowed = r.student_id === req.user!.id || job?.company_id === req.user!.id || isAdminEmail(req.user!.email)
   if (!allowed) return res.status(403).json({ error: 'forbidden' })
+  await attachStudentProfiles([r])
   res.json(rowToApplication(r))
 })
 
@@ -58,12 +84,20 @@ applications.post('/', async (req, res) => {
 
   const id = uid('a')
   const ts = now()
-  // Carry the AI match score we showed the student at apply time onto the
-  // application so the employer can see the same signal during review.
+  // Carry the AI match score + rationale we showed the student at apply time onto
+  // the application so the employer can see the same evidence during review.
   let matchScore: number | null = null
+  let matchRationale: string | null = null
   try {
     const c = (await sb.from('ai_match_cache').select('payload').eq('student_id', req.user!.id).eq('job_id', b.job_id).maybeSingle()).data as any
-    if (c?.payload) matchScore = JSON.parse(c.payload).score ?? null
+    if (c?.payload) {
+      const p = JSON.parse(c.payload)
+      matchScore = p.score ?? null
+      const skills: string[] = Array.isArray(p.matched_skills) ? p.matched_skills : []
+      const reasons: string[] = Array.isArray(p.reasons) ? p.reasons : []
+      const parts = [...(skills.length ? [`Strong in ${skills.slice(0, 4).join(', ')}`] : []), ...reasons].filter(Boolean)
+      matchRationale = parts.length ? parts.join(' ') : null
+    }
   } catch { /* no cached score — leave null */ }
   must(await sb.from('applications').insert({
     id, student_id: req.user!.id, job_id: b.job_id, status: 'pending',
@@ -73,6 +107,7 @@ applications.post('/', async (req, res) => {
     assignment_answers: j.stringify(b.assignment_answers ?? []),
     assignment_status: job.assignment ? (b.assignment_answers?.length ? 'submitted' : 'pending') : 'not_required',
     match_score: matchScore,
+    match_rationale: matchRationale,
     timeline: j.stringify([{ status: 'applied', at: ts }]), created_at: ts,
   }))
   await notify(job.company_id, 'new_application', 'New application received', `${b.full_name} applied to ${job.title}`, id)

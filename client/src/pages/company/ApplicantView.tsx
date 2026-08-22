@@ -20,9 +20,9 @@ import {
   Check,
   Users,
 } from 'lucide-react'
-import { applicationsApi, jobsApi, profilesApi } from '@/lib/api'
+import { applicationsApi, jobsApi } from '@/lib/api'
 import { useCurrentUser } from '@/lib/store'
-import type { Application, ApplicationStatus, JobListing, Profile } from '@/types'
+import type { Application, ApplicationStatus, JobListing } from '@/types'
 import { Card, CardBody, Badge, Avatar, Label, Textarea, Input } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { AppProgressSteps } from '@/components/AppProgressSteps'
@@ -79,7 +79,6 @@ export default function ApplicantView() {
   const user = useCurrentUser()!
   const [app, setApp] = useState<Application | null>(null)
   const [job, setJob] = useState<JobListing | null>(null)
-  const [student, setStudent] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [scoreBusy, setScoreBusy] = useState(false)
   const [overrideScore, setOverrideScore] = useState<string>('')
@@ -100,8 +99,8 @@ export default function ApplicantView() {
     if (!id) return
     const a = await applicationsApi.get(id)
     if (!a) { setLoading(false); return }
-    const [j, s] = await Promise.all([jobsApi.get(a.job_id), profilesApi.get(a.student_id)])
-    setApp(a); setJob(j); setStudent(s); setDecisionNote(a.decision_reason ?? ''); setLoading(false)
+    const j = await jobsApi.get(a.job_id)
+    setApp(a); setJob(j); setDecisionNote(a.decision_reason ?? ''); setLoading(false)
     const passed = (location.state as { siblingIds?: string[] } | null)?.siblingIds
     if (passed?.length) setSiblingIds(passed)
     else applicationsApi.byJob(a.job_id).then((list) => { if (list?.length) setSiblingIds(list.map((x) => x.id)) }).catch(() => {})
@@ -222,13 +221,13 @@ export default function ApplicantView() {
         <CardBody>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex gap-3">
-              <Avatar name={app.full_name} src={student?.avatar_url} size={56} />
+              <Avatar name={app.full_name} src={app.student_avatar_url} size={56} />
               <div>
                 <h1 className="text-xl font-bold tracking-tight">{app.full_name}</h1>
                 <p className="text-sm text-muted-foreground">
                   {app.school}{app.year ? ` · Year ${app.year}` : ''} · Submitted {formatDate(app.created_at)}
                 </p>
-                {student?.bio && <p className="mt-1 max-w-xl text-sm text-muted-foreground">{student.bio}</p>}
+                {app.student_bio && <p className="mt-1 max-w-xl text-sm text-muted-foreground">{app.student_bio}</p>}
               </div>
             </div>
             <div className="flex flex-col items-end gap-2">
@@ -273,10 +272,10 @@ export default function ApplicantView() {
               {app.phone && <Info icon={Phone} value={app.phone} />}
               <Info icon={GraduationCap} value={`${app.school ?? '—'}${app.year ? ` · Year ${app.year}` : ''}`} />
               {app.linkedin && <Info icon={Link2} value={app.linkedin} link />}
-              {student?.skills && student.skills.length > 0 && (
+              {app.student_skills && app.student_skills.length > 0 && (
                 <div>
                   <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Skills</p>
-                  <div className="flex flex-wrap gap-1">{student.skills.map((sk) => <Badge key={sk} tone="primary" className="text-[11px]">{sk}</Badge>)}</div>
+                  <div className="flex flex-wrap gap-1">{app.student_skills.map((sk) => <Badge key={sk} tone="primary" className="text-[11px]">{sk}</Badge>)}</div>
                 </div>
               )}
             </div>
@@ -344,6 +343,13 @@ export default function ApplicantView() {
             <ScoreRing score={app.match_score} label="AI match fit" hint="From the student's matching" />
             {hasAssignment && <ScoreRing score={app.assignment_score} label="AI assessment" hint="Run the review below" />}
           </div>
+
+          {app.match_rationale && (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <p className="text-muted-foreground"><span className="font-medium text-foreground">Why this fit:</span> {app.match_rationale}</p>
+            </div>
+          )}
 
           {hasAssignment && (
             <div className="mt-4 flex flex-wrap items-center gap-2">

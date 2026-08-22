@@ -156,6 +156,10 @@ export interface Application {
   assignment_answers?: { criterion_id?: string; question_id?: string; answer: string | string[]; file_name?: string }[]
   assignment_status?: 'not_required' | 'pending' | 'submitted'
   match_score?: number
+  match_rationale?: string
+  student_avatar_url?: string
+  student_skills?: string[]
+  student_bio?: string
   assignment_score?: number
   assignment_ai_feedback?: { overall: string; perQuestion: { id: string; feedback: string }[] }
   ai_recommendation?: 'advance' | 'consider' | 'hold'

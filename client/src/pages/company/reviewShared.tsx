@@ -191,7 +191,7 @@ export function ApplicantInbox({
                     >
                       {selected.has(a.id) ? <CheckSquare className="h-5 w-5 text-primary" /> : <Square className="h-5 w-5" />}
                     </button>
-                    <Avatar name={a.full_name} size={44} />
+                    <Avatar name={a.full_name} src={a.student_avatar_url} size={44} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold">{a.full_name}</p>
                       <p className="truncate text-sm text-muted-foreground">
