@@ -65,6 +65,11 @@ function useNavBadges(userId: string | null, isCompany: boolean): NavBadges {
           const [apps, jobs] = await Promise.all([applicationsApi.byStudent(userId), jobsApi.list()])
           if (apps.length) next['/app/applications'] = apps.length
           if (jobs.length) next['/app/jobs'] = jobs.length
+        } else {
+          const [apps, jobs] = await Promise.all([applicationsApi.byCompany(userId), jobsApi.byCompany(userId)])
+          const newCount = apps.filter((a) => a.status === 'pending').length
+          if (newCount > 0) next['/app/applications'] = newCount
+          if (jobs.length) next['/app/listings'] = jobs.length
         }
         if (!cancelled) setCounts(next)
         const ms = Math.round((performance.now() - navStart) * 10) / 10
@@ -98,6 +103,7 @@ const studentNav: NavItem[] = [
 const companyNav: NavItem[] = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/app/listings', label: 'My Listings', icon: Briefcase },
+  { to: '/app/applications', label: 'Applications', icon: FileText },
   { to: '/app/research', label: 'Research', icon: Search },
   { to: '/app/analytics', label: 'Analytics', icon: LayoutDashboard },
   { to: '/app/messages', label: 'Messages', icon: MessageSquare },
