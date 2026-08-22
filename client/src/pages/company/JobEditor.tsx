@@ -6,7 +6,7 @@ import { fileToDataUrl, imageFileToDataUrl, cn } from '@/lib/utils'
 import { useCurrentUser } from '@/lib/store'
 import { aiApi, jobsApi } from '@/lib/api'
 import { COUNTRIES } from '@/lib/geo'
-import { JobPostingView } from '@/components/JobPostingView'
+import { JobPostingView, AssignmentView } from '@/components/JobPostingView'
 import type { AiAssignment, AiAssignmentQuestion, AiRubricCriterion, JobListing, ListingType } from '@/types'
 import { Avatar, Input, Label, Textarea, Select, Skeleton } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
@@ -553,6 +553,12 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
             {isSchool && <ReviewRow label="Audience" value={f.students_only ? 'Only my students' : (f.fromOther ? `Forwarded: ${f.original_company_name || '—'}` : 'School posting')} />}
             <ReviewRow label="Assignment" value={assignment?.prompt.trim() ? `${assignment.questions.length} question(s) · ${assignment.rubric.length} rubric` : 'None'} />
           </div>
+
+          {assignment?.prompt.trim() && (
+            <div className="rounded-xl border border-border p-4">
+              <AssignmentView assignment={{ title: assignment.title.trim() || 'Practical challenge', prompt: assignment.prompt.trim(), due_before_interview: assignment.dueBeforeInterview, rubric: assignment.rubric, questions: assignment.questions }} />
+            </div>
+          )}
         </section>
       )}
 

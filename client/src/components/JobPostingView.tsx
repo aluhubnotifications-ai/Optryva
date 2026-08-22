@@ -48,7 +48,7 @@ export function JobPostingView({ job, brand, logo }: { job: JobListing; brand?: 
   )
 }
 
-function AssignmentView({ assignment }: { assignment: AiAssignment }) {
+export function AssignmentView({ assignment }: { assignment: AiAssignment }) {
   const typeLabel: Record<string, string> = {
     essay: 'Essay',
     single_choice: 'Single choice',
