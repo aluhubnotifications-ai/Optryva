@@ -469,6 +469,12 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
                 {generated && (<Button type="button" size="sm" variant="outline" onClick={() => runGeneration(true)} loading={generating}>Refine with instruction</Button>)}
               </div>
               {genError && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{genError}</p>}
+              {generating && !generated && (
+                <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+                  Generating assignment with AI…
+                </p>
+              )}
               {generated && (
                 <div className="space-y-3 rounded-lg border border-border p-3">
                   <div>
@@ -476,20 +482,37 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
                     <p className="mt-1 text-xs text-muted-foreground">{generated.prompt}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Questions</p>
-                    <ul className="mt-1 space-y-1 text-sm">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Questions ({generated.questions.length})</p>
+                    <ol className="mt-2 space-y-2">
                       {generated.questions.map((q: any, i: number) => (
-                        <li key={q.id} className="flex items-start gap-2">
-                          <span className="mt-0.5 rounded bg-accent/10 px-1.5 text-[10px] font-medium uppercase text-accent">{q.type.replace('_', ' ')}</span>
-                          <span>{q.prompt}</span>
+                        <li key={q.id} className="rounded-lg bg-muted/40 p-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-semibold text-accent">{i + 1}.</span>
+                            <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent">
+                              {(q.type ?? 'essay').replace('_', ' ')}
+                            </span>
+                            {q.required && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">Required</span>}
+                          </div>
+                          <p className="mt-1 text-sm">{q.prompt}</p>
+                          {(q.type === 'single_choice' || q.type === 'multiple_choice') && q.options?.filter(Boolean).length > 0 && (
+                            <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-muted-foreground">
+                              {q.options.filter(Boolean).map((o: string, oi: number) => (<li key={oi}>{o}</li>))}
+                            </ul>
+                          )}
                         </li>
                       ))}
-                    </ul>
+                    </ol>
                   </div>
                   <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Rubric</p>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Rubric · {generated.rubric.reduce((s: number, c: any) => s + (Number(c.points) || 0), 0)} pts
+                    </p>
                     <div className="mt-1 flex flex-wrap gap-2 text-xs">
-                      {generated.rubric.map((c: any) => (<span key={c.id} className="rounded-lg border border-border px-2 py-1">{c.label} · {c.points}</span>))}
+                      {generated.rubric.map((c: any) => (
+                        <span key={c.id} className="rounded-lg border border-border px-2 py-1">
+                          <span className="font-medium">{c.label}</span> · {c.points}
+                        </span>
+                      ))}
                     </div>
                   </div>
                   <div className="flex justify-end gap-2">

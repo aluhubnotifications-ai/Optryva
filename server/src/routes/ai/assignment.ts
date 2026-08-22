@@ -93,10 +93,10 @@ async function buildAssignmentContent(job: any, sources: any, instruction?: stri
     type: 'text',
     text:
       (instruction?.trim() ? `EMPLOYER INSTRUCTION: ${instruction.trim()}\n\n` : '') +
-      'Design a candidate assignment for this role based on the material above. ' +
-      'Return ONLY the JSON requested. Make questions specific to the content (not generic), ' +
-      'with a realistic mix of essay, single/multiple choice, true/false, and optionally one ' +
-      'file or video submission question. The rubric should have 3-5 criteria whose points sum to 100.',
+      'Design a STREAMLINED candidate assignment for this role based on the material above. ' +
+      'Return ONLY the JSON requested. Use 3-5 questions, each prompt 1-2 clear sentences, and ' +
+      'ONLY these "type" values: essay, single_choice, multiple_choice, true_false, file, video ' +
+      '(choice questions must include 2-4 options). Rubric: 3-4 criteria whose points sum to 100.',
   })
   return content
 }
@@ -125,10 +125,10 @@ async function buildMistralContent(job: any, docs: any[], instruction?: string, 
     type: 'text',
     text:
       (instruction?.trim() ? `EMPLOYER INSTRUCTION: ${instruction.trim()}\n\n` : '') +
-      'Design a candidate assignment for this role based on the material above. ' +
-      'Return ONLY the JSON requested. Make questions specific to the content (not generic), ' +
-      'with a realistic mix of essay, single/multiple choice, true/false, and optionally one ' +
-      'file or video submission question. The rubric should have 3-5 criteria whose points sum to 100.',
+      'Design a STREAMLINED candidate assignment for this role based on the material above. ' +
+      'Return ONLY the JSON requested. Use 3-5 questions, each prompt 1-2 clear sentences, and ' +
+      'ONLY these "type" values: essay, single_choice, multiple_choice, true_false, file, video ' +
+      '(choice questions must include 2-4 options). Rubric: 3-4 criteria whose points sum to 100.',
   })
   return parts
 }
@@ -204,9 +204,15 @@ const ASSIGNMENT_SYSTEM = `You are an expert hiring assessment designer for earl
 
 Rules:
 - Questions must be grounded in the uploaded material / role context. Avoid generic filler ("Tell us about yourself").
-- Vary question types: prefer essay + 1-2 single/multiple-choice + true/false for quick screening, and at most one file or video submission question (candidates upload, humans review).
+- ALWAYS use exactly one of these question "type" values, and never any other word: "essay", "single_choice", "multiple_choice", "true_false", "file", "video".
+  • essay: a written answer (1-3 short paragraphs).
+  • single_choice / multiple_choice: MUST include 2-4 "options" (strings). For single_choice pick one; for multiple_choice any number.
+  • true_false: a statement the candidate marks true/false.
+  • file: candidate uploads a document (humans review).
+  • video: candidate uploads/records a short video (humans review).
+- Keep it STREAMLINED: 3-5 questions total, each prompt a single clear sentence or two (no numbered sub-lists inside a prompt). Mix types — typically 1-2 essay + 1-2 choice/true-false + at most one file or video submission.
 - Set "required" true for the most important questions; allow 1-2 optional.
-- The rubric must have 3-5 criteria with "points" that sum to exactly 100. Labels should name what is being judged (e.g. "Problem framing", "Technical approach").
+- The rubric must have 3-4 criteria; each "points" is an integer and the criteria sum to EXACTLY 100. Labels name what is judged (e.g. "Problem framing", "Technical approach").
 - Keep the assignment title short and the prompt a single clear paragraph.
 - When revising (CURRENT ASSIGNMENT TO REVISE is present), honour the employer instruction and change only what improves it.
 
@@ -257,17 +263,37 @@ interface GeneratedAssignment {
   rubric: { label: string; points: number }[]
 }
 
+/** Map a model's (possibly off-spec) question type string onto the supported enum.
+ *  Models sometimes say "short-answer"/"long_answer"/"paragraph" — fold those into
+ *  "essay" so the structured output stays valid and the UI renders cleanly. */
+function coerceType(t: string): GeneratedAssignment['questions'][number]['type'] {
+  const s = (t ?? '').toLowerCase().replace(/[_\s-]/g, '')
+  if (s.includes('single') || s === 'mcq' || s === 'mc' || s === 'multiplechoicedropdown') return 'single_choice'
+  if (s.includes('multi') || s === 'multiselect' || s === 'checkboxes' || s === 'checkbox') return 'multiple_choice'
+  if (s.includes('true') || s === 'bool' || s === 'yesno' || s === 'yes/no' || s === 'tf') return 'true_false'
+  if (s.includes('video')) return 'video'
+  if (s.includes('file') || s.includes('upload') || s.includes('document')) return 'file'
+  // short/long answer, paragraph, written, open → essay
+  return 'essay'
+}
+
 /** Coerce/repair the model output so the client always gets a usable shape. */
 function normalize(r: GeneratedAssignment) {
-  const questions = (r.questions ?? []).map((q) => ({
-    type: ['essay', 'single_choice', 'multiple_choice', 'true_false', 'file', 'video'].includes(q.type) ? q.type : 'essay',
-    prompt: (q.prompt ?? '').toString().slice(0, 500),
-    required: !!q.required,
-    options:
-      q.type === 'single_choice' || q.type === 'multiple_choice'
-        ? (q.options ?? ['', '']).map((o) => (o ?? '').toString()).filter((o, i, a) => o || i < 2)
+  const questions = (r.questions ?? []).map((q) => {
+    const type = coerceType(q.type)
+    const isChoice = type === 'single_choice' || type === 'multiple_choice'
+    return {
+      type,
+      prompt: (q.prompt ?? '').toString().slice(0, 500),
+      required: !!q.required,
+      options: isChoice
+        ? (() => {
+            const opts = (q.options ?? []).map((o) => (o ?? '').toString().trim()).filter(Boolean).slice(0, 6)
+            return opts.length >= 2 ? opts : ['', '']
+          })()
         : undefined,
-  }))
+    }
+  })
   const rubric = (r.rubric ?? [])
     .map((c) => ({ label: (c.label ?? '').toString().slice(0, 120), points: Number(c.points) || 0 }))
     .filter((c) => c.label)
