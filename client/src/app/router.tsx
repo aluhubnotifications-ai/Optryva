@@ -1,5 +1,5 @@
 import { lazy, useEffect, useState } from 'react'
-import { createBrowserRouter, isRouteErrorResponse, Navigate, Outlet, useRouteError } from 'react-router-dom'
+import { createBrowserRouter, isRouteErrorResponse, Navigate, Outlet, useParams, useRouteError } from 'react-router-dom'
 import { AppShell } from '@/app/AppShell'
 import { useSession, useCurrentUser } from '@/lib/store'
 import { authApi } from '@/lib/api'
@@ -31,7 +31,6 @@ const UserProfile = lazy(() => import('@/pages/UserProfile'))
 
 const Listings = lazy(() => import('@/pages/company/Listings'))
 const JobEditor = lazy(() => import('@/pages/company/JobEditor'))
-const ListingApplicants = lazy(() => import('@/pages/company/ListingApplicants'))
 const CompanyApplications = lazy(() => import('@/pages/company/Applications'))
 const Analytics = lazy(() => import('@/pages/company/Analytics'))
 const CompanyProfile = lazy(() => import('@/pages/company/CompanyProfile'))
@@ -71,6 +70,23 @@ function RequireAdmin() {
   if (!user || !checked) return null // wait for the fresh profile before deciding
   if (!user.is_admin) return <Navigate to="/app" replace />
   return <Outlet />
+}
+
+/** One /app/applications route for both roles: students see the applications they
+ *  submitted; companies/schools see the single inbox of applications they received.
+ *  Picking the component here (instead of two competing route entries) guarantees a
+ *  company never lands on the student's page. */
+function ApplicationsRoute() {
+  const user = useCurrentUser()!
+  const isCompany = user.user_type === 'company' || user.user_type === 'school'
+  return isCompany ? <CompanyApplications /> : <Applications />
+}
+
+/** Drilling into a specific listing from "My Listings" opens the SAME applications
+ *  page, pre-filtered to that listing — not a second, separate page. */
+function ListingApplications() {
+  const { id } = useParams()
+  return <CompanyApplications initialListingId={id} />
 }
 
 function RouteError() {
@@ -114,7 +130,7 @@ export const router = createBrowserRouter([
       { path: 'research', element: <Research /> },
       { path: 'jobs', element: <Jobs /> },
       { path: 'jobs/:id', element: <JobDetail /> },
-      { path: 'applications', element: <Applications /> },
+      { path: 'applications', element: <ApplicationsRoute /> },
       { path: 'applications/:id', element: <ApplicationDetail /> },
       { path: 'insights', element: <Insights /> },
       { path: 'compass', element: <Compass /> },
@@ -128,8 +144,7 @@ export const router = createBrowserRouter([
       { path: 'listings', element: <Listings /> },
       { path: 'listings/new', element: <JobEditor /> },
       { path: 'listings/:id/edit', element: <JobEditor /> },
-      { path: 'listings/:id', element: <ListingApplicants /> },
-      { path: 'applications', element: <CompanyApplications /> },
+      { path: 'listings/:id', element: <ListingApplications /> },
       { path: 'analytics', element: <Analytics /> },
       { path: 'company-profile', element: <CompanyProfile /> },
       { path: 'applicants/:id', element: <ApplicantView /> },
