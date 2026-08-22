@@ -43,6 +43,7 @@ export interface ShimRes {
   status(code: number): ShimRes
   json(body: unknown): ShimRes
   redirect(location: string, status?: number): ShimRes
+  response(response: Response): ShimRes
   /** Stream a Server-Sent-Events body (text/event-stream) instead of JSON. */
   sse(stream: ReadableStream): ShimRes
   cookie(name: string, value: string, opts?: CookieOptions): ShimRes
@@ -52,6 +53,7 @@ export interface ShimRes {
   _body: unknown
   _stream?: ReadableStream
   _redirect?: { location: string; status: number }
+  _response?: Response
 }
 
 export type Next = () => void
@@ -100,6 +102,11 @@ function buildRes(c: Context): ShimRes {
     },
     redirect(location: string, status = 302) {
       this._redirect = { location, status }
+      this._ended = true
+      return this
+    },
+    response(response: Response) {
+      this._response = response
       this._ended = true
       return this
     },
@@ -178,6 +185,7 @@ class RouterImpl {
           'X-Accel-Buffering': 'no',
         })
       }
+      if (res._response) return res._response
       if (res._redirect) return c.redirect(res._redirect.location, res._redirect.status as any)
       return c.json(res._body as any, res._status as any)
     })
