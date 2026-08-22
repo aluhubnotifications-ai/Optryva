@@ -412,6 +412,21 @@ Implementation:
 
 ## Non-Negotiable Product Rules
 
+### D6 — Mistral as the assessment-generation provider (smartest model)
+
+**Decision:**
+- Assessment **generation** (`POST /assignment/generate`) now runs on **Mistral**
+  using `mistral-large-latest` (Mistral's smartest model; override via `MISTRAL_MODEL`).
+- Provider order: **Mistral → Claude → deterministic template**. If `MISTRAL_API_KEY`
+  is set, Mistral designs the assignment; if Mistral is unavailable it falls back to
+  Claude; if neither key is set it returns the canned template. Mistral Large is
+  text-only, so uploaded images/PDFs are noted as "not readable" and the model designs
+  from the role context + any extracted text.
+- `server/src/lib/mistral.ts` is the client (`mistralJsonBlocks` mirrors the Claude
+  `claudeJsonBlocks` signature; returns null on any failure so callers fall back).
+- Key: `MISTRAL_API_KEY` (local `.env`; production `wrangler secret put MISTRAL_API_KEY`).
+  Usage is metered via the existing `recordUsage` (priced at 0 until added to `MODEL_PRICING`).
+
 ### D5 — Student GPA + poster country with opportunity-country lock
 
 **Decision:**

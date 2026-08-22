@@ -1,6 +1,7 @@
 import { Router } from '@/lib/http'
 import { requireAuth } from '@/lib/auth'
 import { claudeJsonBlocks, parseDataUrl, extractDocxText, hasClaude, MODELS } from '@/lib/claude'
+import { mistralJsonBlocks, hasMistral, MISTRAL_MODEL } from '@/lib/mistral'
 
 export function registerAssignment(r: Router) {
   /* ---------- §8.x AI assignment studio ----------
@@ -11,50 +12,37 @@ export function registerAssignment(r: Router) {
    * questions/rubric and Claude revises them in place. */
   r.post('/assignment/generate', async (req, res) => {
     const { job, sources, instruction, existing } = req.body ?? {}
-    if (!hasClaude()) {
-      return res.json(fallbackAssignment(job, instruction))
-    }
     try {
-      const content: any[] = []
-      const jobCtx = buildJobContext(job)
-      if (jobCtx) content.push({ type: 'text', text: jobCtx })
-
-      const docs = Array.isArray(sources) ? sources.slice(0, 5) : []
-      for (const src of docs) {
-        const block = await sourceToBlock(src)
-        if (block) content.push(block)
-      }
+      const content = await buildAssignmentContent(job, sources, instruction, existing)
       if (!content.length) {
         return res.status(400).json({ error: 'no_input', message: 'Upload a document or describe the role first.' })
       }
 
-      if (existing?.questions?.length || existing?.rubric?.length) {
-        content.push({
-          type: 'text',
-          text:
-            'CURRENT ASSIGNMENT TO REVISE:\n' +
-            JSON.stringify({ questions: existing.questions ?? [], rubric: existing.rubric ?? [] }, null, 2),
+      // Provider order: Mistral (smartest model) for assignment design, then
+      // Claude, then the deterministic template if no key is configured.
+      if (hasMistral()) {
+        const result = await mistralJsonBlocks<GeneratedAssignment>({
+          model: MISTRAL_MODEL,
+          maxTokens: 2000,
+          system: ASSIGNMENT_SYSTEM,
+          content,
+          schema: ASSIGNMENT_SCHEMA,
+          temperature: 0.4,
         })
+        if (result) return res.json(normalize(result))
       }
-      content.push({
-        type: 'text',
-        text:
-          (instruction?.trim() ? `EMPLOYER INSTRUCTION: ${instruction.trim()}\n\n` : '') +
-          'Design a candidate assignment for this role based on the material above. ' +
-          'Return ONLY the JSON requested. Make questions specific to the content (not generic), ' +
-          'with a realistic mix of essay, single/multiple choice, true/false, and optionally one ' +
-          'file or video submission question. The rubric should have 3-5 criteria whose points sum to 100.',
-      })
-
-      const result = await claudeJsonBlocks<GeneratedAssignment>({
-        model: MODELS.chat,
-        maxTokens: 2000,
-        system: ASSIGNMENT_SYSTEM,
-        content,
-        schema: ASSIGNMENT_SCHEMA,
-      })
-      if (!result) return res.status(503).json({ error: 'ai_unavailable' })
-      res.json(normalize(result))
+      if (hasClaude()) {
+        const result = await claudeJsonBlocks<GeneratedAssignment>({
+          model: MODELS.chat,
+          maxTokens: 2000,
+          system: ASSIGNMENT_SYSTEM,
+          content,
+          schema: ASSIGNMENT_SCHEMA,
+        })
+        if (result) return res.json(normalize(result))
+        return res.status(503).json({ error: 'ai_unavailable' })
+      }
+      return res.json(fallbackAssignment(job, instruction))
     } catch (e: any) {
       res.status(500).json({ error: 'generation_failed', message: e?.message ?? String(e) })
     }
@@ -65,6 +53,38 @@ interface SourceInput {
   kind?: string
   name?: string
   dataUrl?: string
+}
+
+/** Assemble the content blocks (role context + sources + revise/instruction) shared
+ *  by every generation provider, so Mistral and Claude receive identical grounding. */
+async function buildAssignmentContent(job: any, sources: any, instruction?: string, existing?: any): Promise<any[]> {
+  const content: any[] = []
+  const jobCtx = buildJobContext(job)
+  if (jobCtx) content.push({ type: 'text', text: jobCtx })
+
+  const docs = Array.isArray(sources) ? sources.slice(0, 5) : []
+  for (const src of docs) {
+    const block = await sourceToBlock(src)
+    if (block) content.push(block)
+  }
+  if (existing?.questions?.length || existing?.rubric?.length) {
+    content.push({
+      type: 'text',
+      text:
+        'CURRENT ASSIGNMENT TO REVISE:\n' +
+        JSON.stringify({ questions: existing.questions ?? [], rubric: existing.rubric ?? [] }, null, 2),
+    })
+  }
+  content.push({
+    type: 'text',
+    text:
+      (instruction?.trim() ? `EMPLOYER INSTRUCTION: ${instruction.trim()}\n\n` : '') +
+      'Design a candidate assignment for this role based on the material above. ' +
+      'Return ONLY the JSON requested. Make questions specific to the content (not generic), ' +
+      'with a realistic mix of essay, single/multiple choice, true/false, and optionally one ' +
+      'file or video submission question. The rubric should have 3-5 criteria whose points sum to 100.',
+  })
+  return content
 }
 
 /** Turn an uploaded source into a Claude content block (image / PDF / extracted text). */
