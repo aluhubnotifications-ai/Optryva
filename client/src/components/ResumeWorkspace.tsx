@@ -81,15 +81,21 @@ export function ResumeWorkspace() {
 
   async function view(resume: ResumeProfile) {
     if (!resume.cv_url) return
+    const popup = window.open('', '_blank')
+    if (!popup) {
+      toast({ title: 'Could not open résumé', description: 'Please allow pop-ups for Optryva and try again.', tone: 'error' })
+      return
+    }
     try {
       const url = resume.cv_url.startsWith('/api/documents/')
         ? await fetchProtectedDocument(resume.cv_url)
         : resume.cv_url.startsWith('data:')
           ? URL.createObjectURL(await (await fetch(resume.cv_url)).blob())
           : resume.cv_url
-      window.open(url, '_blank', 'noopener')
+      popup.location.href = url
       if (url.startsWith('blob:')) setTimeout(() => URL.revokeObjectURL(url), 60_000)
     } catch (error) {
+      popup.close()
       toast({ title: 'Could not open résumé', description: error instanceof Error ? error.message : undefined, tone: 'error' })
     }
   }
@@ -124,7 +130,7 @@ export function ResumeWorkspace() {
                 onCountryInput={(value) => setCountryInputs((current) => ({ ...current, [resume.id]: value }))}
                 onUpload={(file) => upload(resume, file)}
                 onView={() => view(resume)}
-                initiallyOpen={resumes[0]?.id === resume.id}
+                initiallyOpen={false}
               />
             ))}
           </div>
