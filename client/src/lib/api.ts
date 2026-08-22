@@ -323,9 +323,17 @@ export const applicationsApi = {
     invalidateCache(`apps:student:${app.student_id}`)
     return (await apiFetch('/applications', { method: 'POST', body: JSON.stringify(app) })) as Application
   },
-  async setStatus(id: string, status: ApplicationStatus): Promise<Application | null> {
+  async setStatus(id: string, status: ApplicationStatus, reason?: string): Promise<Application | null> {
     invalidateCache()
-    return (await apiFetch(`/applications/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })) as Application
+    return (await apiFetch(`/applications/${id}/status`, { method: 'PATCH', body: JSON.stringify(reason !== undefined ? { status, reason } : { status }) })) as Application
+  },
+  async review(id: string, body: { assignment_score?: number; decision_reason?: string }): Promise<Application | null> {
+    invalidateCache()
+    return (await apiFetch(`/applications/${id}/review`, { method: 'PATCH', body: JSON.stringify(body) })) as Application
+  },
+  async scoreAssignment(id: string): Promise<Application | null> {
+    invalidateCache()
+    return (await apiFetch(`/applications/${id}/score-assignment`, { method: 'POST' })) as Application
   },
   async remove(id: string): Promise<boolean> {
     invalidateCache()

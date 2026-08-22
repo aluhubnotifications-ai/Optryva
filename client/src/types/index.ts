@@ -155,6 +155,13 @@ export interface Application {
   linkedin?: string
   assignment_answers?: { criterion_id?: string; question_id?: string; answer: string | string[]; file_name?: string }[]
   assignment_status?: 'not_required' | 'pending' | 'submitted'
+  match_score?: number
+  assignment_score?: number
+  assignment_ai_feedback?: { overall: string; perQuestion: { id: string; feedback: string }[] }
+  ai_recommendation?: 'advance' | 'consider' | 'hold'
+  decision_by?: string
+  decision_reason?: string
+  decided_at?: string
   created_at: string
   timeline: { status: ApplicationStatus | 'applied'; at: string }[]
 }

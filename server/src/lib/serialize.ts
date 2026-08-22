@@ -103,6 +103,13 @@ export function rowToApplication(r: any) {
     linkedin: r.linkedin ?? undefined,
     assignment_answers: r.assignment_answers ? j.parse(r.assignment_answers, []) : undefined,
     assignment_status: r.assignment_status ?? undefined,
+    match_score: r.match_score ?? undefined,
+    assignment_score: r.assignment_score ?? undefined,
+    assignment_ai_feedback: r.assignment_ai_feedback ? j.parse(r.assignment_ai_feedback, undefined) : undefined,
+    ai_recommendation: r.ai_recommendation ?? undefined,
+    decision_by: r.decision_by ?? undefined,
+    decision_reason: r.decision_reason ?? undefined,
+    decided_at: r.decided_at ?? undefined,
     timeline: arr<any>(r.timeline),
     created_at: r.created_at,
   }

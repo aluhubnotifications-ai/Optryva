@@ -1,15 +1,26 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Users, ArrowRight, FileText, Eye, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Users, ArrowRight, FileText, Eye, ExternalLink, ShieldCheck, Sparkles, Check, X, CheckSquare, Square } from 'lucide-react'
 import { applicationsApi, jobsApi } from '@/lib/api'
 import { useCurrentUser } from '@/lib/store'
 import type { Application, ApplicationStatus, JobListing } from '@/types'
-import { Card, CardBody, Badge, Avatar, Skeleton } from '@/components/ui/primitives'
+import { Card, CardBody, Badge, Avatar, Skeleton, Textarea } from '@/components/ui/primitives'
+import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 import { JobPostingView } from '@/components/JobPostingView'
 import { cn, formatDate } from '@/lib/utils'
 
 const statusTone = { pending: 'default', reviewed: 'primary', shortlisted: 'accent', hired: 'success', rejected: 'danger' } as const
 const FILTERS: (ApplicationStatus | 'all')[] = ['all', 'pending', 'reviewed', 'shortlisted', 'hired', 'rejected']
+
+function band(score?: number): 'success' | 'accent' | 'default' | 'danger' {
+  if (score == null) return 'default'
+  return score >= 75 ? 'success' : score >= 55 ? 'accent' : 'danger'
+}
+function ScorePill({ label, score }: { label: string; score?: number }) {
+  if (score == null) return null
+  return <Badge tone={band(score)} className="gap-1"><Sparkles className="h-3 w-3" /> {label} {score}</Badge>
+}
 
 export default function ListingApplicants() {
   const { id } = useParams()
@@ -21,14 +32,17 @@ export default function ListingApplicants() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<ApplicationStatus | 'all'>('all')
   const [tab, setTab] = useState<'details' | 'applicants'>(params.get('tab') === 'applicants' ? 'applicants' : 'details')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [busy, setBusy] = useState(false)
+  const [rejectIds, setRejectIds] = useState<string[] | null>(null)
+  const [rejectReason, setRejectReason] = useState('')
 
-  useEffect(() => {
-    ;(async () => {
-      if (!id) return
-      const [j, a, o] = await Promise.all([jobsApi.get(id), applicationsApi.byJob(id), jobsApi.openCounts()])
-      setJob(j); setApps(a); setOpens(o[id] ?? 0); setLoading(false)
-    })()
-  }, [id])
+  async function load() {
+    if (!id) return
+    const [j, a, o] = await Promise.all([jobsApi.get(id), applicationsApi.byJob(id), jobsApi.openCounts()])
+    setJob(j); setApps(a); setOpens(o[id] ?? 0); setLoading(false)
+  }
+  useEffect(() => { load() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // External listings apply off-platform, so applications never reach Optryva —
   // we report unique people who opened the apply link ("views") instead.
@@ -36,6 +50,27 @@ export default function ListingApplicants() {
   const filtered = useMemo(() => (filter === 'all' ? apps : apps.filter((a) => a.status === filter)), [apps, filter])
   const brand = job?.original_company_name || user.company_name || user.full_name
   const logo = job?.original_company_logo_url || user.avatar_url
+
+  function toggle(id: string) {
+    setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+  function selectAllFiltered() { setSelected(new Set(filtered.map((a) => a.id))) }
+  function clearSelection() { setSelected(new Set()) }
+
+  async function bulkAccept(ids: string[]) {
+    setBusy(true)
+    try {
+      await Promise.all(ids.map((aid) => applicationsApi.setStatus(aid, 'shortlisted')))
+      await load(); clearSelection()
+    } finally { setBusy(false) }
+  }
+  async function bulkReject(ids: string[], reason: string) {
+    setBusy(true)
+    try {
+      await Promise.all(ids.map((aid) => applicationsApi.setStatus(aid, 'rejected', reason)))
+      await load(); clearSelection(); setRejectIds(null); setRejectReason('')
+    } finally { setBusy(false) }
+  }
 
   return (
     <div className="space-y-5">
@@ -79,7 +114,7 @@ export default function ListingApplicants() {
             <p className="text-3xl font-bold text-accent">{opens}</p>
             <p className="text-sm font-medium">{opens === 1 ? 'person' : 'people'} opened the apply link</p>
             <p className="max-w-sm text-xs text-muted-foreground">
-              This is an external listing — candidates apply on your own site, so Optryva tracks
+              This is an external listing — candidates apply on the company's own site, so Optryva tracks
               clicks to the apply link instead of receiving applications here.
             </p>
             {job.apply_url && (
@@ -91,7 +126,16 @@ export default function ListingApplicants() {
         </Card>
       ) : (
         <>
-          <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1">
+          {/* Human-authority banner */}
+          <div className="flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm">
+            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+            <p className="text-muted-foreground">
+              <span className="font-medium text-foreground">You decide — AI only suggests.</span> AI fit/test scores help you prioritise, but every accept or reject is a
+              human action and is recorded. Rejections require a reason.
+            </p>
+          </div>
+
+          <div className="-mx-1 flex flex-wrap items-center gap-1.5 overflow-x-auto px-1">
             {FILTERS.map((f) => {
               const count = f === 'all' ? apps.length : apps.filter((a) => a.status === f).length
               return (
@@ -102,20 +146,51 @@ export default function ListingApplicants() {
             })}
           </div>
 
+          {/* Bulk actions */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" onClick={selectAllFiltered}>Select all ({filtered.length})</Button>
+            {selected.size > 0 && (
+              <>
+                <span className="text-sm text-muted-foreground">{selected.size} selected</span>
+                <Button size="sm" variant="success" className="gap-1.5" onClick={() => bulkAccept([...selected])} loading={busy}><Check className="h-4 w-4" /> Accept selected</Button>
+                <Button size="sm" variant="danger" className="gap-1.5" onClick={() => setRejectIds([...selected])} loading={busy}><X className="h-4 w-4" /> Reject selected</Button>
+                <Button size="sm" variant="ghost" onClick={clearSelection}>Clear</Button>
+              </>
+            )}
+            <div className="ml-auto flex gap-2">
+              <Button size="sm" variant="default" className="gap-1.5" onClick={() => bulkAccept(filtered.map((a) => a.id))} loading={busy}><CheckSquare className="h-4 w-4" /> Accept all</Button>
+              <Button size="sm" variant="danger" className="gap-1.5" onClick={() => setRejectIds(filtered.map((a) => a.id))} loading={busy} disabled={filtered.length === 0}><X className="h-4 w-4" /> Reject all</Button>
+            </div>
+          </div>
+
           {filtered.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border py-16 text-center text-sm text-muted-foreground">No applicants{filter !== 'all' ? ` (${filter})` : ' yet'}.</div>
           ) : (
             <div className="space-y-3">
               {filtered.map((a) => (
-                <Link key={a.id} to={`/app/applicants/${a.id}`}>
-                  <Card className="transition-shadow hover:shadow-card">
+                <Link key={a.id} to={`/app/applicants/${a.id}`} className="block">
+                  <Card className={cn('transition-shadow hover:shadow-card', selected.has(a.id) && 'ring-2 ring-primary')}>
                     <CardBody className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); toggle(a.id) }}
+                        className="shrink-0 rounded-md p-1 text-muted-foreground hover:text-primary"
+                        aria-label="Select applicant"
+                      >
+                        {selected.has(a.id) ? <CheckSquare className="h-5 w-5 text-primary" /> : <Square className="h-5 w-5" />}
+                      </button>
                       <Avatar name={a.full_name} size={44} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-semibold">{a.full_name}</p>
                         <p className="truncate text-sm text-muted-foreground">{a.school}{a.year ? ` · Year ${a.year}` : ''} · {formatDate(a.created_at)}</p>
                       </div>
-                      <Badge tone={statusTone[a.status]} className="capitalize">{a.status === 'hired' ? 'Hired' : a.status}</Badge>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <div className="flex gap-1.5">
+                          <ScorePill label="Fit" score={a.match_score} />
+                          <ScorePill label="Test" score={a.assignment_score} />
+                        </div>
+                        <Badge tone={statusTone[a.status]} className="capitalize">{a.status === 'hired' ? 'Hired' : a.status}</Badge>
+                      </div>
                       <ArrowRight className="hidden h-4 w-4 text-muted-foreground sm:block" />
                     </CardBody>
                   </Card>
@@ -125,6 +200,17 @@ export default function ListingApplicants() {
           )}
         </>
       )}
+
+      <Modal open={rejectIds !== null} onClose={() => setRejectIds(null)} title="Reject applicants" description="A reason is required and recorded for each applicant.">
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">{rejectIds?.length} applicant{rejectIds?.length === 1 ? '' : 's'} will be rejected.</p>
+          <Textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Reason for rejection (e.g. role filled, not a fit for this cohort)…" className="min-h-[100px]" />
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setRejectIds(null)}>Cancel</Button>
+            <Button variant="danger" disabled={!rejectReason.trim() || busy} loading={busy} onClick={() => rejectIds && bulkReject(rejectIds, rejectReason.trim())}>Reject with reason</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

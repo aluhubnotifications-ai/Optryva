@@ -207,3 +207,93 @@ function fallbackAssignment(job: any, instruction?: string) {
     ],
   }
 }
+
+/* ---------- §5.x AI assessment scoring ----------
+ * Given an approved assignment and a candidate's submitted answers, Claude returns
+ * an overall rubric score (0..100), a recommendation, and per-question feedback.
+ * This is a SUGGESTION only — the employer records the final, human decision.
+ * Degrades to a transparent completion-based estimate when no API key is set. */
+export interface AssignmentScoreResult {
+  score: number
+  recommendation: 'advance' | 'consider' | 'hold'
+  feedback: { overall: string; perQuestion: { id: string; feedback: string }[] }
+}
+
+const SCORE_SYSTEM = `You are an assistant to a human reviewer hiring for early-career roles. You evaluate a candidate's submitted assessment answers against the employer's approved rubric. You are rigorous and fair, you never invent information that is not in the answers, and you keep feedback specific and actionable.
+
+Return ONLY JSON matching the requested schema. Score is 0..100. Recommendation must be one of: advance (strong evidence), consider (mixed), hold (weak or incomplete). Per-question feedback is a short sentence.`
+
+const SCORE_SCHEMA = {
+  type: 'object',
+  properties: {
+    overall_feedback: { type: 'string' },
+    score: { type: 'integer', description: '0..100 overall rubric score' },
+    recommendation: { type: 'string', enum: ['advance', 'consider', 'hold'] },
+    per_question: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { id: { type: 'string' }, feedback: { type: 'string' } },
+        required: ['id', 'feedback'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['overall_feedback', 'score', 'recommendation', 'per_question'],
+  additionalProperties: false,
+}
+
+export async function scoreAssignmentWithAI(
+  assignment: any,
+  answers: { question_id?: string; criterion_id?: string; answer: string | string[] }[],
+  job?: any,
+): Promise<AssignmentScoreResult> {
+  const questions = assignment?.questions?.length
+    ? assignment.questions
+    : (assignment?.rubric ?? []).map((c: any) => ({ id: c.id, prompt: c.label, required: true }))
+  const answeredCount = answers.filter((a) => (Array.isArray(a.answer) ? a.answer.length > 0 : !!String(a.answer ?? '').trim())).length
+  const completion = questions.length ? answeredCount / questions.length : 0
+
+  if (!hasClaude()) {
+    const score = Math.round(40 + completion * 50)
+    return {
+      score,
+      recommendation: score >= 75 ? 'advance' : score >= 55 ? 'consider' : 'hold',
+      feedback: {
+        overall: 'AI scoring is unavailable right now — this score is a transparent estimate based on how much of the assignment was completed. A human should review the answers directly before deciding.',
+        perQuestion: questions.map((q: any) => ({ id: q.id, feedback: 'Not auto-evaluated — please review manually.' })),
+      },
+    }
+  }
+
+  const answerText = answers
+    .map((a) => {
+      const q = questions.find((x: any) => x.id === (a.question_id ?? a.criterion_id))
+      const ans = Array.isArray(a.answer) ? a.answer.join(', ') : String(a.answer ?? '').startsWith('data:') ? 'File/video submitted' : a.answer
+      return `Q: ${q?.prompt ?? a.question_id ?? a.criterion_id}\nA: ${ans ?? '(no answer)'}`
+    })
+    .join('\n\n')
+
+  const content: any[] = [
+    { type: 'text', text: `ROLE: ${job?.title ?? 'role'}\n${job?.description ? job.description.slice(0, 3000) : ''}` },
+    { type: 'text', text: `ASSIGNMENT:\n${JSON.stringify({ title: assignment?.title, prompt: assignment?.prompt, questions: assignment?.questions, rubric: assignment?.rubric }, null, 2)}` },
+    { type: 'text', text: `CANDIDATE SUBMISSION:\n${answerText}` },
+    { type: 'text', text: 'Evaluate the submission against the approved rubric. Return ONLY the requested JSON.' },
+  ]
+
+  try {
+    const result = await claudeJsonBlocks<any>({ model: MODELS.chat, maxTokens: 1500, system: SCORE_SYSTEM, content, schema: SCORE_SCHEMA })
+    if (!result) throw new Error('ai_unavailable')
+    const score = Math.max(0, Math.min(100, Math.round(Number(result.score) || 0)))
+    const recommendation = ['advance', 'consider', 'hold'].includes(result.recommendation) ? result.recommendation : (score >= 75 ? 'advance' : score >= 55 ? 'consider' : 'hold')
+    const perQuestion = (result.per_question ?? []).map((p: any) => ({ id: String(p.id), feedback: String(p.feedback ?? '') }))
+    return { score, recommendation, feedback: { overall: String(result.overall_feedback ?? ''), perQuestion } }
+  } catch {
+    const score = Math.round(40 + completion * 50)
+    return {
+      score,
+      recommendation: score >= 75 ? 'advance' : score >= 55 ? 'consider' : 'hold',
+      feedback: { overall: 'Automated evaluation failed — score estimated from completion. Please review the answers manually.', perQuestion: questions.map((q: any) => ({ id: q.id, feedback: 'Auto-evaluation failed — review manually.' })) },
+    }
+  }
+}

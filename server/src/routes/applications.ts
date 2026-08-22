@@ -5,6 +5,7 @@ import { rowToApplication } from '@/lib/serialize'
 import { uid, now, notify } from '@/lib/util'
 import { isAdminEmail } from '@/lib/admin'
 import { storeDocument, validateDocuments } from '@/lib/documents'
+import { scoreAssignmentWithAI } from '@/routes/ai/assignment'
 
 export const applications = Router()
 applications.use(requireAuth)
@@ -57,6 +58,13 @@ applications.post('/', async (req, res) => {
 
   const id = uid('a')
   const ts = now()
+  // Carry the AI match score we showed the student at apply time onto the
+  // application so the employer can see the same signal during review.
+  let matchScore: number | null = null
+  try {
+    const c = (await sb.from('ai_match_cache').select('payload').eq('student_id', req.user!.id).eq('job_id', b.job_id).maybeSingle()).data as any
+    if (c?.payload) matchScore = JSON.parse(c.payload).score ?? null
+  } catch { /* no cached score — leave null */ }
   must(await sb.from('applications').insert({
     id, student_id: req.user!.id, job_id: b.job_id, status: 'pending',
     cover_note: b.cover_note ?? null, documents: j.stringify(documents),
@@ -64,6 +72,7 @@ applications.post('/', async (req, res) => {
     school: b.school ?? null, year: b.year ?? null, linkedin: b.linkedin ?? null,
     assignment_answers: j.stringify(b.assignment_answers ?? []),
     assignment_status: job.assignment ? (b.assignment_answers?.length ? 'submitted' : 'pending') : 'not_required',
+    match_score: matchScore,
     timeline: j.stringify([{ status: 'applied', at: ts }]), created_at: ts,
   }))
   await notify(job.company_id, 'new_application', 'New application received', `${b.full_name} applied to ${job.title}`, id)
@@ -72,7 +81,7 @@ applications.post('/', async (req, res) => {
 })
 
 applications.patch('/:id/status', async (req, res) => {
-  const { status } = req.body ?? {}
+  const { status, reason } = req.body ?? {}
   const r = must(await sb.from('applications').select('*').eq('id', req.params.id).maybeSingle()) as any
   if (!r) return res.status(404).json({ error: 'not_found' })
   const validStatuses = new Set(['pending', 'reviewed', 'shortlisted', 'hired', 'rejected'])
@@ -81,8 +90,56 @@ applications.patch('/:id/status', async (req, res) => {
   if (!job || (job.company_id !== req.user!.id && !isAdminEmail(req.user!.email))) return res.status(403).json({ error: 'forbidden' })
   const timeline = j.parse<any[]>(r.timeline, [])
   timeline.push({ status, at: now() })
-  must(await sb.from('applications').update({ status, timeline: j.stringify(timeline) }).eq('id', r.id))
+  // Every status change is a human decision: record who made it, when, and why
+  // (a reason is required when rejecting, so the call is traceable).
+  const patch: any = { status, timeline: j.stringify(timeline), decision_by: req.user!.id, decided_at: now() }
+  if (reason !== undefined) patch.decision_reason = reason || null
+  must(await sb.from('applications').update(patch).eq('id', r.id))
   await notify(r.student_id, 'status_change', `Application update: ${status}`, `Your application for ${job?.title ?? 'a role'} is now ${status}.`, r.id)
+  const updated = must(await sb.from('applications').select('*').eq('id', r.id).maybeSingle())
+  res.json(rowToApplication(updated))
+})
+
+// Human override of the AI assessment score + an optional decision note. The final
+// number is the employer's; we only store it (and who set it, when).
+applications.patch('/:id/review', async (req, res) => {
+  const { assignment_score, decision_reason } = req.body ?? {}
+  const r = must(await sb.from('applications').select('*').eq('id', req.params.id).maybeSingle()) as any
+  if (!r) return res.status(404).json({ error: 'not_found' })
+  const job = must(await sb.from('job_listings').select('company_id').eq('id', r.job_id).maybeSingle()) as any
+  if (!job || (job.company_id !== req.user!.id && !isAdminEmail(req.user!.email))) return res.status(403).json({ error: 'forbidden' })
+  const patch: any = { decision_by: req.user!.id, decided_at: now() }
+  if (typeof assignment_score === 'number') patch.assignment_score = Math.max(0, Math.min(100, Math.round(assignment_score)))
+  if (decision_reason !== undefined) patch.decision_reason = decision_reason || null
+  must(await sb.from('applications').update(patch).eq('id', r.id))
+  const updated = must(await sb.from('applications').select('*').eq('id', r.id).maybeSingle())
+  res.json(rowToApplication(updated))
+})
+
+// Run the AI assessment review (scores the submitted assignment against the rubric).
+// Returns an updated application with assignment_score + feedback. The score is a
+// suggestion — the employer overrides it via PATCH /:id/review.
+applications.post('/:id/score-assignment', async (req, res) => {
+  const r = must(await sb.from('applications').select('*').eq('id', req.params.id).maybeSingle()) as any
+  if (!r) return res.status(404).json({ error: 'not_found' })
+  const job = must(await sb.from('job_listings').select('*').eq('id', r.job_id).maybeSingle()) as any
+  if (!job || (job.company_id !== req.user!.id && !isAdminEmail(req.user!.email))) return res.status(403).json({ error: 'forbidden' })
+  if (!job.assignment) return res.status(400).json({ error: 'no_assignment' })
+  const answers = j.parse<any[]>(r.assignment_answers ?? '[]', [])
+  if (!answers.length) return res.status(400).json({ error: 'no_answers' })
+  const result = await scoreAssignmentWithAI(job.assignment, answers, { title: job.title, type: job.type, description: job.description })
+  must(
+    await sb
+      .from('applications')
+      .update({
+        assignment_score: result.score,
+        assignment_ai_feedback: j.stringify(result.feedback),
+        ai_recommendation: result.recommendation,
+        decision_by: req.user!.id,
+        decided_at: now(),
+      })
+      .eq('id', r.id),
+  )
   const updated = must(await sb.from('applications').select('*').eq('id', r.id).maybeSingle())
   res.json(rowToApplication(updated))
 })
