@@ -87,7 +87,10 @@ export function ResumeWorkspace() {
       return
     }
     try {
-      const url = resume.cv_url.startsWith('/api/documents/')
+      let documentPath = resume.cv_url
+      try { documentPath = new URL(resume.cv_url, window.location.origin).pathname } catch { /* use the supplied URL */ }
+      const isProtectedDocument = documentPath.startsWith('/api/documents/')
+      const url = isProtectedDocument
         ? await fetchProtectedDocument(resume.cv_url)
         : resume.cv_url.startsWith('data:')
           ? URL.createObjectURL(await (await fetch(resume.cv_url)).blob())
