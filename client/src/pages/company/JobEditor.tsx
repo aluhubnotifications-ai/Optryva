@@ -252,6 +252,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
 
   async function submit() {
     if (!f.title.trim() || !f.description.trim()) { setError('Title and description are required.'); return }
+    if (f.fromOther && !f.apply_url.trim()) { setError('An external application link is required for opportunities from another company.'); return }
     setError(null)
     setSaving(true)
     const payload = {
@@ -350,12 +351,18 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
             <Label>Apply mode</Label>
             <div className="flex gap-2">
               {(['in_app', 'external'] as const).map((m) => (
-                <button key={m} type="button" onClick={() => setF({ ...f, applyMode: m })} className={cn('flex-1 rounded-lg border px-3 py-2 text-sm font-medium', f.applyMode === m ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground')}>
+                <button key={m} type="button" disabled={f.fromOther && m === 'in_app'} onClick={() => setF({ ...f, applyMode: m })} className={cn('flex-1 rounded-lg border px-3 py-2 text-sm font-medium', f.fromOther && m === 'in_app' ? 'cursor-not-allowed opacity-50' : f.applyMode === m ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground')}>
                   {m === 'in_app' ? 'In-app form' : 'External URL'}
                 </button>
               ))}
             </div>
-            {f.applyMode === 'external' && <Input className="mt-2" value={f.apply_url} onChange={(e) => setF({ ...f, apply_url: e.target.value })} placeholder="https://company.com/apply" />}
+            {f.applyMode === 'external' && (
+              <div className="mt-2">
+                <Input value={f.apply_url} onChange={(e) => setF({ ...f, apply_url: e.target.value })} placeholder="https://company.com/apply" />
+                {f.fromOther && !f.apply_url.trim() && <p className="mt-1 text-xs text-danger">Required — applications go to the other company via their link, not our form.</p>}
+              </div>
+            )}
+            {f.fromOther && <p className="mt-1 text-xs text-muted-foreground">Because this is another company's opportunity, students must apply on their site. The in-app form is disabled.</p>}
           </div>
 
           <div>
@@ -387,7 +394,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
           {isSchool && (
             <div className="rounded-xl border border-accent/30 bg-accent/5 p-3">
               <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
-                <input type="checkbox" checked={f.fromOther} onChange={(e) => setF({ ...f, fromOther: e.target.checked })} className="h-4 w-4 accent-[hsl(var(--accent))]" />
+                <input type="checkbox" checked={f.fromOther} onChange={(e) => setF({ ...f, fromOther: e.target.checked, applyMode: e.target.checked ? 'external' : 'in_app' })} className="h-4 w-4 accent-[hsl(var(--accent))]" />
                 <Building2 className="h-4 w-4 text-accent" /> This opportunity is from another company
               </label>
               {f.fromOther && (
