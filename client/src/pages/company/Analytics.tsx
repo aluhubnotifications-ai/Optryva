@@ -81,7 +81,7 @@ export default function Analytics() {
             <p className="text-sm text-muted-foreground">Performance across your listings.</p>
           </div>
           <Link to="/app/listings">
-            <Button className="gap-1.5"><Briefcase className="h-4 w-4" /> Manage listings</Button>
+            <Button className="gap-1.5"><Briefcase className="h-4 w-4" /> Review applications</Button>
           </Link>
         </div>
       </div>

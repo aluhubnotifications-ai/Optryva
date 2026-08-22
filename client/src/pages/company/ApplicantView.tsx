@@ -2,7 +2,9 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft,
+  Briefcase,
   Mail,
+  MapPin,
   Phone,
   GraduationCap,
   Link2,
@@ -15,6 +17,7 @@ import {
   Sparkles,
   UserCheck,
   Check,
+  Users,
 } from 'lucide-react'
 import { applicationsApi, jobsApi, profilesApi } from '@/lib/api'
 import { useCurrentUser } from '@/lib/store'
@@ -24,7 +27,7 @@ import { Button } from '@/components/ui/Button'
 import { AppProgressSteps } from '@/components/AppProgressSteps'
 import { DocumentList } from '@/components/DocumentList'
 import { useToast } from '@/components/ui/toast'
-import { cn, formatDate } from '@/lib/utils'
+import { cn, daysUntil, formatDate } from '@/lib/utils'
 
 const statusTone = { pending: 'default', reviewed: 'primary', shortlisted: 'accent', hired: 'success', rejected: 'danger' } as const
 type StepId = 'candidate' | 'assessment' | 'scoring' | 'decision'
@@ -149,9 +152,56 @@ export default function ApplicantView() {
     : job?.assignment?.rubric.map((cr) => ({ id: cr.id, prompt: cr.label, required: true })) ?? []
   const feedbackMap = new Map((app.assignment_ai_feedback?.perQuestion ?? []).map((p) => [p.id, p.feedback]))
 
+  const listingDeadline = job ? daysUntil(job.deadline) : null
+
   return (
     <div className="mx-auto max-w-4xl space-y-5">
-      <button onClick={() => navigate(-1)} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /> Back</button>
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={() => navigate(job ? `/app/listings/${job.id}` : '/app/listings')}
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back to listing
+        </button>
+        {job && (
+          <button
+            type="button"
+            onClick={() => navigate('/app/listings')}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            All listings
+          </button>
+        )}
+      </div>
+
+      {/* Listing context — always visible so reviewers know which role this is for */}
+      {job && (
+        <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-card to-accent/5">
+          <CardBody className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Applied for</p>
+              <h2 className="mt-1 flex items-center gap-2 text-lg font-bold tracking-tight">
+                <Briefcase className="h-5 w-5 shrink-0 text-primary" />
+                <span className="truncate">{job.title}</span>
+              </h2>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {job.location}</span>
+                <span>{job.listing_type}</span>
+                <span>{formatDate(app.created_at)}</span>
+                {listingDeadline !== null && (
+                  <Badge tone={listingDeadline <= 3 ? 'warning' : 'outline'} className="text-[11px]">
+                    {listingDeadline <= 0 ? 'Closed' : `${listingDeadline}d left`}
+                  </Badge>
+                )}
+              </div>
+            </div>
+            <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={() => navigate(`/app/listings/${job.id}`)}>
+              <Users className="h-4 w-4" /> View all applicants
+            </Button>
+          </CardBody>
+        </Card>
+      )}
 
       {/* Header */}
       <Card>
@@ -161,7 +211,9 @@ export default function ApplicantView() {
               <Avatar name={app.full_name} src={student?.avatar_url} size={56} />
               <div>
                 <h1 className="text-xl font-bold tracking-tight">{app.full_name}</h1>
-                <p className="text-sm text-muted-foreground">Applied to {job?.title} · {formatDate(app.created_at)}</p>
+                <p className="text-sm text-muted-foreground">
+                  {app.school}{app.year ? ` · Year ${app.year}` : ''} · Submitted {formatDate(app.created_at)}
+                </p>
                 {student?.bio && <p className="mt-1 max-w-xl text-sm text-muted-foreground">{student.bio}</p>}
               </div>
             </div>

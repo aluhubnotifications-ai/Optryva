@@ -1,5 +1,5 @@
 import { lazy, useEffect, useState } from 'react'
-import { createBrowserRouter, isRouteErrorResponse, Navigate, Outlet, useParams, useRouteError } from 'react-router-dom'
+import { createBrowserRouter, isRouteErrorResponse, Navigate, Outlet, useRouteError } from 'react-router-dom'
 import { AppShell } from '@/app/AppShell'
 import { useSession, useCurrentUser } from '@/lib/store'
 import { authApi } from '@/lib/api'
@@ -31,7 +31,6 @@ const UserProfile = lazy(() => import('@/pages/UserProfile'))
 
 const Listings = lazy(() => import('@/pages/company/Listings'))
 const JobEditor = lazy(() => import('@/pages/company/JobEditor'))
-const CompanyApplications = lazy(() => import('@/pages/company/Applications'))
 const CompanyProfile = lazy(() => import('@/pages/company/CompanyProfile'))
 const ApplicantView = lazy(() => import('@/pages/company/ApplicantView'))
 // Note: company Analytics is shown inline on the Dashboard, so there is no
@@ -73,21 +72,12 @@ function RequireAdmin() {
   return <Outlet />
 }
 
-/** One /app/applications route for both roles: students see the applications they
- *  submitted; companies/schools see the single inbox of applications they received.
- *  Picking the component here (instead of two competing route entries) guarantees a
- *  company never lands on the student's page. */
+/** Students track applications they submitted; companies review inside Listings. */
 function ApplicationsRoute() {
   const user = useCurrentUser()!
   const isCompany = user.user_type === 'company' || user.user_type === 'school'
-  return isCompany ? <CompanyApplications /> : <Applications />
-}
-
-/** Drilling into a specific listing from "My Listings" opens the SAME applications
- *  page, pre-filtered to that listing — not a second, separate page. */
-function ListingApplications() {
-  const { id } = useParams()
-  return <CompanyApplications initialListingId={id} />
+  if (isCompany) return <Navigate to="/app/listings" replace />
+  return <Applications />
 }
 
 function RouteError() {
@@ -145,7 +135,7 @@ export const router = createBrowserRouter([
       { path: 'listings', element: <Listings /> },
       { path: 'listings/new', element: <JobEditor /> },
       { path: 'listings/:id/edit', element: <JobEditor /> },
-      { path: 'listings/:id', element: <ListingApplications /> },
+      { path: 'listings/:id', element: <Listings /> },
       { path: 'company-profile', element: <CompanyProfile /> },
       { path: 'applicants/:id', element: <ApplicantView /> },
     ],

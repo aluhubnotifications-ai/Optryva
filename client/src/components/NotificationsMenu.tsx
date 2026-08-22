@@ -30,8 +30,13 @@ const ICONS: Record<NotificationType, LucideIcon> = {
   booking: CalendarCheck,
 }
 
-function routeFor(n: AppNotification): string {
-  if (n.type === 'status_change' || n.type === 'new_application') return n.ref_id ? `/app/applications/${n.ref_id}` : '/app/applications'
+function routeFor(n: AppNotification, isCompany: boolean): string {
+  if (n.type === 'new_application') {
+    return n.ref_id ? `/app/applicants/${n.ref_id}` : '/app/listings'
+  }
+  if (n.type === 'status_change') {
+    return n.ref_id ? (isCompany ? `/app/applicants/${n.ref_id}` : `/app/applications/${n.ref_id}`) : (isCompany ? '/app/listings' : '/app/applications')
+  }
   if (n.type === 'dm' || n.type === 'booking') return n.ref_id ? `/app/messages?thread=${n.ref_id}` : '/app/messages'
   if (n.type === 'followed_company_listing' || n.type === 'new_listing' || n.type === 'new_job') return n.ref_id ? `/app/jobs?job=${n.ref_id}` : '/app/jobs'
   if (n.type === 'housing') return '/app/housing'
@@ -43,6 +48,7 @@ function routeFor(n: AppNotification): string {
  *  opens in place, refreshes on navigation and on a short poll. */
 export function NotificationsMenu() {
   const user = useCurrentUser()
+  const isCompany = user?.user_type === 'company' || user?.user_type === 'school'
   const navigate = useNavigate()
   const location = useLocation()
   const [open, setOpen] = useState(false)
@@ -74,7 +80,7 @@ export function NotificationsMenu() {
       setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)))
       await notificationsApi.markRead(n.id).catch(() => {})
     }
-    navigate(routeFor(n))
+    navigate(routeFor(n, isCompany))
   }
 
   async function markAll() {
