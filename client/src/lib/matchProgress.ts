@@ -78,8 +78,10 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
     if (!force && !needsMatchRun(useMatchRun.getState().lastRun[userId])) {
       if (s.userId === userId && s.matches.length > 0) return
       const cached = await aiApi.cachedMatches()
-      set({ userId, phase: cached.length ? 'done' : 'idle', matches: cached, done: cached.length, total: cached.length, label: '', missing: [], scoring: [] })
-      return
+      if (cached.length) {
+        set({ userId, phase: 'done', matches: cached, done: cached.length, total: cached.length, label: '', missing: [], scoring: [] })
+        return
+      }
     }
     if (!force && s.userId === userId && (s.phase === 'running' || (s.phase === 'done' && s.matches.length > 0))) return
 

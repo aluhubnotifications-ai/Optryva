@@ -4,7 +4,6 @@ import { Sparkles, Search, Loader2, X } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
 import { aiApi, jobsApi, profilesApi } from '@/lib/api'
 import { useMatchProgress } from '@/lib/matchProgress'
-import { useMatchRun, needsMatchRun } from '@/lib/matchRun'
 import type { JobListing, Profile } from '@/types'
 import { Card, CardBody, Skeleton } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
@@ -67,7 +66,7 @@ export default function Research() {
       setLoading(false)
     })()
     // Students get auto-matched scores via the shared runner (idempotent).
-    if (isStudent && needsMatchRun(useMatchRun.getState().lastRun[user.id])) void useMatchProgress.getState().run(user.id)
+    if (isStudent) void useMatchProgress.getState().run(user.id)
     return () => {
       active = false
     }

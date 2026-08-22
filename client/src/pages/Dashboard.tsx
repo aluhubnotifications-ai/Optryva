@@ -17,7 +17,6 @@ import {
 import { useCurrentUser } from '@/lib/store'
 import { applicationsApi, followsApi, jobsApi } from '@/lib/api'
 import { useMatchProgress } from '@/lib/matchProgress'
-import { useMatchRun, needsMatchRun } from '@/lib/matchRun'
 import type { AiMatch, Application, JobListing, Profile } from '@/types'
 import { Card, CardBody, Badge, Avatar, Progress, Skeleton } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
@@ -93,7 +92,6 @@ function StudentDashboard({ user }: { user: Profile }) {
 
     const startMatching = () => {
       if (!active) return
-      if (!needsMatchRun(useMatchRun.getState().lastRun[user.id])) return
       perf('idle callback fired → starting AI matching')
       const mStart = performance.now()
       void useMatchProgress
