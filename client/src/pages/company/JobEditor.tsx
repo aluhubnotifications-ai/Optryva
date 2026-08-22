@@ -78,6 +78,10 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
   const { toast } = useToast()
   const navigate = useNavigate()
   const isSchool = user.user_type === 'school'
+  const isCompany = user.user_type === 'company'
+  // Companies post their own opportunities, so the listing country is locked to
+  // the company's profile country. Schools may choose a country per opportunity.
+  const countryLocked = isCompany && !!user.country
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState(false)
@@ -98,7 +102,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
 
   const [f, setF] = useState({
     title: '', description: '', type: 'Software Engineering', listing_type: 'Internship' as ListingType,
-    country: 'Remote', location: '', pay: '', duration: '', deadline: '', tags: '',
+    country: user.country || 'Remote', location: '', pay: '', duration: '', deadline: '', tags: '',
     responsibilities: [] as string[], benefits: [] as string[], qualifications: [] as string[],
     applyMode: 'in_app' as 'in_app' | 'external', apply_url: '', allowed_years: [] as number[],
     allowed_schools: '', students_only: false,
@@ -110,10 +114,10 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
   useEffect(() => {
     setError(null)
     setPreview(false)
-    if (editing) {
-      setF({
-        title: editing.title, description: editing.description, type: editing.type, listing_type: editing.listing_type,
-        country: editing.country, location: editing.location, pay: editing.pay ?? '', duration: editing.duration ?? '',
+      if (editing) {
+        setF({
+          title: editing.title, description: editing.description, type: editing.type, listing_type: editing.listing_type,
+          country: isCompany ? (user.country || editing.country || 'Remote') : editing.country, location: editing.location, pay: editing.pay ?? '', duration: editing.duration ?? '',
         deadline: editing.deadline ? editing.deadline.slice(0, 10) : '', tags: editing.tags.join(', '),
         responsibilities: editing.responsibilities ?? [], benefits: editing.benefits ?? [], qualifications: editing.qualifications ?? [],
         applyMode: editing.apply_url ? 'external' : 'in_app', apply_url: editing.apply_url ?? '', allowed_years: editing.allowed_years,
@@ -132,7 +136,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
         setAssignment(null)
       }
     } else {
-      setF((p) => ({ ...p, title: '', description: '', pay: '', duration: '', deadline: '', tags: '', responsibilities: [], benefits: [], qualifications: [], apply_url: '', allowed_years: [], allowed_schools: '', students_only: false, fromOther: false, original_company_name: '' }))
+      setF((p) => ({ ...p, title: '', description: '', pay: '', duration: '', deadline: '', tags: '', responsibilities: [], benefits: [], qualifications: [], apply_url: '', allowed_years: [], allowed_schools: '', students_only: false, fromOther: false, original_company_name: '', country: user.country || 'Remote' }))
       setAssignment(null)
     }
   }, [editing])
@@ -333,7 +337,13 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
           <div className="grid gap-4 sm:grid-cols-2">
             <div><Label>Category</Label><Select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</Select></div>
             <div><Label>Type</Label><Select value={f.listing_type} onChange={(e) => setF({ ...f, listing_type: e.target.value as ListingType })}>{LISTING_TYPES.map((c) => <option key={c}>{c}</option>)}</Select></div>
-            <div><Label>Country</Label><Select value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })}>{LIVE_COUNTRIES.map((c) => <option key={c}>{c}</option>)}</Select></div>
+            <div>
+              <Label>Country {countryLocked && <span className="text-xs font-normal text-muted-foreground">· locked to your company</span>}</Label>
+              <Select value={f.country} disabled={countryLocked} onChange={(e) => setF({ ...f, country: e.target.value })}>{LIVE_COUNTRIES.map((c) => <option key={c}>{c}</option>)}</Select>
+              {countryLocked
+                ? <p className="mt-1 text-xs text-muted-foreground">Company listings use your organization's country (set on your profile). Schools may post in any country.</p>
+                : isCompany && <p className="mt-1 text-xs text-muted-foreground">Set your company's country on your profile to lock future listings to it.</p>}
+            </div>
             <div><Label>Location (display)</Label><Input value={f.location} onChange={(e) => setF({ ...f, location: e.target.value })} placeholder="London, UK · Hybrid" /></div>
             <div><Label>Pay / Stipend</Label><Input value={f.pay} onChange={(e) => setF({ ...f, pay: e.target.value })} placeholder="$2,000 / month" /></div>
             <div><Label>Duration</Label><Input value={f.duration} onChange={(e) => setF({ ...f, duration: e.target.value })} placeholder="6 months" /></div>

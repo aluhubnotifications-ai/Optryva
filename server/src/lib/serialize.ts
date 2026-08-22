@@ -18,6 +18,8 @@ export function rowToProfile(r: any, includePrivate = false) {
     major: r.major ?? undefined,
     year: r.year ?? undefined,
     location: r.location ?? undefined,
+    country: r.country ?? undefined,
+    gpa: r.gpa ?? undefined,
     linkedin: r.linkedin ?? undefined,
     github: r.github ?? undefined,
     twitter: r.twitter ?? undefined,

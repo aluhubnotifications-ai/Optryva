@@ -60,6 +60,7 @@ export default function Profile() {
     major: user.major ?? '',
     year: user.year ? String(user.year) : '',
     location: user.location ?? '',
+    gpa: user.gpa ?? '',
     linkedin: user.linkedin ?? '',
     github: user.github ?? '',
     twitter: user.twitter ?? '',
@@ -86,6 +87,7 @@ export default function Profile() {
       major: form.major,
       year: form.year ? Number(form.year) : undefined,
       location: form.location,
+      gpa: form.gpa.trim() || undefined,
       linkedin: form.linkedin,
       github: form.github,
       twitter: form.twitter,
@@ -205,6 +207,7 @@ export default function Profile() {
               </Select>
             </div>
             <div><Label>Location</Label><Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="City, Country" /></div>
+            <div><Label>GPA</Label><Input value={form.gpa} onChange={(e) => setForm({ ...form, gpa: e.target.value })} placeholder="e.g. 3.8/4.0 or Second Class Upper" /></div>
           </div>
         </div>
       </Section>

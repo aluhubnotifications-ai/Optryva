@@ -412,6 +412,30 @@ Implementation:
 
 ## Non-Negotiable Product Rules
 
+### D5 — Student GPA + poster country with opportunity-country lock
+
+**Decision:**
+- Students can record a **GPA in any format** (free text — e.g. `3.8/4.0`,
+  `Second Class Upper`) on their profile. Stored as `profiles.gpa`; only the
+  student edits/sees it on their own profile (not surfaced to employers unless
+  we later choose to).
+- Company and school accounts have a **`country`** on their profile. When creating
+  an opportunity:
+  - **Companies are locked** to their own profile country (the Country field is
+    disabled in the listing editor) — they post their own opportunities.
+  - **Schools may choose any country** per opportunity (the field is editable).
+
+Implementation:
+- Migration `0029_profiles_country_gpa.sql` adds `country` + `gpa` (nullable).
+  (Also renamed the stray `0023_backfill_first_resume.sql` → `0025_…` to fix a
+  `schema_migrations` primary-key collision with `0023_ai_assignments.sql`.)
+- `server`: `country`/`gpa` added to the profile EDITABLE allow-list and to
+  `rowToProfile`; `country` added to the directory `LIST_COLUMNS`.
+- `client`: `Profile` type gains `country?`/`gpa?`. Student `Profile.tsx` gets a
+  free-text GPA field. `CompanyProfile.tsx` gets a Country selector (both company
+  and school). `JobEditor.tsx` defaults the listing Country from the poster's
+  profile and disables it for companies.
+
 - AI must not invent résumé experience or evidence.
 - AI must not make an untraceable final hiring decision.
 - Employers retain final human decision authority.

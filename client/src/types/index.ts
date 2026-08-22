@@ -19,6 +19,8 @@ export interface Profile {
   major?: string
   year?: number // 1..4 (study year), optional/global
   location?: string
+  country?: string
+  gpa?: string // free-text, any format the student likes (e.g. "3.8/4.0", "Second Class Upper")
   linkedin?: string
   github?: string
   twitter?: string
