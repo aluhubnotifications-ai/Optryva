@@ -424,8 +424,10 @@ Implementation:
   rather than a placeholder. Images go straight to pixtral as `image_url` parts.
   (Scanned/image-only PDFs can't be OCR'd by this path yet — they degrade to the
   text-only/placeholder behaviour.)
-- Provider order: **Mistral → Claude → deterministic template**. Mistral falls back to
-  Claude if it returns nothing; if neither key is set it returns the canned template.
+- Provider order: **Mistral (preferred) → Claude → clear 503**. Generation is AI-only
+  (no canned template). When `MISTRAL_API_KEY` is set, Mistral is used on its own so its
+  behaviour is observable; if it returns nothing we 503 rather than silently faking a result.
+  With no AI key at all, the route returns `ai_unavailable` telling the caller to set a key.
 - `server/src/lib/mistral.ts`: `mistralJsonBlocks` (multimodal content parts) + `extractPdfText`.
   Both return null on failure so callers fall back. Keys: `MISTRAL_API_KEY` (local `.env`;
   production `wrangler secret put MISTRAL_API_KEY`). Usage metered via `recordUsage`

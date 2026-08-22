@@ -6,10 +6,11 @@ import { mistralJsonBlocks, hasMistral, MISTRAL_MODEL, MISTRAL_VISION_MODEL, ext
 export function registerAssignment(r: Router) {
   /* ---------- §8.x AI assignment studio ----------
    * An employer uploads a brief (PDF/docx/txt/image) and/or describes the role;
-   * Claude designs a practical candidate assignment: a title, an overview
-   * prompt, 3-6 questions (mixed types), and a scoring rubric. Supports a
-   * "refine" pass: the caller resends an instruction plus the current
-   * questions/rubric and Claude revises them in place. */
+   * Mistral (preferred) or Claude designs a practical candidate assignment: a
+   * title, an overview prompt, 3-6 questions (mixed types), and a scoring rubric.
+   * Generation is AI-only (no template fallback). Supports a "refine" pass: the
+   * caller resends an instruction plus the current questions/rubric and the model
+   * revises them in place. */
   r.post('/assignment/generate', async (req, res) => {
     const { job, sources, instruction, existing } = req.body ?? {}
     try {
@@ -19,25 +20,26 @@ export function registerAssignment(r: Router) {
         return res.status(400).json({ error: 'no_input', message: 'Upload a document or describe the role first.' })
       }
 
-      // Provider order: Mistral (smartest model) for assignment design, then
-      // Claude, then the deterministic template. When MISTRAL_API_KEY is set,
-      // Mistral designs the assignment — reading images via pixtral and extracting
-      // PDF text locally (unpdf) — and falls back to Claude if it returns nothing.
+      // Assessment generation is AI-only (no deterministic template — a real brief
+      // needs a model). When MISTRAL_API_KEY is set, Mistral designs the assignment
+      // (pixtral reads images, unpdf extracts PDF text). If Mistral is configured it
+      // is used on its own so its behaviour is observable; otherwise we fall back to
+      // Claude. With no AI key at all, fail clearly instead of faking a result.
       if (hasMistral()) {
         const parts = await buildMistralContent(job, docs, instruction, existing)
-        if (parts.length) {
-          const hasImage = parts.some((p) => p.type === 'image_url')
-          const model = hasImage ? MISTRAL_VISION_MODEL : MISTRAL_MODEL
-          const result = await mistralJsonBlocks<GeneratedAssignment>({
-            model,
-            maxTokens: 2000,
-            system: ASSIGNMENT_SYSTEM,
-            content: parts,
-            schema: ASSIGNMENT_SCHEMA,
-            temperature: 0.4,
-          })
-          if (result) return res.json(normalize(result))
-        }
+        if (!parts.length) return res.status(400).json({ error: 'no_input', message: 'Upload a document or describe the role first.' })
+        const hasImage = parts.some((p) => p.type === 'image_url')
+        const model = hasImage ? MISTRAL_VISION_MODEL : MISTRAL_MODEL
+        const result = await mistralJsonBlocks<GeneratedAssignment>({
+          model,
+          maxTokens: 2000,
+          system: ASSIGNMENT_SYSTEM,
+          content: parts,
+          schema: ASSIGNMENT_SCHEMA,
+          temperature: 0.4,
+        })
+        if (result) return res.json(normalize(result))
+        return res.status(503).json({ error: 'ai_unavailable', message: 'Mistral did not return a valid assignment.' })
       }
       if (hasClaude()) {
         const content = await buildAssignmentContent(job, docs, instruction, existing)
@@ -51,7 +53,10 @@ export function registerAssignment(r: Router) {
         if (result) return res.json(normalize(result))
         return res.status(503).json({ error: 'ai_unavailable' })
       }
-      return res.json(fallbackAssignment(job, instruction))
+      return res.status(503).json({
+        error: 'ai_unavailable',
+        message: 'Assessment generation needs an AI provider. Set MISTRAL_API_KEY (preferred) or ANTHROPIC_API_KEY.',
+      })
     } catch (e: any) {
       res.status(500).json({ error: 'generation_failed', message: e?.message ?? String(e) })
     }
@@ -277,26 +282,6 @@ function normalize(r: GeneratedAssignment) {
   }
 }
 
-/** No-API-key safety net: a sensible template derived from the role. */
-function fallbackAssignment(job: any, instruction?: string) {
-  const title = job?.title ? `${job.title} practical challenge` : 'Practical challenge'
-  return {
-    title,
-    prompt:
-      instruction?.trim() ||
-      `Show us how you would approach a realistic problem for this ${job?.type || 'role'}. Share your assumptions, decisions, and what you would measure.`,
-    questions: [
-      { type: 'essay', prompt: 'Walk us through how you would tackle the core challenge of this role. What would you do in the first week?', required: true },
-      { type: 'single_choice', prompt: 'Which best describes your approach to ambiguous problems?', required: true, options: ['Move fast and ask later', 'Clarify then plan', 'Wait for direction', 'Avoid them'] },
-      { type: 'video', prompt: 'Record a 2-minute video introducing yourself and a project you’re proud of.', required: false },
-    ],
-    rubric: [
-      { label: 'Problem framing and clarity', points: 30 },
-      { label: 'Technical or strategic approach', points: 40 },
-      { label: 'Communication and trade-offs', points: 30 },
-    ],
-  }
-}
 
 /* ---------- §5.x AI assessment scoring ----------
  * Given an approved assignment and a candidate's submitted answers, Claude returns
