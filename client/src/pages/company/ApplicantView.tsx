@@ -1,8 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft,
-  ArrowRight,
   Briefcase,
   Mail,
   MapPin,
@@ -74,7 +73,6 @@ function ScoreRing({ score, label, hint }: { score?: number; label: string; hint
 export default function ApplicantView() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const location = useLocation()
   const { toast } = useToast()
   const user = useCurrentUser()!
   const [app, setApp] = useState<Application | null>(null)
@@ -84,10 +82,9 @@ export default function ApplicantView() {
   const [overrideScore, setOverrideScore] = useState<string>('')
   const [decisionNote, setDecisionNote] = useState<string>('')
   const [active, setActive] = useState<StepId>('candidate')
-  // Ordered sibling ids so a reviewer can step Prev/Next through the inbox they
-  // came from. Passed via router state by the inbox; if opened directly we fall
-  // back to this listing's applicants (fetched below).
-  const [siblingIds, setSiblingIds] = useState<string[] | null>(null)
+  // Other applicants for the SAME job, shown in a sidebar so a reviewer can jump
+  // straight to any of them (instead of stepping with Prev/Next).
+  const [jobApplicants, setJobApplicants] = useState<Application[] | null>(null)
   const refs: Record<StepId, React.RefObject<HTMLDivElement>> = {
     candidate: useRef<HTMLDivElement>(null),
     assessment: useRef<HTMLDivElement>(null),
@@ -101,19 +98,12 @@ export default function ApplicantView() {
     if (!a) { setLoading(false); return }
     const j = await jobsApi.get(a.job_id)
     setApp(a); setJob(j); setDecisionNote(a.decision_reason ?? ''); setLoading(false)
-    const passed = (location.state as { siblingIds?: string[] } | null)?.siblingIds
-    if (passed?.length) setSiblingIds(passed)
-    else applicationsApi.byJob(a.job_id).then((list) => { if (list?.length) setSiblingIds(list.map((x) => x.id)) }).catch(() => {})
+    applicationsApi.byJob(a.job_id).then((list) => setJobApplicants(list ?? [])).catch(() => setJobApplicants([]))
   }
   useEffect(() => { load() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <p className="py-20 text-center text-sm text-muted-foreground">Loading…</p>
   if (!app) return <div className="py-20 text-center"><p className="font-medium">Applicant not found.</p></div>
-
-  const idx = siblingIds ? siblingIds.indexOf(app.id) : -1
-  const prevId = idx > 0 ? siblingIds![idx - 1] : null
-  const nextId = idx >= 0 && idx < (siblingIds?.length ?? 0) - 1 ? siblingIds![idx + 1] : null
-  const goApplicant = (sid: string | null) => { if (sid) navigate(`/app/applicants/${sid}`, { state: siblingIds ? { siblingIds } : undefined }) }
 
   const hasAssignment = !!job?.assignment && (app.assignment_answers?.length ?? 0) > 0
   const sectionOrder: StepId[] = hasAssignment ? ['candidate', 'assessment', 'scoring', 'decision'] : ['candidate', 'scoring', 'decision']
@@ -168,7 +158,7 @@ export default function ApplicantView() {
   const listingDeadline = job ? daysUntil(job.deadline) : null
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5">
+    <div className="mx-auto max-w-6xl">
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
@@ -188,8 +178,42 @@ export default function ApplicantView() {
         )}
       </div>
 
-      {/* Listing context — always visible so reviewers know which role this is for */}
-      {job && (
+      <div className="mt-4 grid gap-5 lg:grid-cols-[260px_1fr]">
+        {/* Sidebar: other applicants for this job — jump straight to any of them */}
+        <aside className="lg:sticky lg:top-[7.5rem] lg:h-[calc(100vh-9rem)]">
+          <Card className="h-full">
+            <CardBody className="flex h-full flex-col p-0">
+              <div className="border-b border-border px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Applicants</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">{jobApplicants?.length ?? 0} for this role</p>
+              </div>
+              <div className="flex-1 space-y-1 overflow-y-auto p-2">
+                {jobApplicants?.map((ja) => {
+                  const activeA = ja.id === app.id
+                  return (
+                    <button
+                      key={ja.id}
+                      type="button"
+                      onClick={() => navigate(`/app/applicants/${ja.id}`)}
+                      className={cn('flex w-full items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition-colors', activeA ? 'border-primary/40 bg-primary/10' : 'border-transparent hover:bg-muted/50')}
+                    >
+                      <Avatar name={ja.full_name} src={ja.student_avatar_url} size={32} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{ja.full_name}</p>
+                        <p className="truncate text-xs text-muted-foreground">{ja.school}{ja.year ? ` · Y${ja.year}` : ''}</p>
+                      </div>
+                      <Badge tone={statusTone[ja.status]} className="shrink-0 capitalize text-[10px]">{ja.status === 'hired' ? 'Hired' : ja.status}</Badge>
+                    </button>
+                  )
+                })}
+              </div>
+            </CardBody>
+          </Card>
+        </aside>
+
+        <div className="min-w-0 space-y-5">
+          {/* Listing context — always visible so reviewers know which role this is for */}
+          {job && (
         <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-card to-accent/5">
           <CardBody className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
@@ -231,13 +255,6 @@ export default function ApplicantView() {
               </div>
             </div>
             <div className="flex flex-col items-end gap-2">
-              {siblingIds && idx >= 0 && (
-                <div className="flex items-center gap-1.5">
-                  <Button size="sm" variant="outline" className="gap-1" disabled={!prevId} onClick={() => goApplicant(prevId)}><ArrowRight className="h-3.5 w-3.5 rotate-180" /> Prev</Button>
-                  <span className="text-xs text-muted-foreground">{idx + 1} / {siblingIds.length}</span>
-                  <Button size="sm" variant="outline" className="gap-1" disabled={!nextId} onClick={() => goApplicant(nextId)}>Next <ArrowRight className="h-3.5 w-3.5" /></Button>
-                </div>
-              )}
               <Badge tone={statusTone[app.status]} className="capitalize">{app.status === 'hired' ? 'Hired' : app.status}</Badge>
               <div className="flex gap-1.5">
                 <ScorePill label="Fit" score={app.match_score} />
@@ -414,6 +431,8 @@ export default function ApplicantView() {
           </div>
         </SectionCard>
       </div>
+      </div>
+    </div>
     </div>
   )
 }
