@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, Eye, FileText, Pause, Play, Plus, Save, Trash2, Upload, X } from 'lucide-react'
+import { ChevronDown, Eye, FileText, Maximize2, Minimize2, Pause, Play, Plus, Save, Trash2, Upload, X } from 'lucide-react'
+import { Spinner } from '@/components/ui/Spinner'
 import { fetchProtectedDocument, resumesApi } from '@/lib/api'
 import type { ListingType, ResumeProfile, WorkType } from '@/types'
 import { Card, CardBody, Badge, Input, Label, Select } from '@/components/ui/primitives'
@@ -29,6 +30,9 @@ export function ResumeWorkspace() {
   const [skillInputs, setSkillInputs] = useState<Record<string, string>>({})
   const [countryInputs, setCountryInputs] = useState<Record<string, string>>({})
   const [preview, setPreview] = useState<{ resume: ResumeProfile; url: string; type: string } | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewDocumentLoading, setPreviewDocumentLoading] = useState(false)
+  const [previewExpanded, setPreviewExpanded] = useState(false)
 
   useEffect(() => {
     resumesApi.list().then(setResumes).catch(() => toast({ title: 'Could not load résumé profiles', tone: 'error' })).finally(() => setLoading(false))
@@ -88,7 +92,12 @@ export function ResumeWorkspace() {
 
   async function view(resume: ResumeProfile) {
     if (!resume.cv_url) return
+    if (preview?.url.startsWith('blob:')) URL.revokeObjectURL(preview.url)
+    setPreviewLoading(true)
+    setPreviewExpanded(false)
+    setPreview({ resume, url: '', type: 'document' })
     try {
+      const startedAt = Date.now()
       let documentPath = resume.cv_url
       try { documentPath = new URL(resume.cv_url, window.location.origin).pathname } catch { /* use the supplied URL */ }
       const isProtectedDocument = documentPath.startsWith('/api/documents/')
@@ -98,15 +107,23 @@ export function ResumeWorkspace() {
           ? URL.createObjectURL(await (await fetch(resume.cv_url)).blob())
           : resume.cv_url
       const type = resume.cv_filename?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : resume.cv_filename?.match(/\.(png|jpe?g)$/i) ? 'image' : 'document'
+      const remainingDelay = Math.max(0, 450 - (Date.now() - startedAt))
+      if (remainingDelay) await new Promise((resolve) => window.setTimeout(resolve, remainingDelay))
+      setPreviewDocumentLoading(type === 'application/pdf' || type === 'image')
       setPreview({ resume, url, type })
     } catch (error) {
       toast({ title: 'Could not open résumé', description: error instanceof Error ? error.message : undefined, tone: 'error' })
+    } finally {
+      setPreviewLoading(false)
     }
   }
 
   function closePreview() {
     if (preview?.url.startsWith('blob:')) URL.revokeObjectURL(preview.url)
     setPreview(null)
+    setPreviewExpanded(false)
+    setPreviewLoading(false)
+    setPreviewDocumentLoading(false)
   }
 
   if (loading) return <Card><CardBody><p className="text-sm text-muted-foreground">Loading résumé profiles…</p></CardBody></Card>
@@ -145,11 +162,26 @@ export function ResumeWorkspace() {
           </div>
         )}
       </CardBody>
-      <Modal open={!!preview} onClose={closePreview} size="xl" title={preview?.resume.cv_filename ?? 'Résumé preview'} description="Private document preview">
-        {preview && (preview.type === 'application/pdf' ? (
-          <iframe src={preview.url} title={preview.resume.cv_filename ?? 'Résumé'} className="h-[70dvh] w-full rounded-lg border border-border" />
+      <Modal open={!!preview} onClose={closePreview} size="xl" className={previewExpanded ? 'max-h-[calc(100dvh-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-[calc(100vw-2rem)]' : undefined} title={
+        <div className="flex items-center justify-between gap-3">
+          <span className="truncate">{preview?.resume.cv_filename ?? 'Résumé preview'}</span>
+          <Button variant="ghost" size="icon" onClick={() => setPreviewExpanded((value) => !value)} aria-label={previewExpanded ? 'Exit full screen preview' : 'View résumé full screen'} title={previewExpanded ? 'Exit full screen' : 'View full screen'}>
+            {previewExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
+        </div>
+      } description="Private document preview">
+        {previewLoading ? (
+          <div className="flex h-[45dvh] flex-col items-center justify-center gap-3 text-muted-foreground"><Spinner className="h-8 w-8 text-primary" label="Preparing preview" /><p className="text-sm">Preparing your résumé preview…</p></div>
+        ) : preview && (preview.type === 'application/pdf' ? (
+          <div className="relative">
+            <iframe src={preview.url} title={preview.resume.cv_filename ?? 'Résumé'} onLoad={() => setPreviewDocumentLoading(false)} className={cn('w-full rounded-lg border border-border', previewExpanded ? 'h-[calc(100dvh-9rem)]' : 'h-[70dvh]')} />
+            {previewDocumentLoading && <div className="absolute inset-0 flex items-center justify-center bg-card/80"><Spinner className="h-8 w-8 text-primary" label="Loading résumé" /></div>}
+          </div>
         ) : preview.type === 'image' ? (
-          <img src={preview.url} alt={preview.resume.cv_filename ?? 'Résumé'} className="mx-auto max-h-[70dvh] max-w-full rounded-lg object-contain" />
+          <div className="relative flex justify-center">
+            <img src={preview.url} alt={preview.resume.cv_filename ?? 'Résumé'} onLoad={() => setPreviewDocumentLoading(false)} className={cn('mx-auto max-w-full rounded-lg object-contain', previewExpanded ? 'max-h-[calc(100dvh-9rem)]' : 'max-h-[70dvh]')} />
+            {previewDocumentLoading && <div className="absolute inset-0 flex items-center justify-center bg-card/80"><Spinner className="h-8 w-8 text-primary" label="Loading résumé" /></div>}
+          </div>
         ) : (
           <div className="flex flex-col items-center gap-3 py-12 text-center">
             <FileText className="h-10 w-10 text-primary" />
