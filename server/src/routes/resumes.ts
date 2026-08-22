@@ -2,7 +2,7 @@ import { Router } from '@/lib/http'
 import { sb, must, j } from '@/db'
 import { requireAuth } from '@/lib/auth'
 import { uid, now } from '@/lib/util'
-import { documentUrl, storeDocument, validateDocumentUrl } from '@/lib/documents'
+import { documentUrl, pathFromToken, storeDocument, validateDocumentUrl } from '@/lib/documents'
 
 export const resumes = Router()
 resumes.use(requireAuth)
@@ -36,6 +36,12 @@ function owned(id: string, studentId: string) {
 async function storageColumnExists(): Promise<boolean> {
   const { error } = await sb.from('resume_profiles').select('cv_storage_path').limit(1)
   return !error
+}
+
+function ownedDocumentPath(value: unknown, ownerId: string): string | null {
+  if (typeof value !== 'string' || !value.startsWith('/api/documents/')) return null
+  const path = pathFromToken(value.slice('/api/documents/'.length))
+  return path && path.startsWith(`${ownerId}/`) ? path : null
 }
 
 resumes.get('/', async (req, res) => {
@@ -76,7 +82,8 @@ resumes.post('/', async (req, res) => {
   const b = req.body ?? {}
   const name = String(b.name ?? '').trim()
   if (!name) return res.status(400).json({ error: 'name_required' })
-  if (b.cv_url) {
+  const existingPath = ownedDocumentPath(b.cv_url, req.user!.id)
+  if (b.cv_url && !existingPath) {
     const documentError = validateDocumentUrl(b.cv_url)
     if (documentError) return res.status(400).json({ error: documentError })
   }
@@ -88,12 +95,14 @@ resumes.post('/', async (req, res) => {
     name,
     work_type: b.work_type ?? 'any',
     cv_filename: b.cv_filename ?? null,
-    cv_url: b.cv_url ?? null,
+    cv_url: existingPath ? documentUrl(existingPath) : null,
     active: b.active === false ? 0 : 1,
     created_at: ts,
     updated_at: ts,
   }
-  if (b.cv_url) {
+  if (existingPath) {
+    row.cv_storage_path = existingPath
+  } else if (b.cv_url) {
     if (!await storageColumnExists()) return res.status(503).json({ error: 'document_storage_unavailable' })
     const stored = await storeDocument(req.user!.id, 'resume', b.cv_filename ?? 'resume', b.cv_url)
     row.cv_url = documentUrl(stored.path)
@@ -110,13 +119,19 @@ resumes.patch('/:id', async (req, res) => {
   if (!current) return res.status(404).json({ error: 'not_found' })
   const b = req.body ?? {}
   const update: Record<string, any> = { updated_at: now() }
+  const existingPath = ownedDocumentPath(b.cv_url, req.user!.id)
   if ('cv_url' in b && b.cv_url) {
-    const documentError = validateDocumentUrl(b.cv_url)
+    const documentError = existingPath ? null : validateDocumentUrl(b.cv_url)
     if (documentError) return res.status(400).json({ error: documentError })
     if (!await storageColumnExists()) return res.status(503).json({ error: 'document_storage_unavailable' })
-    const stored = await storeDocument(req.user!.id, 'resume', b.cv_filename ?? current.cv_filename ?? 'resume', b.cv_url)
-    update.cv_url = documentUrl(stored.path)
-    update.cv_storage_path = stored.path
+    if (existingPath) {
+      update.cv_url = documentUrl(existingPath)
+      update.cv_storage_path = existingPath
+    } else {
+      const stored = await storeDocument(req.user!.id, 'resume', b.cv_filename ?? current.cv_filename ?? 'resume', b.cv_url)
+      update.cv_url = documentUrl(stored.path)
+      update.cv_storage_path = stored.path
+    }
   }
   for (const field of editable) if (field in b && !(field === 'cv_url' && b.cv_url)) update[field] = field === 'active' ? (b[field] ? 1 : 0) : (b[field] ?? null)
   for (const field of arrays) if (field in b) update[field] = j.stringify(Array.isArray(b[field]) ? b[field] : [])
