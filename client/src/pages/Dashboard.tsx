@@ -89,6 +89,8 @@ function StudentDashboard({ user }: { user: Profile }) {
     // Kick off AI matching only once the browser is idle, so it never competes
     // with the dashboard's first paint / data load. The runner itself is
     // idempotent, so navigating back reuses the same scores.
+    void useMatchProgress.getState().hydrate(user.id)
+
     const startMatching = () => {
       if (!active) return
       if (!needsMatchRun(useMatchRun.getState().lastRun[user.id])) return

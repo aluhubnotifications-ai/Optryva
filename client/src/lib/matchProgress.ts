@@ -28,6 +28,8 @@ interface MatchProgressState {
    *  or already finished with results (so navigating between pages reuses the
    *  same matches instead of re-scoring). Pass force=true to re-run. */
   run: (userId: string, force?: boolean) => Promise<void>
+  /** Restore stored scores without starting matching. */
+  hydrate: (userId: string) => Promise<void>
   /** Score ONE opportunity on demand (for roles the funnel didn't auto-score).
    *  The result is upserted into `matches`, so a scored role "joins matches"
    *  everywhere the store is read. Returns the match, or null on failure. */
@@ -45,6 +47,13 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
   matches: [],
   missing: [],
   scoring: [],
+
+  hydrate: async (userId) => {
+    const s = get()
+    if (s.userId === userId && s.matches.length > 0) return
+    const cached = await aiApi.cachedMatches()
+    if (cached.length) set({ userId, phase: 'done', matches: cached, done: cached.length, total: cached.length, label: '', missing: [], scoring: [] })
+  },
 
   scoreOne: async (job) => {
     const id = job.id
