@@ -175,6 +175,7 @@ export function ApplicantInbox({
               <Link
                 key={a.id}
                 to={`/app/applicants/${a.id}`}
+                state={{ siblingIds: filtered.map((x) => x.id) }}
                 className={cn('block', selected.has(a.id) && 'rounded-2xl ring-2 ring-primary')}
               >
                 <Card className="transition-shadow hover:shadow-card">

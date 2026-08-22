@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft,
+  ArrowRight,
   Briefcase,
   Mail,
   MapPin,
@@ -73,6 +74,7 @@ function ScoreRing({ score, label, hint }: { score?: number; label: string; hint
 export default function ApplicantView() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const { toast } = useToast()
   const user = useCurrentUser()!
   const [app, setApp] = useState<Application | null>(null)
@@ -83,6 +85,10 @@ export default function ApplicantView() {
   const [overrideScore, setOverrideScore] = useState<string>('')
   const [decisionNote, setDecisionNote] = useState<string>('')
   const [active, setActive] = useState<StepId>('candidate')
+  // Ordered sibling ids so a reviewer can step Prev/Next through the inbox they
+  // came from. Passed via router state by the inbox; if opened directly we fall
+  // back to this listing's applicants (fetched below).
+  const [siblingIds, setSiblingIds] = useState<string[] | null>(null)
   const refs: Record<StepId, React.RefObject<HTMLDivElement>> = {
     candidate: useRef<HTMLDivElement>(null),
     assessment: useRef<HTMLDivElement>(null),
@@ -96,11 +102,19 @@ export default function ApplicantView() {
     if (!a) { setLoading(false); return }
     const [j, s] = await Promise.all([jobsApi.get(a.job_id), profilesApi.get(a.student_id)])
     setApp(a); setJob(j); setStudent(s); setDecisionNote(a.decision_reason ?? ''); setLoading(false)
+    const passed = (location.state as { siblingIds?: string[] } | null)?.siblingIds
+    if (passed?.length) setSiblingIds(passed)
+    else applicationsApi.byJob(a.job_id).then((list) => { if (list?.length) setSiblingIds(list.map((x) => x.id)) }).catch(() => {})
   }
   useEffect(() => { load() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <p className="py-20 text-center text-sm text-muted-foreground">Loading…</p>
   if (!app) return <div className="py-20 text-center"><p className="font-medium">Applicant not found.</p></div>
+
+  const idx = siblingIds ? siblingIds.indexOf(app.id) : -1
+  const prevId = idx > 0 ? siblingIds![idx - 1] : null
+  const nextId = idx >= 0 && idx < (siblingIds?.length ?? 0) - 1 ? siblingIds![idx + 1] : null
+  const goApplicant = (sid: string | null) => { if (sid) navigate(`/app/applicants/${sid}`, { state: siblingIds ? { siblingIds } : undefined }) }
 
   const hasAssignment = !!job?.assignment && (app.assignment_answers?.length ?? 0) > 0
   const sectionOrder: StepId[] = hasAssignment ? ['candidate', 'assessment', 'scoring', 'decision'] : ['candidate', 'scoring', 'decision']
@@ -218,6 +232,13 @@ export default function ApplicantView() {
               </div>
             </div>
             <div className="flex flex-col items-end gap-2">
+              {siblingIds && idx >= 0 && (
+                <div className="flex items-center gap-1.5">
+                  <Button size="sm" variant="outline" className="gap-1" disabled={!prevId} onClick={() => goApplicant(prevId)}><ArrowRight className="h-3.5 w-3.5 rotate-180" /> Prev</Button>
+                  <span className="text-xs text-muted-foreground">{idx + 1} / {siblingIds.length}</span>
+                  <Button size="sm" variant="outline" className="gap-1" disabled={!nextId} onClick={() => goApplicant(nextId)}>Next <ArrowRight className="h-3.5 w-3.5" /></Button>
+                </div>
+              )}
               <Badge tone={statusTone[app.status]} className="capitalize">{app.status === 'hired' ? 'Hired' : app.status}</Badge>
               <div className="flex gap-1.5">
                 <ScorePill label="Fit" score={app.match_score} />
