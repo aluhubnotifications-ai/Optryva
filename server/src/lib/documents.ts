@@ -15,12 +15,29 @@ const ALLOWED_MIME = new Set([
   'text/plain',
   'image/jpeg',
   'image/png',
+  'application/rtf',
+  'application/vnd.oasis.opendocument.text',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ])
 
-export function validateDocumentUrl(value: unknown): string | null {
+const MIME_BY_EXTENSION: Record<string, string> = {
+  pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  txt: 'text/plain', rtf: 'application/rtf', odt: 'application/vnd.oasis.opendocument.text',
+  ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+}
+
+export function validateDocumentUrl(value: unknown, filename?: unknown): string | null {
   if (typeof value !== 'string' || !value) return 'document_url_invalid'
   const match = DATA_URL_RE.exec(value)
-  if (!match || !ALLOWED_MIME.has(match[1].toLowerCase())) return 'document_format_invalid'
+  if (!match) return 'document_format_invalid'
+  const extension = typeof filename === 'string' ? filename.toLowerCase().split('.').pop() : ''
+  const mime = match[1].toLowerCase()
+  if (!ALLOWED_MIME.has(mime) && !(mime === 'application/octet-stream' && extension && MIME_BY_EXTENSION[extension])) return 'document_format_invalid'
   const payload = match[2].replace(/\s/g, '')
   if (payload.length % 4 === 1) return 'document_format_invalid'
   const bytes = Math.floor(payload.length * 3 / 4) - (payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0)
@@ -34,7 +51,7 @@ export function validateDocuments(value: unknown): string | null {
   let totalBytes = 0
   for (const document of value) {
     if (!document || typeof document !== 'object') return 'document_invalid'
-    const error = validateDocumentUrl((document as { url?: unknown }).url)
+    const error = validateDocumentUrl((document as { url?: unknown }).url, (document as { name?: unknown }).name)
     if (error) return error
     const url = (document as { url: string }).url
     const payload = url.slice(url.indexOf(',') + 1).replace(/\s/g, '')

@@ -39,8 +39,11 @@ async function storageColumnExists(): Promise<boolean> {
 }
 
 function ownedDocumentPath(value: unknown, ownerId: string): string | null {
-  if (typeof value !== 'string' || !value.startsWith('/api/documents/')) return null
-  const path = pathFromToken(value.slice('/api/documents/'.length))
+  if (typeof value !== 'string') return null
+  let pathname = value
+  try { pathname = new URL(value).pathname } catch { /* relative URL */ }
+  if (!pathname.startsWith('/api/documents/')) return null
+  const path = pathFromToken(pathname.slice('/api/documents/'.length))
   return path && path.startsWith(`${ownerId}/`) ? path : null
 }
 
@@ -84,7 +87,7 @@ resumes.post('/', async (req, res) => {
   if (!name) return res.status(400).json({ error: 'name_required' })
   const existingPath = ownedDocumentPath(b.cv_url, req.user!.id)
   if (b.cv_url && !existingPath) {
-    const documentError = validateDocumentUrl(b.cv_url)
+    const documentError = validateDocumentUrl(b.cv_url, b.cv_filename)
     if (documentError) return res.status(400).json({ error: documentError })
   }
   const ts = now()
@@ -121,7 +124,7 @@ resumes.patch('/:id', async (req, res) => {
   const update: Record<string, any> = { updated_at: now() }
   const existingPath = ownedDocumentPath(b.cv_url, req.user!.id)
   if ('cv_url' in b && b.cv_url) {
-    const documentError = existingPath ? null : validateDocumentUrl(b.cv_url)
+    const documentError = existingPath ? null : validateDocumentUrl(b.cv_url, b.cv_filename)
     if (documentError) return res.status(400).json({ error: documentError })
     if (!await storageColumnExists()) return res.status(503).json({ error: 'document_storage_unavailable' })
     if (existingPath) {
