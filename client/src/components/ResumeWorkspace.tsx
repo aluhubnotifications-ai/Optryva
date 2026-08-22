@@ -4,6 +4,7 @@ import { fetchProtectedDocument, resumesApi } from '@/lib/api'
 import type { ListingType, ResumeProfile, WorkType } from '@/types'
 import { Card, CardBody, Badge, Input, Label, Select } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/toast'
 import { cn, fileToDataUrl } from '@/lib/utils'
 
@@ -27,6 +28,7 @@ export function ResumeWorkspace() {
   const [pendingResumeId, setPendingResumeId] = useState<string | null>(null)
   const [skillInputs, setSkillInputs] = useState<Record<string, string>>({})
   const [countryInputs, setCountryInputs] = useState<Record<string, string>>({})
+  const [preview, setPreview] = useState<{ resume: ResumeProfile; url: string; type: string } | null>(null)
 
   useEffect(() => {
     resumesApi.list().then(setResumes).catch(() => toast({ title: 'Could not load résumé profiles', tone: 'error' })).finally(() => setLoading(false))
@@ -86,11 +88,6 @@ export function ResumeWorkspace() {
 
   async function view(resume: ResumeProfile) {
     if (!resume.cv_url) return
-    const popup = window.open('', '_blank')
-    if (!popup) {
-      toast({ title: 'Could not open résumé', description: 'Please allow pop-ups for Optryva and try again.', tone: 'error' })
-      return
-    }
     try {
       let documentPath = resume.cv_url
       try { documentPath = new URL(resume.cv_url, window.location.origin).pathname } catch { /* use the supplied URL */ }
@@ -100,12 +97,16 @@ export function ResumeWorkspace() {
         : resume.cv_url.startsWith('data:')
           ? URL.createObjectURL(await (await fetch(resume.cv_url)).blob())
           : resume.cv_url
-      popup.location.href = url
-      if (url.startsWith('blob:')) setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      const type = resume.cv_filename?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : resume.cv_filename?.match(/\.(png|jpe?g)$/i) ? 'image' : 'document'
+      setPreview({ resume, url, type })
     } catch (error) {
-      popup.close()
       toast({ title: 'Could not open résumé', description: error instanceof Error ? error.message : undefined, tone: 'error' })
     }
+  }
+
+  function closePreview() {
+    if (preview?.url.startsWith('blob:')) URL.revokeObjectURL(preview.url)
+    setPreview(null)
   }
 
   if (loading) return <Card><CardBody><p className="text-sm text-muted-foreground">Loading résumé profiles…</p></CardBody></Card>
@@ -144,6 +145,19 @@ export function ResumeWorkspace() {
           </div>
         )}
       </CardBody>
+      <Modal open={!!preview} onClose={closePreview} size="xl" title={preview?.resume.cv_filename ?? 'Résumé preview'} description="Private document preview">
+        {preview && (preview.type === 'application/pdf' ? (
+          <iframe src={preview.url} title={preview.resume.cv_filename ?? 'Résumé'} className="h-[70dvh] w-full rounded-lg border border-border" />
+        ) : preview.type === 'image' ? (
+          <img src={preview.url} alt={preview.resume.cv_filename ?? 'Résumé'} className="mx-auto max-h-[70dvh] max-w-full rounded-lg object-contain" />
+        ) : (
+          <div className="flex flex-col items-center gap-3 py-12 text-center">
+            <FileText className="h-10 w-10 text-primary" />
+            <p className="text-sm text-muted-foreground">This file format cannot be previewed in the browser.</p>
+            <a href={preview.url} download={preview.resume.cv_filename ?? 'resume'} className="inline-flex items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">Download résumé</a>
+          </div>
+        ))}
+      </Modal>
     </Card>
   )
 }
