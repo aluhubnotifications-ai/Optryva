@@ -23,7 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { useToast } from "@/components/ui/toast";
 import { applicationsApi, jobsApi, profilesApi } from "@/lib/api";
 import { useCurrentUser } from "@/lib/store";
-import { formatDate, timeAgo } from "@/lib/utils";
+import { cn, formatDate, timeAgo } from "@/lib/utils";
 import type { Application, JobListing, Profile } from "@/types";
 
 const statusTone = {
@@ -48,6 +48,7 @@ export default function ApplicationDetail() {
 	const [research, setResearch] = useState(false);
 	const [confirmDelete, setConfirmDelete] = useState(false);
 	const [tab, setTab] = useState("overview");
+	const [attemptIdx, setAttemptIdx] = useState<number | null>(null);
 
 	useEffect(() => {
 		(async () => {
@@ -116,6 +117,61 @@ export default function ApplicationDetail() {
 					: "Ready to take"
 				: "Shortlist to unlock";
 
+	// Every submitted attempt is archived (assignment_attempts) so the candidate
+	// can review each one, including retakes granted by the employer. Older
+	// submissions without an archive are synthesised from the current fields.
+	const archivedAttempts = (app.assignment_attempts ?? []) as any[];
+	const attempts = archivedAttempts.length
+		? archivedAttempts
+		: app.assignment_status === "submitted"
+			? [{
+					index: 1,
+					is_retake: false,
+					submitted_at: app.assignment_submitted_at,
+					late: app.assignment_late,
+					duration_seconds: null,
+					answers: app.assignment_answers ?? [],
+					score: app.assignment_score ?? null,
+					ai_feedback: app.assignment_ai_feedback ?? null,
+					recommendation: app.ai_recommendation ?? null,
+				}]
+			: [];
+	const activeAttemptIdx =
+		attemptIdx != null && attemptIdx < attempts.length ? attemptIdx : attempts.length - 1;
+	const attempt = attempts[activeAttemptIdx];
+	const attemptApp = (attempt
+		? {
+				...app,
+				assignment_answers: (attempt.answers ?? []) as any,
+				assignment_ai_feedback: (attempt.ai_feedback ?? null) as any,
+				assignment_score: (attempt.score ?? undefined) as any,
+				ai_recommendation: (attempt.recommendation ?? undefined) as any,
+				assignment_late: !!attempt.late,
+			}
+		: app) as Application;
+	const AttemptSwitcher =
+		attempts.length > 1 ? (
+			<div className="mb-3 flex flex-wrap items-center gap-2">
+				<span className="text-xs font-medium text-muted-foreground">Attempt:</span>
+				{attempts.map((a: any, i: number) => (
+					<button
+						key={i}
+						type="button"
+						onClick={() => setAttemptIdx(i)}
+						className={cn(
+							"rounded-full border px-3 py-1 text-xs font-medium transition",
+							i === activeAttemptIdx
+								? "border-primary bg-primary text-primary-foreground"
+								: "border-border bg-muted hover:border-accent",
+						)}
+					>
+						Attempt {a.index}
+						{a.is_retake ? " (retake)" : ""}
+					</button>
+				))}
+			</div>
+		) : null;
+
 	async function withdraw() {
 		await applicationsApi.remove(app!.id);
 		toast({ title: "Application withdrawn", tone: "info" });
@@ -178,14 +234,21 @@ export default function ApplicationDetail() {
 							<p className="text-sm font-semibold leading-tight">
 								Assessment submitted
 							</p>
-							<p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-								Your answers are in. Results will appear once the employer
-								reviews them.
-							</p>
-						</div>
-					</div>
-				</div>
-			);
+										<p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+											Your answers are in. Results will appear once the employer
+											reviews them.
+										</p>
+										<Button
+											variant="outline"
+											className="mt-2.5 w-full gap-1.5"
+											onClick={() => setTab("results")}
+										>
+											<Sparkles className="h-4 w-4" /> View results
+										</Button>
+									</div>
+								</div>
+							</div>
+						);
 		if (job.assignment && eligible && exhausted)
 			return (
 				<div className="rounded-xl border border-danger/30 bg-danger/5 p-3">
@@ -501,11 +564,12 @@ export default function ApplicationDetail() {
 												<ClipboardCheck className="h-4 w-4" /> Take assessment
 											</Button>
 										)}
-									{app.assignment_status === "submitted" && (
-										<div className="mt-4">
-											<SubmittedAnswers job={job} application={app} />
-										</div>
-									)}
+								{app.assignment_status === "submitted" && (
+									<div className="mt-4">
+										{AttemptSwitcher}
+										<SubmittedAnswers job={job} application={attemptApp} />
+									</div>
+								)}
 								</>
 							) : (
 								<p className="text-sm text-muted-foreground">
@@ -517,11 +581,14 @@ export default function ApplicationDetail() {
 				</TabsContent>
 
 				<TabsContent value="results">
-					<Card>
-						<CardBody>
-							<GradeSummary application={app} />
-						</CardBody>
-					</Card>
+					<div className="space-y-4">
+						{AttemptSwitcher}
+						<Card>
+							<CardBody>
+								<GradeSummary application={attemptApp} />
+							</CardBody>
+						</Card>
+					</div>
 				</TabsContent>
 			</Tabs>
 				</div>
