@@ -159,6 +159,19 @@ function ScoreRing({ score, label, hint }: { score?: number; label: string; hint
   )
 }
 
+/* Deterministic monogram avatar (data URL) — used as a fallback so every
+ * candidate has a visible avatar even when they haven't uploaded a photo.
+ * When a real photo URL exists it takes precedence. */
+function monogramAvatar(name?: string): string {
+  const n = name?.trim() || '?'
+  const initials = (n.split(/\s+/).map((s) => s[0] ?? '').slice(0, 2).join('') || '?').toUpperCase()
+  let hash = 0
+  for (let i = 0; i < n.length; i++) hash = (hash * 31 + n.charCodeAt(i)) >>> 0
+  const hue = hash % 360
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><rect width="96" height="96" rx="48" fill="hsl(${hue} 55% 50%)"/><text x="50%" y="50%" dy=".35em" text-anchor="middle" font-family="system-ui, sans-serif" font-size="40" font-weight="600" fill="#fff">${initials}</text></svg>`
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`
+}
+
 export default function ApplicantView() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -314,7 +327,7 @@ export default function ApplicantView() {
                       onClick={() => navigate(`/app/applicants/${ja.id}`)}
                       className={cn('flex w-full items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition-colors', activeA ? 'border-primary/40 bg-primary/10' : 'border-transparent hover:bg-muted/50')}
                     >
-                      <Avatar name={ja.full_name} src={ja.student_avatar_url} size={32} />
+                      <Avatar name={ja.full_name} src={ja.student_avatar_url || monogramAvatar(ja.full_name)} size={32} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{ja.full_name}</p>
                         <p className="truncate text-xs text-muted-foreground">{ja.school}{ja.year ? ` · Y${ja.year}` : ''}</p>
@@ -366,7 +379,7 @@ export default function ApplicantView() {
         <CardBody>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex gap-3">
-              <Avatar name={app.full_name} src={app.student_avatar_url} size={52} />
+              <Avatar name={app.full_name} src={app.student_avatar_url || monogramAvatar(app.full_name)} size={52} />
               <div>
                 <h1 className="text-xl font-bold tracking-tight">{app.full_name}</h1>
                 <p className="text-sm text-muted-foreground">
@@ -704,7 +717,7 @@ export default function ApplicantView() {
 					<Card>
 						<CardBody className="space-y-3">
 							<div className="flex items-center gap-3">
-								<Avatar name={app.full_name} src={app.student_avatar_url} size={40} className="rounded-xl" />
+								<Avatar name={app.full_name} src={app.student_avatar_url || monogramAvatar(app.full_name)} size={40} className="rounded-xl" />
 								<div className="min-w-0">
 									<p className="truncate text-sm font-semibold">{app.full_name}</p>
 									<p className="truncate text-xs text-muted-foreground">
