@@ -678,16 +678,31 @@ export default function ApplicantView() {
               <p className="text-muted-foreground"><span className="font-medium text-foreground">You decide — AI only suggests.</span> Scores below are decision aids, not the final call.</p>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center gap-6">
-              <ScoreRing score={app.match_score} label="AI match fit" hint="From the student's matching" />
-              {hasAssignment && <ScoreRing score={attempt?.score ?? null} label="AI assessment" hint="Run the review below" />}
-              {shortlistCand && (
-                <ScoreRing
-                  score={shortlistCand.score_unavailable ? undefined : Math.round(shortlistCand.fit_score ?? shortlistCand.score * 100)}
-                  label="Smart Shortlist fit"
-                  hint="Employer-facing AI read"
-                />
-              )}
+            {/* ONE decision. Match + assessment appear only as labeled input chips below,
+                so there is no second "consider" competing with the Smart Shortlist. */}
+            <div className="mt-4 rounded-xl border border-accent/30 bg-accent/5 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Sparkles className="h-4 w-4 shrink-0 text-accent" />
+                <p className="text-sm font-semibold text-foreground">Smart Shortlist decision</p>
+                {shortlistCand?.verdict && (
+                  <Badge tone={shortlistCand.verdict === 'strong' ? 'success' : shortlistCand.verdict === 'weak' ? 'danger' : 'accent'} className="capitalize">{shortlistCand.verdict}</Badge>
+                )}
+                {shortlistCand?.category && (
+                  <Badge tone={shortlistCand.category === 'not_qualified' ? 'danger' : shortlistCand.category === 'potential_fit' ? 'success' : 'accent'}>
+                    {shortlistCand.category === 'not_qualified' ? 'Not qualified' : shortlistCand.category === 'insufficient_evidence' ? 'Insufficient evidence' : 'Potential fit'}
+                  </Badge>
+                )}
+              </div>
+              {shortlistCand?.decision_note && <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{shortlistCand.decision_note}</p>}
+              <p className="mt-1 text-xs text-muted-foreground">
+                {shortlistCand?.score_unavailable
+                  ? 'Fit shown is an AI estimate — the match score is not available for this candidate.'
+                  : shortlistCand ? <>Smart Shortlist fit: <b className="text-foreground">{Math.round(shortlistCand.fit_score ?? shortlistCand.score * 100)}/100</b>.</> : 'Smart Shortlist not computed yet.'}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                <span className="rounded-md bg-muted px-2 py-1 text-muted-foreground">Match fit: <b className="text-foreground">{app.match_score ?? '—'}</b> <span className="opacity-70">(student matching)</span></span>
+                <span className="rounded-md bg-muted px-2 py-1 text-muted-foreground">Assessment: <b className="text-foreground">{attempt?.score != null ? `${attempt.score}/100` : 'not run'}</b></span>
+              </div>
             </div>
 
             {app.match_rationale && (
@@ -725,36 +740,10 @@ export default function ApplicantView() {
             )}
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              {attempt?.recommendation && <Badge tone="outline">Assessment reviewed</Badge>}
               <Button size="sm" variant="outline" className="gap-1.5" onClick={runAiScore} loading={scoreBusy}>
                 <Sparkles className="h-4 w-4 text-accent" /> {attempt?.score != null ? 'Re-run AI' : 'Run AI review'}
               </Button>
             </div>
-
-            {/* Smart Shortlist decision — the single AI hiring suggestion. The assessment
-                above is evidence only (score + feedback), not a competing decision. */}
-            {shortlistCand && (
-              <div className="mt-3 rounded-xl border border-accent/30 bg-accent/5 p-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Sparkles className="h-4 w-4 shrink-0 text-accent" />
-                  <p className="text-sm font-medium text-foreground">Smart Shortlist decision</p>
-                  {shortlistCand.verdict && (
-                    <Badge tone={shortlistCand.verdict === 'strong' ? 'success' : shortlistCand.verdict === 'weak' ? 'danger' : 'accent'} className="capitalize">{shortlistCand.verdict}</Badge>
-                  )}
-                  {shortlistCand.category && (
-                    <Badge tone={shortlistCand.category === 'not_qualified' ? 'danger' : shortlistCand.category === 'potential_fit' ? 'success' : 'accent'}>
-                      {shortlistCand.category === 'not_qualified' ? 'Not qualified' : shortlistCand.category === 'insufficient_evidence' ? 'Insufficient evidence' : 'Potential fit'}
-                    </Badge>
-                  )}
-                </div>
-                <div className="mt-1.5 text-xs text-muted-foreground">
-                  {shortlistCand.score_unavailable
-                    ? 'Match score not available — this verdict is an AI estimate, not a computed fit.'
-                    : <>This candidate’s Smart Shortlist fit is {Math.round(shortlistCand.fit_score ?? shortlistCand.score * 100)}/100.</>}
-                </div>
-                {shortlistCand.decision_note && <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{shortlistCand.decision_note}</p>}
-              </div>
-            )}
 
             <SectionCard n={2} title="Scorecard" desc="Rate each criterion — the average becomes the final score">
               <div className="space-y-3">
