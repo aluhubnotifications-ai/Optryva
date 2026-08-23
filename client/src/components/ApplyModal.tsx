@@ -311,7 +311,27 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
             ? `You've used all ${maxAttempts} attempts for this test. An integrity violation was recorded — contact the employer if you believe this was a mistake.`
             : 'You can track its status from your applications list. We’ll notify you of any updates.'}
         </p>
-        <Button className="mt-3" onClick={() => onClose?.()}>Back</Button>
+        <div className="mt-3 flex justify-center gap-2">
+          {!exhausted && (
+            <Button
+              variant="outline"
+              onClick={async () => {
+                if (!alreadyApplied?.id) return
+                try {
+                  await applicationsApi.remove(alreadyApplied.id)
+                  setAlreadyApplied(null)
+                  setAssignmentAnswers({})
+                  toast({ title: 'Application withdrawn', description: 'You can apply again from scratch.', tone: 'success' })
+                } catch (e) {
+                  toast({ title: 'Could not withdraw', description: e instanceof Error ? e.message : undefined, tone: 'error' })
+                }
+              }}
+            >
+              Withdraw & restart
+            </Button>
+          )}
+          <Button onClick={() => onClose?.()}>Back</Button>
+        </div>
       </div>
     )
   }

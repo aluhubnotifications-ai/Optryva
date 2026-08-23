@@ -18,11 +18,13 @@ import {
   UserCheck,
   Check,
   Users,
+  RotateCcw,
 } from 'lucide-react'
 import { applicationsApi, jobsApi } from '@/lib/api'
 import { useCompanyData } from '@/lib/companyData'
 import { useCurrentUser } from '@/lib/store'
 import type { Application, ApplicationStatus, JobListing } from '@/types'
+import { VIOLATION_LABEL } from '@/components/ProctorMonitor'
 import { Card, CardBody, Badge, Avatar, Label, Textarea, Input } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { AppProgressSteps } from '@/components/AppProgressSteps'
@@ -314,6 +316,38 @@ export default function ApplicantView() {
               </div>
             </div>
           </div>
+        </SectionCard>
+      </div>
+
+      {/* 1b. Integrity / retry history — every return (proctor cancellation) is
+          recorded with the reason, so the employer can see why attempts were used. */}
+      <div className="scroll-mt-4">
+        <SectionCard n={1} title="Integrity & retry history" desc="Every test return is recorded with a reason">
+          <div className="mb-3 flex items-center gap-3 text-sm">
+            <span className="rounded-full bg-muted px-3 py-1 font-medium">Attempts used: {app.attempts ?? 0}</span>
+            {job?.assignment?.max_attempts ? (
+              <span className="rounded-full bg-muted px-3 py-1 font-medium">Limit: {job.assignment.max_attempts}</span>
+            ) : null}
+          </div>
+          {(() => {
+            const returns = (app.timeline ?? []).filter((t: any) => t.status === 'cancelled')
+            if (!returns.length) {
+              return <p className="text-sm text-muted-foreground">No test returns recorded — the assessment was completed on the first attempt.</p>
+            }
+            return (
+              <ul className="space-y-2">
+                {returns.map((t: any, i: number) => (
+                  <li key={i} className="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm">
+                    <RotateCcw className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+                    <div>
+                      <p className="font-medium text-danger">Test returned — {VIOLATION_LABEL[t.reason as keyof typeof VIOLATION_LABEL] ?? t.reason ?? 'Integrity violation'}</p>
+                      <p className="text-xs text-muted-foreground">{formatDate(t.at)}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )
+          })()}
         </SectionCard>
       </div>
 

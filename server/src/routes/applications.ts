@@ -42,7 +42,11 @@ applications.get('/job/:jobId', async (req, res) => {
   const job = must(await sb.from('job_listings').select('company_id').eq('id', req.params.jobId).maybeSingle()) as any
   if (!job) return res.status(404).json({ error: 'job_not_found' })
   if (job.company_id !== req.user!.id && !isAdminEmail(req.user!.email)) return res.status(403).json({ error: 'forbidden' })
-  const rows = must(await sb.from('applications').select('*').eq('job_id', req.params.jobId).order('created_at', { ascending: false })) as any[]
+  // Employers only see submitted applications. In-progress rows (a saved draft,
+  // or a failed/cancelled proctor attempt that hasn't been re-submitted yet) stay
+  // hidden — a cancelled attempt reappears once the candidate re-submits, and its
+  // retry history lives in the timeline.
+  const rows = must(await sb.from('applications').select('*').eq('job_id', req.params.jobId).in('status', ['pending', 'reviewed', 'shortlisted', 'hired', 'rejected']).order('created_at', { ascending: false })) as any[]
   await attachStudentProfiles(rows)
   res.json(rows.map(rowToApplication))
 })
@@ -54,7 +58,8 @@ applications.get('/company', async (req, res) => {
   const jobs = must(await sb.from('job_listings').select('id').eq('company_id', req.user!.id)) as any[]
   const ids = jobs.map((j2) => j2.id)
   if (!ids.length) return res.json([])
-  const rows = must(await sb.from('applications').select('*').in('job_id', ids).order('created_at', { ascending: false })) as any[]
+  // Employers only see submitted applications (hide drafts / cancelled attempts).
+  const rows = must(await sb.from('applications').select('*').in('job_id', ids).in('status', ['pending', 'reviewed', 'shortlisted', 'hired', 'rejected']).order('created_at', { ascending: false })) as any[]
   await attachStudentProfiles(rows)
   res.json(rows.map(rowToApplication))
 })
