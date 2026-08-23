@@ -19,6 +19,7 @@ const JobDetail = lazy(() => import('@/pages/student/JobDetail'))
 const Apply = lazy(() => import('@/pages/student/Apply'))
 const Applications = lazy(() => import('@/pages/student/Applications'))
 const ApplicationDetail = lazy(() => import('@/pages/student/ApplicationDetail'))
+const Assessment = lazy(() => import('@/pages/student/Assessment'))
 const Insights = lazy(() => import('@/pages/student/Insights'))
 const Compass = lazy(() => import('@/pages/student/Compass'))
 const Companies = lazy(() => import('@/pages/student/Companies'))
@@ -125,6 +126,7 @@ export const router = createBrowserRouter([
       { path: 'apply/:jobId', element: <Apply /> },
       { path: 'applications', element: <ApplicationsRoute /> },
       { path: 'applications/:id', element: <ApplicationDetail /> },
+      { path: 'applications/:id/assessment', element: <Assessment /> },
       { path: 'insights', element: <Insights /> },
       { path: 'compass', element: <Compass /> },
       { path: 'companies', element: <Companies /> },

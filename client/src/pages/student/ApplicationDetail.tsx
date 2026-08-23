@@ -19,7 +19,6 @@ import { ScoreRing } from '@/components/ScoreRing'
 import { AppProgressSteps } from '@/components/AppProgressSteps'
 import { AIResearchPanel } from '@/components/AIResearchPanel'
 import { DocumentList } from '@/components/DocumentList'
-import { AssessmentRunner } from '@/components/AssessmentRunner'
 import { useToast } from '@/components/ui/toast'
 import { formatDate, timeAgo } from '@/lib/utils'
 
@@ -44,7 +43,6 @@ export default function ApplicationDetail() {
   const [loading, setLoading] = useState(true)
   const [research, setResearch] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [takingTest, setTakingTest] = useState(false)
 
   useEffect(() => {
     ;(async () => {
@@ -135,7 +133,7 @@ export default function ApplicationDetail() {
       {/* Actions */}
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         {canTake && (
-          <Button className="w-full gap-1.5 sm:w-auto" onClick={() => setTakingTest(true)}>
+          <Button className="w-full gap-1.5 sm:w-auto" onClick={() => navigate(`/app/applications/${app.id}/assessment`)}>
             <ClipboardCheck className="h-4 w-4" /> Take assessment
           </Button>
         )}
@@ -149,19 +147,6 @@ export default function ApplicationDetail() {
           <Trash2 className="h-4 w-4" /> Withdraw
         </Button>
       </div>
-
-      {takingTest && job.assignment && (
-        <Card>
-          <CardBody>
-            <AssessmentRunner
-              job={job}
-              application={app}
-              onComplete={(updated) => { setApp(updated); setTakingTest(false) }}
-              onClose={() => setTakingTest(false)}
-            />
-          </CardBody>
-        </Card>
-      )}
 
       <div className="grid gap-5 lg:grid-cols-3">
         {/* Timeline */}
@@ -208,7 +193,7 @@ export default function ApplicationDetail() {
                   {deadline && <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Complete by {formatDate(deadline.toISOString())}</span>}
                 </div>
                 {app.assignment_status !== 'submitted' && eligible && !exhausted && (
-                  <Button className="mt-3 gap-1.5" onClick={() => setTakingTest(true)}><ClipboardCheck className="h-4 w-4" /> Take assessment</Button>
+                  <Button className="mt-3 gap-1.5" onClick={() => navigate(`/app/applications/${app.id}/assessment`)}><ClipboardCheck className="h-4 w-4" /> Take assessment</Button>
                 )}
                 {app.assignment_status === 'submitted' && (
                   <div className="mt-3 space-y-2">{(job.assignment.questions?.length ? job.assignment.questions.map((question) => ({ id: question.id, label: question.prompt })) : job.assignment.rubric.map((criterion) => ({ id: criterion.id, label: criterion.label }))).map((item) => { const entry = app.assignment_answers?.find((e) => (e.question_id ?? e.criterion_id) === item.id); const answer = entry?.answer; const text = Array.isArray(answer) ? answer.join(', ') : answer?.startsWith('data:') ? (entry?.file_name ?? 'File attached') : answer; return <div key={item.id}><p className="text-sm font-medium">{item.label}</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{text || 'No answer submitted.'}</p></div> })}</div>
