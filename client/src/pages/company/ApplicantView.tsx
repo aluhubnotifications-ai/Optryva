@@ -426,7 +426,7 @@ export default function ApplicantView() {
                       key={ja.id}
                       type="button"
                       onClick={() => navigate(`/app/applicants/${ja.id}`)}
-                      className={cn('flex w-full items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition-colors', activeA ? 'border-primary/40 bg-primary/10' : 'border-transparent hover:bg-muted/50')}
+                      className={cn('flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors', activeA ? 'bg-muted/50' : 'hover:bg-muted/30')}
                     >
                       <Avatar name={ja.full_name} src={ja.student_avatar_url || monogramAvatar(ja.full_name)} size={32} style={avatarRingStyle(ja.tags)} />
                       <div className="min-w-0 flex-1">
