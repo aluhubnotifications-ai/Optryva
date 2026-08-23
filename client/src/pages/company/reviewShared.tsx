@@ -275,7 +275,6 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
   const [data, setData] = useState<SmartShortlistResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [retries, setRetries] = useState(0)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -290,25 +289,11 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
     let alive = true
     const run = () => jobsApi.shortlist(jobId).then((d) => alive && setData(d)).catch(() => alive && setData(null)).finally(() => alive && setLoading(false))
     setLoading(true)
-    setRetries(0)
     run()
     return () => {
       alive = false
     }
   }, [jobId])
-
-  // If scoring is still incomplete (some candidates unscored), keep retrying in the
-  // background so the ranking fills in while the employer waits. Silent (no loading
-  // flicker) — the result just updates to scored when the scorer succeeds.
-  useEffect(() => {
-    if (data && data.total && data.scored != null && data.scored < data.total && retries < 4) {
-      const t = setTimeout(() => {
-        setRetries((r) => r + 1)
-        jobsApi.shortlist(jobId).then(setData).catch(() => {})
-      }, 2500)
-      return () => clearTimeout(t)
-    }
-  }, [data, retries, jobId])
 
   async function act(applicationId: string, status: string) {
     setBusyId(applicationId)
@@ -325,6 +310,9 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
       <div className="space-y-3">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <RefreshCw className="h-4 w-4 animate-spin" /> Scoring candidates against this role…
+        </div>
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div className="h-full w-1/3 animate-pulse rounded-full bg-primary" />
         </div>
         {Array.from({ length: 3 }).map((_, i) => (
           <Card key={i}>
@@ -354,22 +342,16 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
   return (
     <>
       <HumanAuthorityBanner />
-      {/* Cache status + employer re-score action. (Scoring progress is shown only
-          during loading; the loaded view just shows the result — cached or fresh.) */}
+      {/* Cache status only. Scoring happens once on open (then cached); no manual
+          re-score / refresh in the UI. */}
       <Card>
         <CardBody className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm font-medium">Smart Shortlist</p>
-          <div className="flex items-center gap-2">
-            {data.cached && (
-              <Badge tone="outline">
-                Cached{data.computed_at ? ` · ${formatDate(data.computed_at)}` : ''}
-              </Badge>
-            )}
-            {data.rescored && <Badge tone="success">Re-scored</Badge>}
-            <Button size="sm" variant="outline" onClick={async () => { setBusyId('rescore'); try { setData(await jobsApi.rescoreShortlist(jobId)) } finally { setBusyId(null) } }} disabled={busyId === 'rescore'}>
-              <RefreshCw className="h-3.5 w-3.5" /> Rescore
-            </Button>
-          </div>
+          {data.cached && (
+            <Badge tone="outline">
+              Cached{data.computed_at ? ` · ${formatDate(data.computed_at)}` : ''}
+            </Badge>
+          )}
         </CardBody>
       </Card>
       {data.mistral && data.summary && (
