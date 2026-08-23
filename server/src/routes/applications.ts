@@ -33,6 +33,17 @@ applications.use(requireAuth)
 /** Attach the applicant's profile fields (avatar, skills, bio) onto application
  *  rows so reviewers see the real candidate photo/skills without one extra fetch
  *  per applicant. Does a single profiles query for all distinct student_ids. */
+// Enrich a single application row with the student's profile (avatar, skills, bio)
+// and resume-change flag, then serialize. Update routes must use this instead of
+// rowToApplication directly, or the returned application loses student_avatar_url
+// (the avatar would fall back to a blank monogram while the tags ring stayed).
+async function serializeEnriched(row: any) {
+  if (!row) return null
+  await attachStudentProfiles([row])
+  await attachResumeChanged([row])
+  return rowToApplication(row)
+}
+
 async function attachStudentProfiles(rows: any[]) {
   const ids = Array.from(new Set((rows ?? []).map((r) => r.student_id).filter(Boolean)))
   if (!ids.length) return
@@ -318,7 +329,7 @@ applications.patch('/:id/status', async (req, res) => {
   must(await sb.from('applications').update(patch).eq('id', r.id))
   await notify(r.student_id, 'status_change', `Application update: ${status}`, `Your application for ${job?.title ?? 'a role'} is now ${status}.`, r.id)
   const updated = must(await sb.from('applications').select('*').eq('id', r.id).maybeSingle())
-  res.json(rowToApplication(updated))
+  res.json(await serializeEnriched(updated))
 })
 
 // Human override of the AI assessment score + an optional decision note. The final
@@ -335,7 +346,7 @@ applications.patch('/:id/review', async (req, res) => {
   if (Array.isArray(tags)) patch.tags = tags as string[]
   must(await sb.from('applications').update(patch).eq('id', r.id))
   const updated = must(await sb.from('applications').select('*').eq('id', r.id).maybeSingle())
-  res.json(rowToApplication(updated))
+  res.json(await serializeEnriched(updated))
 })
 
 // Run the AI assessment review (scores the submitted assignment against the rubric).
@@ -371,7 +382,7 @@ applications.post('/:id/score-assignment', async (req, res) => {
       .eq('id', r.id),
   )
   const updated = must(await sb.from('applications').select('*').eq('id', r.id).maybeSingle())
-  res.json(rowToApplication(updated))
+  res.json(await serializeEnriched(updated))
 })
 
 // Submits the candidate's completed proctored test for an already-submitted
@@ -384,7 +395,7 @@ applications.patch('/:id/assignment', async (req, res) => {
   if (r.student_id !== req.user!.id) return res.status(403).json({ error: 'forbidden' })
   const job = must(await sb.from('job_listings').select('*').eq('id', r.job_id).maybeSingle()) as any
   if (!job?.assignment) return res.status(400).json({ error: 'no_assignment' })
-  if (r.assignment_status === 'submitted') return res.json(rowToApplication(r))
+  if (r.assignment_status === 'submitted') return res.json(await serializeEnriched(r))
   const maxAttempts = job.assignment?.max_attempts && job.assignment.max_attempts > 0 ? job.assignment.max_attempts : 10
   if ((r.attempts ?? 0) >= maxAttempts) return res.status(403).json({ error: 'attempts_exhausted' })
 
@@ -450,7 +461,7 @@ applications.patch('/:id/assignment', async (req, res) => {
     }).eq('id', r.id),
   )
   const updated = must(await sb.from('applications').select('*').eq('id', r.id).maybeSingle())
-  res.json(rowToApplication(updated))
+  res.json(await serializeEnriched(updated))
 })
 
 // Employer override: re-open / grant another attempt at the proctored test for a
@@ -500,7 +511,7 @@ applications.post('/:id/unlock-test', async (req, res) => {
   )
   await notify(r.student_id, 'test_unlocked', 'Assessment re-opened', `The employer re-opened your assessment for ${job.title}. You can take it again.`, r.id)
   const updated = must(await sb.from('applications').select('*').eq('id', r.id).maybeSingle())
-  res.json(rowToApplication(updated))
+  res.json(await serializeEnriched(updated))
 })
 
 // Records a proctor integrity violation during the test (camera/mic denied, a
@@ -518,14 +529,14 @@ applications.post('/proctor-cancel', async (req, res) => {
   const existing = must(await sb.from('applications').select('*').eq('student_id', req.user!.id).eq('job_id', job_id).maybeSingle()) as any
   if (!existing) return res.status(400).json({ error: 'no_application' })
   // Test already completed — nothing to cancel.
-  if (existing.assignment_status === 'submitted') return res.json(rowToApplication(existing))
+  if (existing.assignment_status === 'submitted') return res.json(await serializeEnriched(existing))
   const ts = now()
   const attempts = (existing.attempts ?? 0) + 1
   const timeline = j.parse<any[]>(existing.timeline ?? '[]', [])
   timeline.push({ status: 'test_return', at: ts, reason: reason ?? 'violation' })
   must(await sb.from('applications').update({ attempts, timeline: j.stringify(timeline) }).eq('id', existing.id))
   const updated = must(await sb.from('applications').select('*').eq('id', existing.id).maybeSingle())
-  res.json(rowToApplication(updated))
+  res.json(await serializeEnriched(updated))
 })
 
 applications.delete('/:id', async (req, res) => {
