@@ -35,7 +35,7 @@ async function attachStudentProfiles(rows: any[]) {
 
 applications.get('/mine', async (req, res) => {
   const rows = must(await sb.from('applications').select('*').eq('student_id', req.user!.id).order('created_at', { ascending: false })) as any[]
-  res.json(rows.map(rowToApplication))
+  res.json(rows.map((r) => rowToApplication(r)))
 })
 
 applications.get('/job/:jobId', async (req, res) => {
@@ -48,7 +48,7 @@ applications.get('/job/:jobId', async (req, res) => {
   // retry history lives in the timeline.
   const rows = must(await sb.from('applications').select('*').eq('job_id', req.params.jobId).in('status', ['pending', 'reviewed', 'shortlisted', 'hired', 'rejected']).order('created_at', { ascending: false })) as any[]
   await attachStudentProfiles(rows)
-  res.json(rows.map(rowToApplication))
+  res.json(rows.map((r) => rowToApplication(r)))
 })
 
 applications.get('/company', async (req, res) => {
@@ -61,7 +61,7 @@ applications.get('/company', async (req, res) => {
   // Employers only see submitted applications (hide drafts / cancelled attempts).
   const rows = must(await sb.from('applications').select('*').in('job_id', ids).in('status', ['pending', 'reviewed', 'shortlisted', 'hired', 'rejected']).order('created_at', { ascending: false })) as any[]
   await attachStudentProfiles(rows)
-  res.json(rows.map(rowToApplication))
+  res.json(rows.map((r) => rowToApplication(r)))
 })
 
 applications.get('/:id', async (req, res) => {
@@ -235,7 +235,9 @@ applications.patch('/:id/status', async (req, res) => {
 // Human override of the AI assessment score + an optional decision note. The final
 // number is the employer's; we only store it (and who set it, when).
 applications.patch('/:id/review', async (req, res) => {
+  const debug: string[] = []
   const { assignment_score, decision_reason, tags } = req.body ?? {}
+  debug.push(`[review] received tags=${JSON.stringify(tags)} assignment_score=${assignment_score} decision_reason=${decision_reason}`)
   console.info('[review] id=', req.params.id, 'tags=', JSON.stringify(tags), 'assignment_score=', assignment_score, 'decision_reason=', decision_reason)
   const r = must(await sb.from('applications').select('*').eq('id', req.params.id).maybeSingle()) as any
   if (!r) return res.status(404).json({ error: 'not_found' })
@@ -245,11 +247,15 @@ applications.patch('/:id/review', async (req, res) => {
   if (typeof assignment_score === 'number') patch.assignment_score = Math.max(0, Math.min(100, Math.round(assignment_score)))
   if (decision_reason !== undefined) patch.decision_reason = decision_reason || null
   if (Array.isArray(tags)) patch.tags = tags as string[]
+  debug.push(`[review] patch.tags=${JSON.stringify(patch.tags)}`)
   console.info('[review] patch.tags=', JSON.stringify(patch.tags))
   must(await sb.from('applications').update(patch).eq('id', r.id))
   const updated = must(await sb.from('applications').select('*').eq('id', r.id).maybeSingle())
+  debug.push(`[review] db row tags after update=${JSON.stringify(updated.tags)}`)
   console.info('[review] db row tags after update=', JSON.stringify(updated.tags))
-  res.json(rowToApplication(updated))
+  const out: any = rowToApplication(updated, debug)
+  out._debug = debug
+  res.json(out)
 })
 
 // Run the AI assessment review (scores the submitted assignment against the rubric).

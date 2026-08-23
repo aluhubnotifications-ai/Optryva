@@ -363,6 +363,7 @@ export default function ApplicantView() {
     console.log('[toggleTag] current=', JSON.stringify(cur), 'sending=', JSON.stringify(next))
     const updated = await applicationsApi.review(app!.id, { tags: next })
     console.log('[toggleTag] server returned tags=', JSON.stringify(updated?.tags))
+    if ((updated as any)?._debug) console.log('[toggleTag] SERVER TRACE:\n' + (updated as any)._debug.join('\n'))
     if (updated) { setApp({ ...app!, ...updated }); markStale() }
     toast({ title: adding ? `Tagged “${tag}”` : `Removed “${tag}”`, tone: 'success' })
     setTagMenu(false)
