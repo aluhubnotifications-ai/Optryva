@@ -6,6 +6,7 @@ import { uid, now, notify } from '@/lib/util'
 import { isAdminEmail } from '@/lib/admin'
 import { storeDocument, validateDocuments } from '@/lib/documents'
 import { scoreAssignmentWithAI } from '@/routes/ai/assignment'
+import { getMatch, rowToMatchJob, hasClaude } from '@/routes/ai/helpers'
 
 export const applications = Router()
 applications.use(requireAuth)
@@ -198,6 +199,24 @@ applications.post('/', async (req, res) => {
     try {
       must(await sb.from('applications').update({ resume_id: resumeId, resume_snapshot: j.stringify(resumeSnapshot) }).eq('id', id))
     } catch { /* best-effort */ }
+  }
+  // Proactively score this applied job now so the employer ALWAYS has a real ranking
+  // for the user/job pair — even when the role was outside the student's top-40
+  // discovery set (where the LLM scorer normally wouldn't have been called). Best-
+  // effort + fire-and-forget: never blocks the apply response, and the shortlist
+  // also re-scores on the fly as a fallback.
+  if (matchScore == null && hasClaude()) {
+    void (async () => {
+      try {
+        const m = await getMatch(req.user!.id, rowToMatchJob(job), { cache: true })
+        if (m) {
+          const skills = Array.isArray(m.matched_skills) ? m.matched_skills : []
+          const reasons = Array.isArray(m.reasons) ? m.reasons : []
+          const parts = [...(skills.length ? [`Strong in ${skills.slice(0, 4).join(', ')}`] : []), ...reasons].filter(Boolean)
+          await sb.from('applications').update({ match_score: m.score ?? null, match_rationale: parts.length ? parts.join(' ') : null }).eq('id', id)
+        }
+      } catch { /* best-effort */ }
+    })()
   }
   await notify(job.company_id, 'new_application', 'New application received', `${b.full_name} applied to ${job.title}`, id)
   const created = must(await sb.from('applications').select('*').eq('id', id).maybeSingle())
