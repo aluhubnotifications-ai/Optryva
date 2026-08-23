@@ -89,10 +89,14 @@ function primaryTag(tags?: string[]): string | undefined {
 
 /** Coloured ring (matching the candidate's primary tag) drawn around the avatar
  * via an inline box-shadow, so it renders everywhere regardless of Tailwind JIT. */
-function avatarRingStyle(tags?: string[]): { boxShadow?: string } {
+function avatarRingStyle(tags?: string[]): { boxShadow?: string; background?: string } {
   const t = primaryTag(tags)
   if (!t) return {}
-  return { boxShadow: `0 0 0 3px hsl(var(--card)), 0 0 0 6px hsl(var(${TAG_VAR[t]}))` }
+  const c = TAG_VAR[t]
+  return {
+    boxShadow: `0 0 0 3px hsl(var(--card)), 0 0 0 7px hsl(var(${c}))`,
+    background: `hsl(var(${c}) / 0.18)`,
+  }
 }
 
 /* Greenhouse-style clickable hiring stages. Each stage jumps to the matching tab
