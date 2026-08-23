@@ -219,10 +219,14 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
           if (noise >= noiseTicks) return violate('noise')
 
           // Non-fatal warnings (don't cancel, just guide + beep once per warning).
+          // When the head is down we count the seconds so the candidate knows how
+          // long they've been looking away and that they need to move up.
           let warn: string | null = null
           if (faceCount === 0) warn = 'Keep your face in the camera frame.'
-          else if (headDownNow) warn = 'Keep your head up and face the camera.'
-          else if (motionScore > MOTION_THRESHOLD) warn = 'Please stay still.'
+          else if (headDownNow) {
+            const secs = Math.round((headDown * TICK_MS) / 1000)
+            warn = secs > 0 ? `Move up, please — look at the camera (${secs}s)` : 'Move up, please — look at the camera'
+          } else if (motionScore > MOTION_THRESHOLD) warn = 'Please stay still.'
           setWarning(warn)
           if (warn && !lastWarnedRef.current) beep()
           lastWarnedRef.current = warn
