@@ -358,12 +358,13 @@ export default function ApplicantView() {
   }
 
   async function toggleTag(tag: string) {
+    // Single-select: only one tag at a time. Clicking the active tag clears it;
+    // clicking any other tag replaces the current selection.
     const cur = app!.tags ?? []
-    const adding = !cur.includes(tag)
-    const next = adding ? [...cur, tag] : cur.filter((t) => t !== tag)
+    const next = cur.length === 1 && cur[0] === tag ? [] : [tag]
     const updated = await applicationsApi.review(app!.id, { tags: next })
     if (updated) { setApp({ ...app!, ...updated }); markStale() }
-    toast({ title: adding ? `Tagged “${tag}”` : `Removed “${tag}”`, tone: 'success' })
+    toast({ title: next.length ? `Tagged “${tag}”` : `Removed “${tag}”`, tone: 'success' })
     setTagMenu(false)
   }
 
