@@ -2,7 +2,18 @@ import { j } from '@/db'
 import { isAdminEmail } from '@/lib/admin'
 
 const bool = (v: any) => v === 1 || v === true
-const arr = <T>(s: any): T[] => j.parse<T[]>(s, [])
+const arr = <T>(s: any): T[] => {
+  if (Array.isArray(s)) return s as T[]
+  if (typeof s === 'string' && s.trim().length) {
+    try {
+      const parsed = JSON.parse(s)
+      return Array.isArray(parsed) ? (parsed as T[]) : []
+    } catch {
+      return []
+    }
+  }
+  return []
+}
 
 export function rowToProfile(r: any, includePrivate = false) {
   if (!r) return null
