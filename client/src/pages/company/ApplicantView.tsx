@@ -19,6 +19,7 @@ import {
   UserCheck,
   Check,
   RotateCcw,
+  Unlock,
   Tag,
   Send,
   ChevronRight,
@@ -446,28 +447,43 @@ export default function ApplicantView() {
           </SectionCard>
 
           <SectionCard n={2} title="Integrity & retry history" desc="Every test return is recorded with a reason">
-            <div className="mb-3 flex items-center gap-3 text-sm">
+            <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
               <span className="rounded-full bg-muted px-3 py-1 font-medium">Attempts used: {app.attempts ?? 0}</span>
-              {job?.assignment?.max_attempts ? (
-                <span className="rounded-full bg-muted px-3 py-1 font-medium">Limit: {job.assignment.max_attempts}</span>
-              ) : null}
+              <span className="rounded-full bg-muted px-3 py-1 font-medium">Limit: {job?.assignment?.max_attempts ?? 10}</span>
+              {app.assignment_status === 'submitted' && (
+                <span className="rounded-full bg-success/15 px-3 py-1 font-medium text-success">Assessment completed</span>
+              )}
             </div>
             {(() => {
-              const returns = (app.timeline ?? []).filter((t: any) => t.status === 'test_return')
-              if (!returns.length) {
-                return <p className="text-sm text-muted-foreground">No test returns recorded — the assessment was completed on the first attempt.</p>
+              const INTEGRITY = ['test_return', 'test_submitted', 'test_unlocked']
+              const events = (app.timeline ?? [])
+                .filter((t: any) => INTEGRITY.includes(t.status))
+                .sort((a: any, b: any) => new Date(a.at).getTime() - new Date(b.at).getTime())
+              if (!events.length) {
+                return <p className="text-sm text-muted-foreground">No assessment activity recorded yet.</p>
               }
               return (
                 <ul className="space-y-2">
-                  {returns.map((t: any, i: number) => (
-                    <li key={i} className="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm">
-                      <RotateCcw className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
-                      <div>
-                        <p className="font-medium text-danger">Test returned — {VIOLATION_LABEL[t.reason as keyof typeof VIOLATION_LABEL] ?? t.reason ?? 'Integrity violation'}</p>
-                        <p className="text-xs text-muted-foreground">{formatDate(t.at)}</p>
-                      </div>
-                    </li>
-                  ))}
+                  {events.map((t: any, i: number) => {
+                    const isReturn = t.status === 'test_return'
+                    const isSubmitted = t.status === 'test_submitted'
+                    const tone = isReturn ? 'danger' : isSubmitted ? 'success' : 'default'
+                    const Icon = isReturn ? RotateCcw : isSubmitted ? CheckCircle2 : Unlock
+                    const label = isReturn
+                      ? `Test returned — ${VIOLATION_LABEL[t.reason as keyof typeof VIOLATION_LABEL] ?? t.reason ?? 'Integrity violation'}`
+                      : isSubmitted
+                        ? `Assessment submitted${t.late ? ' (late)' : ''}`
+                        : 'Test re-opened by employer'
+                    return (
+                      <li key={i} className={cn('flex items-start gap-2 rounded-lg border p-3 text-sm', tone === 'danger' ? 'border-danger/30 bg-danger/5' : tone === 'success' ? 'border-success/30 bg-success/5' : 'border-border bg-muted/30')}>
+                        <Icon className={cn('mt-0.5 h-4 w-4 shrink-0', tone === 'danger' ? 'text-danger' : tone === 'success' ? 'text-success' : 'text-muted-foreground')} />
+                        <div>
+                          <p className={cn('font-medium', tone === 'danger' ? 'text-danger' : tone === 'success' ? 'text-success' : '')}>{label}</p>
+                          <p className="text-xs text-muted-foreground">{formatDate(t.at)}</p>
+                        </div>
+                      </li>
+                    )
+                  })}
                 </ul>
               )
             })()}
