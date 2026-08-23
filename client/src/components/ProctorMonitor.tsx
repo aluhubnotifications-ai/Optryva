@@ -95,7 +95,7 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
 
         // Screen share is required and watched live (never recorded). If the
         // candidate refuses, the test can't start.
-        setStatus('Step 2 of 2 — share your screen: pick "Entire Screen", then click Share')
+        setStatus('Locking your screen for the test — keep this tab in fullscreen')
         let screen: MediaStream | null = null
         try {
           screen = await navigator.mediaDevices.getDisplayMedia({ video: true })
@@ -318,7 +318,7 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
           {message}
         </div>
         <div className="flex items-center gap-1 rounded-full bg-black/75 px-3 py-1 text-xs font-medium text-white">
-          <Lock className="h-3.5 w-3.5" /> Screen locked — leaving the tab cancels the test
+          <Lock className="h-3.5 w-3.5" /> Screen locked — now recording your session
         </div>
       </div>
       <canvas ref={canvasRef} className="hidden" />
