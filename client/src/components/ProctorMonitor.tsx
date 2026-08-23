@@ -6,9 +6,11 @@ export type ProctorViolation =
   | 'permission_denied'
   | 'second_person'
   | 'left_frame'
+  | 'head_down'
   | 'excessive_movement'
   | 'noise'
   | 'tab_switch'
+  | 'left_fullscreen'
   | 'screen_denied'
   | 'screen_left'
 
@@ -16,9 +18,11 @@ export const VIOLATION_LABEL: Record<ProctorViolation, string> = {
   permission_denied: "Camera/microphone permission is required to take this test.",
   second_person: 'Another person was detected in the frame.',
   left_frame: 'Your face left the camera frame.',
+  head_down: 'You looked down / away from the camera.',
   excessive_movement: 'Excessive movement was detected.',
   noise: 'Loud noise was detected.',
   tab_switch: 'You left the test window.',
+  left_fullscreen: 'You exited fullscreen during the test.',
   screen_denied: 'Screen sharing is required to take this test.',
   screen_left: 'You stopped sharing your screen.',
 }
@@ -26,6 +30,7 @@ export const VIOLATION_LABEL: Record<ProctorViolation, string> = {
 const TICK_MS = 300
 const SECOND_PERSON_MS = 600
 const NO_FACE_MS = 1500
+const HEAD_DOWN_MS = 1500
 const MOTION_MS = 2000
 const NOISE_MS = 1200
 // Mean absolute per-pixel diff on a 32x24 grayscale frame (0..255). Small motions
@@ -53,6 +58,7 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
   const runningRef = useRef(false)
   const firedRef = useRef(false)
   const lastGrayRef = useRef<Uint8ClampedArray | null>(null)
+  const lastWarnedRef = useRef<string | null>(null)
   const [status, setStatus] = useState<string>('Starting proctor…')
   const [warning, setWarning] = useState<string | null>(null)
   const onViolationRef = useRef(onViolation)
@@ -114,6 +120,23 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
         const audioCtx = new AudioCtx()
         audioCtxRef.current = audioCtx
+        // Short audible alert used when a non-fatal warning appears.
+        function beep() {
+          try {
+            const osc = audioCtx.createOscillator()
+            const gain = audioCtx.createGain()
+            osc.type = 'sine'
+            osc.frequency.value = 880
+            osc.connect(gain)
+            gain.connect(audioCtx.destination)
+            const t = audioCtx.currentTime
+            gain.gain.setValueAtTime(0.0001, t)
+            gain.gain.exponentialRampToValueAtTime(0.25, t + 0.02)
+            gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.28)
+            osc.start(t)
+            osc.stop(t + 0.3)
+          } catch { /* ignore */ }
+        }
         const source = audioCtx.createMediaStreamSource(camera)
         const analyser = audioCtx.createAnalyser()
         analyser.fftSize = 512
@@ -134,12 +157,14 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
         // Grace counters (in ticks) so brief glitches don't cancel a legitimate attempt.
         let secondPerson = 0
         let noFace = 0
+        let headDown = 0
         let motion = 0
         let noise = 0
         const motionTicks = Math.round(MOTION_MS / TICK_MS)
         const noiseTicks = Math.round(NOISE_MS / TICK_MS)
         const secondTicks = Math.round(SECOND_PERSON_MS / TICK_MS)
         const noFaceTicks = Math.round(NO_FACE_MS / TICK_MS)
+        const headDownTicks = Math.round(HEAD_DOWN_MS / TICK_MS)
 
         const canvas = canvasRef.current!
         const ctx = canvas.getContext('2d', { willReadFrequently: true })!
@@ -151,11 +176,20 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
             schedule()
             return
           }
-          // --- Faces ---
+          // --- Faces + head pose ---
           let faceCount = 0
+          let headDownNow = false
           try {
             const preds = await model.estimateFaces(video, false)
             faceCount = preds.length
+            if (preds.length) {
+              // A face sitting low in the frame (normY > ~0.62) means the
+              // candidate is looking down / away — a common cheating tell.
+              const f = preds[0]
+              const centerY = (f.topLeft[1] + f.bottomRight[1]) / 2
+              const normY = centerY / (video.videoHeight || 240)
+              if (normY > 0.62) headDownNow = true
+            }
           } catch {
             faceCount = 0
           }
@@ -196,18 +230,24 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
           // --- Grace logic ---
           secondPerson = faceCount > 1 ? secondPerson + 1 : 0
           noFace = faceCount === 0 ? noFace + 1 : 0
+          headDown = headDownNow ? headDown + 1 : 0
           motion = motionScore > MOTION_THRESHOLD ? motion + 1 : 0
           noise = rms > NOISE_THRESHOLD ? noise + 1 : 0
 
           if (secondPerson >= secondTicks) return violate('second_person')
           if (noFace >= noFaceTicks) return violate('left_frame')
+          if (headDown >= headDownTicks) return violate('head_down')
           if (motion >= motionTicks) return violate('excessive_movement')
           if (noise >= noiseTicks) return violate('noise')
 
-          // Non-fatal warnings (don't cancel, just guide).
-          if (faceCount === 0) setWarning('Keep your face in the camera frame.')
-          else if (motionScore > MOTION_THRESHOLD) setWarning('Please stay still.')
-          else setWarning(null)
+          // Non-fatal warnings (don't cancel, just guide + beep once per warning).
+          let warn: string | null = null
+          if (faceCount === 0) warn = 'Keep your face in the camera frame.'
+          else if (headDownNow) warn = 'Keep your head up and face the camera.'
+          else if (motionScore > MOTION_THRESHOLD) warn = 'Please stay still.'
+          setWarning(warn)
+          if (warn && !lastWarnedRef.current) beep()
+          lastWarnedRef.current = warn
 
           schedule()
         }

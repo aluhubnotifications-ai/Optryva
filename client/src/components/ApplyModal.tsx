@@ -279,6 +279,23 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
   // ---- Section wizard (mirrors the company listing editor) ----
   const sectionOrder: Step[] = hasAssignment ? ['info', 'resume', 'assessment', 'submission'] : ['info', 'resume', 'submission']
   const [active, setActive] = useState<Step>('info')
+  const proctoring = active === 'assessment' && hasAssignment && !proctorCancelled
+  const proctoringRef = useRef(proctoring)
+  proctoringRef.current = proctoring
+  const handleProctorViolationRef = useRef<(r: ProctorViolation) => void>(() => {})
+
+  // Fullscreen lock: the test runs in fullscreen so browser tabs / other windows
+  // are hidden. Exiting fullscreen during the test is treated as walking away.
+  useEffect(() => {
+    function onFs() {
+      if (proctoringRef.current && !document.fullscreenElement) handleProctorViolationRef.current('left_fullscreen')
+    }
+    document.addEventListener('fullscreenchange', onFs)
+    return () => document.removeEventListener('fullscreenchange', onFs)
+  }, [])
+  useEffect(() => {
+    if (!proctoring && document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
+  }, [proctoring])
   const sectionIndex = sectionOrder.indexOf(active)
   const prevId = sectionIndex > 0 ? sectionOrder[sectionIndex - 1] : null
   const nextId = sectionIndex < sectionOrder.length - 1 ? sectionOrder[sectionIndex + 1] : null
@@ -313,6 +330,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
     setProctorCancelled(reason)
     if (job?.id) applicationsApi.proctorCancel({ job_id: job.id, reason }).then(setProctorResult).catch(() => {})
   }
+  handleProctorViolationRef.current = handleProctorViolation
 
   if (proctorCancelled) {
     const maxAttempts = assignment?.max_attempts ?? 10
@@ -336,8 +354,6 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
       </div>
     )
   }
-
-  const proctoring = active === 'assessment' && hasAssignment && !proctorCancelled
 
   return (
     <div className="space-y-5">
@@ -425,7 +441,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
                   <input type="checkbox" checked={consentChecked} onChange={(e) => setConsentChecked(e.target.checked)} className="mt-0.5 h-4 w-4 accent-primary" />
                   <span>I agree to be monitored by camera, microphone, and screen sharing for the duration of this test, and I understand the test will be cancelled if these rules are broken.</span>
                 </label>
-                <Button className="mt-4" disabled={!consentChecked} onClick={() => setConsentGiven(true)}>Start test</Button>
+                <Button className="mt-4" disabled={!consentChecked} onClick={() => { setConsentGiven(true); document.documentElement.requestFullscreen?.().catch(() => {}) }}>Start test</Button>
               </div>
             ) : (
               <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4">
