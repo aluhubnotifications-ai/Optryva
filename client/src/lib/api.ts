@@ -316,6 +316,7 @@ export interface SmartShortlistCandidate {
   application_id: string | null
   application_status: string | null
   score: number
+  score_unavailable?: boolean
   matched_skills: string[]
   reasons: string[]
   mismatch_flags: string[]

@@ -205,9 +205,11 @@ jobs.get('/:jobId/shortlist', async (req, res) => {
       if (!m) {
         try { m = await getMatch(sid, jobMatch, { cache: true }) } catch { m = null }
       }
-      // Even if scoring is fully unavailable, still surface the candidate.
-      if (!m) m = { score: 0, matched_skills: [], reasons: ['No match score available yet.'], mismatch_flags: [] }
-      return { student_id: sid, resume_id: cached?.resume_id ?? null, m }
+      // Even if scoring is fully unavailable, still surface the candidate — but
+      // flag it so the UI never shows a fabricated fit number as if it were real.
+      const scoreUnavailable = !m
+      if (!m) m = { score: 0, matched_skills: [], reasons: [], mismatch_flags: [], breakdown: null }
+      return { student_id: sid, resume_id: cached?.resume_id ?? null, m, scoreUnavailable }
     }),
   )
   const parsed = (resolved.filter(Boolean) as any[]).sort((a: any, b: any) => (b.m.score ?? 0) - (a.m.score ?? 0))
@@ -236,6 +238,7 @@ jobs.get('/:jobId/shortlist', async (req, res) => {
       application_id: app?.id ?? null,
       application_status: app?.status ?? null,
       score: x.m.score ?? 0,
+      score_unavailable: x.scoreUnavailable ?? false,
       matched_skills: x.m.matched_skills ?? [],
       reasons: x.m.reasons ?? [],
       mismatch_flags: x.m.mismatch_flags ?? [],
