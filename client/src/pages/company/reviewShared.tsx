@@ -298,14 +298,17 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
   }, [jobId])
 
   // If scoring is still incomplete (some candidates unscored), keep retrying in the
-  // background so the ranking fills in while the employer waits, instead of leaving
-  // a stuck "0/N scored" state.
+  // background so the ranking fills in while the employer waits. Silent (no loading
+  // flicker) — the result just updates to scored when the scorer succeeds.
   useEffect(() => {
     if (data && data.total && data.scored != null && data.scored < data.total && retries < 4) {
-      const t = setTimeout(() => { setRetries((r) => r + 1); load() }, 2500)
+      const t = setTimeout(() => {
+        setRetries((r) => r + 1)
+        jobsApi.shortlist(jobId).then(setData).catch(() => {})
+      }, 2500)
       return () => clearTimeout(t)
     }
-  }, [data, retries, load])
+  }, [data, retries, jobId])
 
   async function act(applicationId: string, status: string) {
     setBusyId(applicationId)
@@ -320,6 +323,9 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
   if (loading) {
     return (
       <div className="space-y-3">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <RefreshCw className="h-4 w-4 animate-spin" /> Scoring candidates against this role…
+        </div>
         {Array.from({ length: 3 }).map((_, i) => (
           <Card key={i}>
             <CardBody>
@@ -348,27 +354,11 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
   return (
     <>
       <HumanAuthorityBanner />
-      {/* Scoring progress + cache status + employer re-score action. */}
+      {/* Cache status + employer re-score action. (Scoring progress is shown only
+          during loading; the loaded view just shows the result — cached or fresh.) */}
       <Card>
         <CardBody className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-medium">Match scoring</p>
-            {data.total ? (
-              <div className="mt-1.5 flex items-center gap-3">
-                <div className="h-2 w-44 overflow-hidden rounded-full bg-muted">
-                  <div className="h-full bg-primary" style={{ width: `${Math.round(((data.scored ?? 0) / data.total) * 100)}%` }} />
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  {data.scored}/{data.total} scored ({Math.round(((data.scored ?? 0) / data.total) * 100)}%)
-                  {data.scored != null && data.total != null && data.scored < data.total && (
-                    <> · {data.total - data.scored} not scored — scoring in progress…</>
-                  )}
-                </span>
-              </div>
-            ) : (
-              <span className="text-xs text-muted-foreground">No applicants yet</span>
-            )}
-          </div>
+          <p className="text-sm font-medium">Smart Shortlist</p>
           <div className="flex items-center gap-2">
             {data.cached && (
               <Badge tone="outline">
