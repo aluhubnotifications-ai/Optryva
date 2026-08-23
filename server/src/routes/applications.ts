@@ -347,7 +347,7 @@ applications.patch('/:id/assignment', async (req, res) => {
 applications.post('/:id/unlock-test', async (req, res) => {
   const r = must(await sb.from('applications').select('*').eq('id', req.params.id).maybeSingle()) as any
   if (!r) return res.status(404).json({ error: 'not_found' })
-  const job = must(await sb.from('job_listings').select('id, title, company_id').eq('id', r.job_id).maybeSingle()) as any
+  const job = must(await sb.from('job_listings').select('id, title, company_id, assignment').eq('id', r.job_id).maybeSingle()) as any
   if (!job || (job.company_id !== req.user!.id && !isAdminEmail(req.user!.email))) return res.status(403).json({ error: 'forbidden' })
   if (!job.assignment) return res.status(400).json({ error: 'no_assignment' })
   const ts = now()
