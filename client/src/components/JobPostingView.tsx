@@ -58,7 +58,7 @@ export function AssignmentView({ assignment }: { assignment: AiAssignment }) {
   const questions = assignment.questions ?? []
   const rubric = assignment.rubric ?? []
   return (
-    <Section title="Candidate assignment">
+    <Section title="Candidate assessment">
       <div className="space-y-3">
         <div className="flex items-center gap-2 text-sm font-medium">
           <ClipboardCheck className="h-4 w-4 text-accent" /> {assignment.title}

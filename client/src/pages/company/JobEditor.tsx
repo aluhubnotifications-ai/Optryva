@@ -224,7 +224,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
     }))
     setGenerated(null)
     setStudioOpen(false)
-    toast({ title: 'Assignment updated with AI suggestions', tone: 'success' })
+    toast({ title: 'Assessment updated with AI suggestions', tone: 'success' })
   }
 
   // Lightweight seed so the timing/attempts settings are visible the moment the
@@ -269,7 +269,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
     try {
       if (editing) await jobsApi.update(editing.id, { assignment: null })
       setAssignment(null)
-      toast({ title: 'Assignment removed', tone: 'info' })
+      toast({ title: 'Assessment removed', tone: 'info' })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Could not remove.'
       setError(msg === 'unauthorized' ? 'Your session expired — please sign in again.' : `Could not remove: ${msg}`)
@@ -484,7 +484,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
             <div>
               <div className="flex items-center gap-2">
                 <ClipboardCheck className="h-5 w-5 text-accent" />
-                <h2 className="text-xl font-semibold">Candidate assignment</h2>
+                <h2 className="text-xl font-semibold">Candidate assessment</h2>
                 <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Optional</span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">Add a practical task for candidates, or skip and post the listing as-is.</p>
@@ -521,7 +521,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
               {generating && !generated && (
                 <p className="flex items-center gap-2 text-xs text-muted-foreground">
                   <span className="h-3 w-3 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-                  Generating assignment with AI…
+                  Generating assessment with AI…
                 </p>
               )}
               {generated && (
@@ -576,7 +576,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
           {assignment ? (
             <div className="space-y-4">
               <div className="space-y-3 rounded-xl border border-border p-4">
-                <Input value={assignment.title} onChange={(e) => setAssignment({ ...assignment, title: e.target.value })} placeholder="Assignment title" />
+                <Input value={assignment.title} onChange={(e) => setAssignment({ ...assignment, title: e.target.value })} placeholder="Assessment title" />
                 <Textarea value={assignment.prompt} onChange={(e) => setAssignment({ ...assignment, prompt: e.target.value })} className="min-h-[90px]" placeholder="What should the candidate solve or submit?" />
                 <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={assignment.dueBeforeInterview} onChange={(e) => setAssignment({ ...assignment, dueBeforeInterview: e.target.checked })} className="h-4 w-4 accent-primary" /> Candidate must submit before interview review</label>
               </div>
@@ -709,7 +709,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
             <ReviewRow label="Restrict years" value={f.allowed_years.length ? f.allowed_years.map((y) => `Year ${y}`).join(', ') : 'All'} />
             <ReviewRow label="Schools" value={f.allowed_schools || 'All'} />
             {isSchool && <ReviewRow label="Audience" value={f.students_only ? 'Only my students' : (f.fromOther ? `Forwarded: ${f.original_company_name || '—'}` : 'School posting')} />}
-            {assignmentAllowed && <ReviewRow label="Assignment" value={assignment?.prompt.trim() ? `${assignment.questions.length} question(s) · ${assignment.rubric.length} rubric` : 'None'} />}
+            {assignmentAllowed && <ReviewRow label="Assessment" value={assignment?.prompt.trim() ? `${assignment.questions.length} question(s) · ${assignment.rubric.length} rubric` : 'None'} />}
           </div>
         </section>
       )}
@@ -728,7 +728,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
 
       <PostingPreview open={preview} onClose={() => setPreview(false)} f={f} assignment={assignment} isSchool={isSchool} user={user} />
 
-      <Modal open={assignmentPreview} onClose={() => setAssignmentPreview(false)} size="xl" title="Preview — candidate assignment">
+      <Modal open={assignmentPreview} onClose={() => setAssignmentPreview(false)} size="xl" title="Preview — candidate assessment">
         {assignment?.prompt.trim() ? (
           <AssignmentView assignment={{ title: assignment.title.trim() || 'Practical challenge', prompt: assignment.prompt.trim(), due_before_interview: assignment.dueBeforeInterview, required_when: assignment.requiredWhen, window_days: assignment.windowDays, duration_minutes: assignment.durationMinutes, max_attempts: assignment.maxAttempts ?? 10, rubric: assignment.rubric, questions: assignment.questions }} />
         ) : (
