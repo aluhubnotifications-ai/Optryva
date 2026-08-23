@@ -53,28 +53,10 @@ const TAG_STYLES: Record<string, { on: string; off: string }> = {
   'Do not advance': { on: 'bg-danger text-danger-foreground border-danger', off: 'bg-danger/10 text-danger border-danger/30' },
 }
 
-/** Coloured tag chip. Clickable (toggle) when `onClick` is supplied. Each tag
- * keeps its own colour: a subtle tint when off, solid when on. */
-function TagChip({ tag, active, onClick }: { tag: string; active: boolean; onClick?: () => void }) {
-  const cls = cn(
-    'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition',
-    (TAG_STYLES[tag] ?? { on: 'border-border bg-muted text-muted-foreground', off: 'border-border bg-muted text-muted-foreground' })[active ? 'on' : 'off'],
-  )
-  if (onClick) {
-    return (
-      <button type="button" onClick={onClick} className={cls}>
-        {tag}
-        {active && <XCircle className="h-3 w-3" />}
-      </button>
-    )
-  }
-  return <span className={cls}>{tag}</span>
-}
-
 /** Colour-only tag indicator — a filled dot in the tag's colour (no text).
  * Clickable (toggle) when `onClick` is supplied; the tag name is exposed as a
  * tooltip/aria-label so it stays identifiable without taking layout space. */
-function TagDot({ tag, active, onClick }: { tag: string; active: boolean; onClick?: () => void }) {
+export function TagDot({ tag, active, onClick }: { tag: string; active: boolean; onClick?: () => void }) {
   const on = TAG_STYLES[tag]?.on ?? 'border-border bg-muted'
   const off = TAG_STYLES[tag]?.off ?? 'border-border bg-muted'
   const cls = cn(
@@ -107,7 +89,7 @@ function primaryTag(tags?: string[]): string | undefined {
 
 /** Coloured ring (matching the candidate's primary tag) drawn around the avatar
  * via an inline box-shadow, so it renders everywhere regardless of Tailwind JIT. */
-function avatarRingStyle(tags?: string[]): { boxShadow?: string; background?: string } {
+export function avatarRingStyle(tags?: string[]): { boxShadow?: string; background?: string } {
   const t = primaryTag(tags)
   if (!t) return {}
   const c = TAG_VAR[t]
@@ -444,9 +426,9 @@ export default function ApplicantView() {
                         <p className="truncate text-sm font-medium">{ja.full_name}</p>
                         <p className="truncate text-xs text-muted-foreground">{ja.school}{ja.year ? ` · Y${ja.year}` : ''}</p>
                         {(ja.tags?.length ?? 0) > 0 && (
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {ja.tags!.slice(0, 2).map((t) => (
-                              <TagChip key={t} tag={t} active={(ja.tags ?? []).includes(t)} />
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {ja.tags!.slice(0, 3).map((t) => (
+                              <TagDot key={t} tag={t} active={(ja.tags ?? []).includes(t)} />
                             ))}
                           </div>
                         )}
