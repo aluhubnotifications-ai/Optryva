@@ -117,6 +117,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return user?.is_admin ? [...base, { to: '/app/admin', label: 'Admin', icon: ShieldCheck }] : base
   }, [isCompany, user?.is_admin])
   const [mobileOpen, setMobileOpen] = useState(false)
+  // Desktop nav sidebar is hidden by default and toggled from the top bar
+  // (distraction-free: the application view is the focus, not the dashboard).
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
   const badges = useNavBadges(user?.id ?? null, isCompany)
 
@@ -139,8 +142,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
       <GlobalProgress />
-      {/* Sidebar (desktop) */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-border bg-card/40 lg:flex">
+      {/* Sidebar (desktop) — hidden by default, toggled from the top bar */}
+      <aside className={cn(
+        "fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-border bg-card/40 transition-transform duration-200 lg:flex",
+        sidebarOpen ? "translate-x-0" : "-translate-x-full",
+      )}>
         <SidebarInner nav={nav} badges={badges} />
       </aside>
 
@@ -169,8 +175,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </AnimatePresence>
 
       {/* Main column */}
-      <div className="lg:pl-64">
-        <Topbar onMenu={() => setMobileOpen(true)} />
+      <div className={cn("transition-[padding] duration-200 lg:pl-64", !sidebarOpen && "lg:pl-0")}>
+        <Topbar onMenu={() => setMobileOpen(true)} onToggleSidebar={() => setSidebarOpen((o) => !o)} sidebarOpen={sidebarOpen} />
         <main className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
           <Suspense fallback={<div className="py-24"><PageSpinner label="Loading…" /></div>}>
             {children}
@@ -289,7 +295,7 @@ function CountrySelect() {
   )
 }
 
-function Topbar({ onMenu }: { onMenu: () => void }) {
+function Topbar({ onMenu, onToggleSidebar, sidebarOpen }: { onMenu: () => void; onToggleSidebar: () => void; sidebarOpen: boolean }) {
   const { theme, toggle } = useTheme()
   const user = useCurrentUser()
   const navigate = useNavigate()
@@ -299,7 +305,14 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md sm:px-6 lg:px-8">
-      <button onClick={onMenu} className="rounded-lg p-2 hover:bg-muted lg:hidden">
+      <button onClick={onMenu} className="rounded-lg p-2 hover:bg-muted lg:hidden" aria-label="Open menu">
+        <Menu className="h-5 w-5" />
+      </button>
+      <button
+        onClick={onToggleSidebar}
+        className={cn("hidden rounded-lg p-2 hover:bg-muted lg:inline-flex", sidebarOpen && "bg-muted")}
+        aria-label="Toggle navigation"
+      >
         <Menu className="h-5 w-5" />
       </button>
 
