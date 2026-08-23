@@ -1,14 +1,12 @@
 import {
 	AlertTriangle,
 	ArrowLeft,
-	CalendarDays,
 	CheckCircle2,
 	ClipboardCheck,
 	Clock,
 	FileText,
 	LayoutDashboard,
 	MessageSquare,
-	Repeat,
 	Sparkles,
 	Trash2,
 } from "lucide-react";
@@ -117,25 +115,6 @@ export default function ApplicationDetail() {
 					? "No attempts left"
 					: "Ready to take"
 				: "Shortlist to unlock";
-
-	const facts = [
-		{ icon: CalendarDays, label: "Applied", value: formatDate(app.created_at) },
-		{ icon: ClipboardCheck, label: "Assessment", value: assessmentState },
-		...(deadline
-			? [
-					{
-						icon: Clock,
-						label: "Due by",
-						value: formatDate(deadline.toISOString()),
-					},
-				]
-			: []),
-		{
-			icon: Repeat,
-			label: "Attempts",
-			value: `${app.attempts ?? 0} / ${maxAttempts}`,
-		},
-	];
 
 	async function withdraw() {
 		await applicationsApi.remove(app!.id);
@@ -269,66 +248,15 @@ export default function ApplicationDetail() {
 			<div className="grid gap-5 lg:grid-cols-[1fr_320px] items-start">
 				<div className="space-y-5 min-w-0">
 			{/* Hero */}
-			<Card className="overflow-hidden">
-				<CardBody>
-					<div className="flex flex-wrap items-start justify-between gap-4">
-						<div className="flex gap-4">
-							<Link
-								to={`/app/companies/${job.company_id}`}
-								className="shrink-0"
-								title={`View ${brand}`}
-							>
-								<Avatar
-									name={brand}
-									src={job.original_company_logo_url || company?.avatar_url}
-									size={56}
-									className="rounded-2xl"
-								/>
-							</Link>
-							<div>
-								<Link
-									to={`/app/jobs?job=${job.id}`}
-									className="text-2xl font-bold tracking-tight hover:text-primary"
-								>
-									{job.title}
-								</Link>
-								<p className="mt-0.5 text-sm text-muted-foreground">
-									<Link
-										to={`/app/companies/${job.company_id}`}
-										className="hover:text-primary hover:underline"
-									>
-										{brand}
-									</Link>{" "}
-									· {job.location}
-								</p>
-								<p className="mt-1 text-xs text-muted-foreground">
-									Applied {formatDate(app.created_at)}
-								</p>
-							</div>
-						</div>
-						<Badge
-							tone={statusTone[app.status]}
-							className="shrink-0 capitalize px-3 py-1 text-sm"
-						>
-							{app.status === "hired" ? "Accepted" : app.status}
-						</Badge>
-					</div>
-
-					{/* Key facts — at-a-glance summary */}
-					<div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-						{facts.map((f) => (
-							<div
-								key={f.label}
-								className="rounded-xl border border-border bg-muted/30 p-3"
-							>
-								<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-									<f.icon className="h-3.5 w-3.5" /> {f.label}
-								</div>
-								<p className="mt-1 text-sm font-semibold">{f.value}</p>
-							</div>
-						))}
-					</div>
-
+			<Card>
+				<CardBody className="flex flex-wrap items-center justify-between gap-4">
+					<h1 className="text-2xl font-bold tracking-tight">{job.title}</h1>
+					<Badge
+						tone={statusTone[app.status]}
+						className="shrink-0 capitalize px-3 py-1 text-sm"
+					>
+						{app.status === "hired" ? "Accepted" : app.status}
+					</Badge>
 				</CardBody>
 			</Card>
 
@@ -361,23 +289,100 @@ export default function ApplicationDetail() {
 
 				</div>
 
-				<aside className="lg:sticky lg:top-[7.5rem] lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto">
-					<Card className="h-full">
-						<CardBody className="space-y-6">
-							<div>
-								<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-									Process
-								</p>
-								<div className="mt-3">
-									<AppProgressSteps status={app.status} />
+				<aside className="space-y-4 lg:sticky lg:top-[7.5rem] lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto">
+					<Card>
+						<CardBody className="space-y-3">
+							<div className="flex items-center gap-3">
+								<Avatar
+									name={brand}
+									src={job.original_company_logo_url || company?.avatar_url}
+									size={40}
+									className="rounded-xl"
+								/>
+								<div className="min-w-0">
+									<p className="truncate text-sm font-semibold">{brand}</p>
+									<p className="truncate text-xs text-muted-foreground">
+										{job.title} · {job.location}
+									</p>
 								</div>
 							</div>
-							<div>
-								<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-									What's next
-								</p>
-								<div className="mt-3">{nextUp}</div>
+							<dl className="divide-y divide-border">
+								<div className="flex items-center justify-between gap-3 py-2">
+									<dt className="text-xs text-muted-foreground">Applied</dt>
+									<dd className="text-sm font-medium">
+										{formatDate(app.created_at)}
+									</dd>
+								</div>
+								<div className="flex items-center justify-between gap-3 py-2">
+									<dt className="text-xs text-muted-foreground">Status</dt>
+									<dd>
+										<Badge
+											tone={statusTone[app.status]}
+											className="capitalize"
+										>
+											{app.status === "hired" ? "Accepted" : app.status}
+										</Badge>
+									</dd>
+								</div>
+								<div className="flex items-center justify-between gap-3 py-2">
+									<dt className="text-xs text-muted-foreground">Assessment</dt>
+									<dd className="text-sm font-medium">{assessmentState}</dd>
+								</div>
+								<div className="flex items-center justify-between gap-3 py-2">
+									<dt className="text-xs text-muted-foreground">Attempts</dt>
+									<dd className="text-sm font-medium">
+										{app.attempts ?? 0} / {maxAttempts}
+									</dd>
+								</div>
+								<div className="flex items-center justify-between gap-3 py-2">
+									<dt className="text-xs text-muted-foreground">Test submitted</dt>
+									<dd className="text-sm font-medium text-right">
+										{app.assignment_submitted_at ? (
+											<span className="flex items-center justify-end gap-1.5">
+												{formatDate(app.assignment_submitted_at)}
+												{app.assignment_late && (
+													<Badge
+														tone="danger"
+														className="px-1.5 py-0.5 text-[10px]"
+													>
+														Late
+													</Badge>
+												)}
+											</span>
+										) : (
+											"—"
+										)}
+									</dd>
+								</div>
+								{deadline && (
+									<div className="flex items-center justify-between gap-3 py-2">
+										<dt className="text-xs text-muted-foreground">Due by</dt>
+										<dd className="text-sm font-medium">
+											{formatDate(deadline.toISOString())}
+										</dd>
+									</div>
+								)}
+							</dl>
+						</CardBody>
+					</Card>
+
+					<Card>
+						<CardBody className="space-y-3">
+							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+								Process
+							</p>
+							<div className="mt-1">
+								<AppProgressSteps status={app.status} />
 							</div>
+						</CardBody>
+					</Card>
+
+					<Card>
+						<CardBody className="space-y-3">
+							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+								What's next
+							</p>
+							<div className="mt-1">{nextUp}</div>
 						</CardBody>
 					</Card>
 				</aside>
