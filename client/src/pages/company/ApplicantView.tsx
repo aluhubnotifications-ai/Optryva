@@ -750,10 +750,20 @@ export default function ApplicantView() {
                 {questions.map((q) => {
                   const fb = feedbackMap.get(q.id)
                   const r = ratings[q.id] ?? 0
+                  const cand = answerMap.get(q.id)
+                  const candText = cand == null ? '' : Array.isArray(cand) ? cand.join(', ') : String(cand)
                   return (
                     <div key={q.id} className="rounded-xl border border-border p-3">
                       <p className="text-sm font-medium">{q.prompt}</p>
-                      {fb && <p className="mt-1 text-xs leading-relaxed text-muted-foreground"><span className="font-medium text-foreground">AI:</span> {fb}</p>}
+                      {candText ? (
+                        <div className="mt-2 rounded-lg bg-muted/40 p-2">
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Candidate answer</p>
+                          <p className="mt-0.5 whitespace-pre-wrap text-sm text-foreground/90">{candText}</p>
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-xs italic text-muted-foreground">No answer submitted for this question.</p>
+                      )}
+                      {fb && <p className="mt-2 text-xs leading-relaxed text-muted-foreground"><span className="font-medium text-foreground">AI:</span> {fb}</p>}
                       <div className="mt-2 flex items-center gap-1">
                         {[1, 2, 3, 4, 5].map((n) => (
                           <button
@@ -792,11 +802,24 @@ export default function ApplicantView() {
 
             {attempt?.ai_feedback?.perQuestion?.length ? (
               <details className="mt-3 text-sm">
-                <summary className="cursor-pointer font-medium text-muted-foreground">Per-question AI feedback</summary>
-                <ul className="mt-2 space-y-1.5">
-                  {attempt.ai_feedback.perQuestion.map((pq: any) => (
-                    <li key={pq.id} className="rounded-lg border border-border p-2 text-muted-foreground">{pq.feedback}</li>
-                  ))}
+                <summary className="cursor-pointer font-medium text-muted-foreground">Per-question breakdown</summary>
+                <ul className="mt-2 space-y-2">
+                  {questions.map((q) => {
+                    const pq = feedbackMap.get(q.id)
+                    const ans = answerMap.get(q.id)
+                    const ansText = ans == null ? '' : Array.isArray(ans) ? ans.join(', ') : String(ans)
+                    return (
+                      <li key={q.id} className="rounded-lg border border-border p-2">
+                        <p className="text-sm font-medium text-foreground">{q.prompt}</p>
+                        {ansText ? (
+                          <p className="mt-1 text-xs text-muted-foreground"><span className="font-medium text-foreground">Answer:</span> {ansText}</p>
+                        ) : (
+                          <p className="mt-1 text-xs italic text-muted-foreground">No answer submitted.</p>
+                        )}
+                        {pq ? <p className="mt-1 text-xs text-muted-foreground"><span className="font-medium text-foreground">AI:</span> {pq}</p> : null}
+                      </li>
+                    )
+                  })}
                 </ul>
               </details>
             ) : null}
