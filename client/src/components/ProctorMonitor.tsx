@@ -11,8 +11,6 @@ export type ProctorViolation =
   | 'noise'
   | 'tab_switch'
   | 'left_fullscreen'
-  | 'screen_denied'
-  | 'screen_left'
 
 export const VIOLATION_LABEL: Record<ProctorViolation, string> = {
   permission_denied: "Camera/microphone permission is required to take this test.",
@@ -23,8 +21,6 @@ export const VIOLATION_LABEL: Record<ProctorViolation, string> = {
   noise: 'Loud noise was detected.',
   tab_switch: 'You left the test window.',
   left_fullscreen: 'You exited fullscreen during the test.',
-  screen_denied: 'Screen sharing is required to take this test.',
-  screen_left: 'You stopped sharing your screen.',
 }
 
 const TICK_MS = 300
@@ -40,20 +36,18 @@ const MOTION_THRESHOLD = 12
 const NOISE_THRESHOLD = 0.15
 
 /**
- * Privacy-preserving proctor: the webcam, mic, and screen share are analysed
- * LIVE in the browser by a free model (TensorFlow.js / BlazeFace). Nothing is
- * recorded and nothing is sent anywhere — it only watches for integrity
- * violations and calls `onViolation` so the host can cancel the test. Cancels
- * on: a second person, the candidate leaving frame, sustained loud noise,
- * abnormal movement, leaving/switching the tab, or denying/stopping the camera,
- * mic, or screen share.
+ * Privacy-preserving proctor: the webcam and mic are analysed LIVE in the browser
+ * by a free model (TensorFlow.js / BlazeFace). Nothing is recorded and nothing
+ * is sent anywhere. The test also runs locked in fullscreen (handled by the host
+ * form), which hides browser tabs; leaving the tab or exiting fullscreen cancels
+ * it. The proctor cancels on: a second person, the candidate leaving frame,
+ * looking down, sustained loud noise, abnormal movement, or leaving the tab /
+ * fullscreen.
  */
 export function ProctorMonitor({ active, onViolation }: { active: boolean; onViolation: (reason: ProctorViolation) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null) // self-view camera
-  const screenRef = useRef<HTMLVideoElement>(null) // live screen share
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const cameraStreamRef = useRef<MediaStream | null>(null)
-  const screenStreamRef = useRef<MediaStream | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const runningRef = useRef(false)
   const firedRef = useRef(false)
@@ -70,15 +64,15 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
     firedRef.current = false
     lastGrayRef.current = null
 
-    // Leaving the tab/window, or stopping the screen share, is treated as
-    // walking away — cancel immediately.
+    // Leaving the tab/window, or exiting fullscreen, is treated as walking away
+    // — cancel immediately.
     function onLeave() {
       if (runningRef.current) violate('tab_switch')
     }
 
     async function start() {
       try {
-        setStatus('Step 1 of 2 — allow camera & microphone, then click Allow')
+        setStatus('Allow camera & microphone, then click Allow')
         const camera = await navigator.mediaDevices.getUserMedia({
           video: { width: 320, height: 240 },
           audio: true,
@@ -93,31 +87,9 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
           await videoRef.current.play().catch(() => {})
         }
 
-        // Screen share is required and watched live (never recorded). If the
-        // candidate refuses, the test can't start.
-        setStatus('Locking your screen for the test — keep this tab in fullscreen')
-        let screen: MediaStream | null = null
-        try {
-          screen = await navigator.mediaDevices.getDisplayMedia({ video: true })
-        } catch {
-          if (!cancelled) return violate('screen_denied')
-        }
-        if (cancelled) {
-          screen?.getTracks().forEach((t) => t.stop())
-          return
-        }
-        if (screen) {
-          screenStreamRef.current = screen
-          if (screenRef.current) {
-            screenRef.current.srcObject = screen
-            await screenRef.current.play().catch(() => {})
-          }
-          screen.getVideoTracks().forEach((track) => {
-            track.addEventListener('ended', () => {
-              if (runningRef.current) violate('screen_left')
-            })
-          })
-        }
+        // The host locks the test into fullscreen (hiding browser tabs); we just
+        // confirm the camera is live. Exiting fullscreen is cancelled by the host.
+        setStatus('Locking your screen in fullscreen…')
 
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
         const audioCtx = new AudioCtx()
@@ -279,8 +251,6 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
       document.removeEventListener('visibilitychange', onLeave)
       cameraStreamRef.current?.getTracks().forEach((t) => t.stop())
       cameraStreamRef.current = null
-      screenStreamRef.current?.getTracks().forEach((t) => t.stop())
-      screenStreamRef.current = null
       audioCtxRef.current?.close().catch(() => {})
       audioCtxRef.current = null
       lastGrayRef.current = null
@@ -310,15 +280,11 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
         <div className={cn('overflow-hidden rounded-xl border-2 bg-black shadow-lg', warning ? 'border-danger' : 'border-primary/70')}>
           <video ref={videoRef} autoPlay muted playsInline className="h-52 w-72 object-cover" />
         </div>
-        {/* Live screen share (monitored, never recorded). */}
-        <div className="overflow-hidden rounded-xl border-2 border-accent/60 bg-black shadow-lg">
-          <video ref={screenRef} autoPlay muted playsInline className="h-32 w-72 object-cover" />
-        </div>
         <div className={cn('max-w-xs rounded-lg px-4 py-2 text-center text-lg font-semibold shadow', warning ? 'bg-danger text-white' : 'bg-primary/95 text-primary-foreground')}>
           {message}
         </div>
         <div className="flex items-center gap-1 rounded-full bg-black/75 px-3 py-1 text-xs font-medium text-white">
-          <Lock className="h-3.5 w-3.5" /> Screen locked — now recording your session
+          <Lock className="h-3.5 w-3.5" /> Screen locked in fullscreen — leaving cancels
         </div>
       </div>
       <canvas ref={canvasRef} className="hidden" />
