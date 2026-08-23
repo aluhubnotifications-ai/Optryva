@@ -562,12 +562,15 @@ export default function ApplicantView() {
           <TabsContent value="assessment" className="space-y-5">
             <SectionCard n={1} title="Assessment" desc="The candidate's submitted answers">
               {AttemptSwitcher}
-              <div className="mb-3 flex items-center gap-2">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
                 <ClipboardCheck className="h-4 w-4 text-accent" />
                 <p className="font-medium">{job?.assignment?.title}</p>
                 <Badge tone={app.assignment_status === 'submitted' ? 'success' : 'default'} className="capitalize">{app.assignment_status === 'submitted' ? 'Submitted' : 'Pending'}</Badge>
                 {attempt?.is_retake && <Badge tone="outline" className="text-[10px]">Retake</Badge>}
                 {attempt?.late && <Badge tone="outline" className="text-[10px]">Late</Badge>}
+                <span className="text-xs text-muted-foreground">
+                  {attempts.length > 1 ? `Showing attempt ${activeAttemptIdx + 1} of ${attempts.length}` : `Attempt ${activeAttemptIdx + 1} of ${attempts.length}${attempt?.is_retake ? ' (retake)' : ' (first)'}`}
+                </span>
               </div>
               {job?.assignment?.prompt && <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{job.assignment.prompt}</p>}
               <div className="space-y-4">
@@ -600,6 +603,9 @@ export default function ApplicantView() {
         {hasAssignment && (
           <TabsContent value="scoring" className="space-y-5">
             {AttemptSwitcher}
+            {attempts.length <= 1 && (
+              <p className="text-xs text-muted-foreground">Attempt {activeAttemptIdx + 1} of {attempts.length}{attempt?.is_retake ? ' (retake)' : ' (first)'}</p>
+            )}
             <div className="flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm">
               <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <p className="text-muted-foreground"><span className="font-medium text-foreground">You decide — AI only suggests.</span> Scores below are decision aids, not the final call.</p>
