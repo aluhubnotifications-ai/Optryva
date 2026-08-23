@@ -227,6 +227,25 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
     toast({ title: 'Assignment updated with AI suggestions', tone: 'success' })
   }
 
+  // Lightweight seed so the timing/attempts settings are visible the moment the
+  // employer opens the Assessment tab — without forcing an assignment to be saved
+  // (cleanAssignment only persists it once a prompt is actually provided).
+  function seedBlankAssignment() {
+    setAssignment((prev) =>
+      prev ?? {
+        title: '',
+        prompt: '',
+        dueBeforeInterview: true,
+        requiredWhen: 'after_application',
+        windowDays: null,
+        durationMinutes: null,
+        maxAttempts: 10,
+        rubric: [],
+        questions: [],
+      },
+    )
+  }
+
   function draftAssignment() {
     setAssignment((prev) => ({
       title: prev?.title || `${f.title || 'Role'} practical challenge`,
@@ -328,6 +347,10 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
   const sectionOrder: StepId[] = assignmentAllowed ? ['details', 'assessment', 'submission'] : ['details', 'submission']
   const [active, setActive] = useState<StepId>('details')
   useEffect(() => { if (!assignmentAllowed && active === 'assessment') setActive('details') }, [assignmentAllowed, active])
+  // Reveal the assignment settings as soon as the employer opens the Assessment
+  // tab (otherwise the timing/attempts fields stay hidden until they manually
+  // add an assignment, which is easy to miss).
+  useEffect(() => { if (active === 'assessment' && assignmentAllowed && !assignment) seedBlankAssignment() }, [active, assignmentAllowed, assignment])
   const sectionIndex = sectionOrder.indexOf(active)
   const prevId = sectionIndex > 0 ? sectionOrder[sectionIndex - 1] : null
   const nextId = sectionIndex < sectionOrder.length - 1 ? sectionOrder[sectionIndex + 1] : null
