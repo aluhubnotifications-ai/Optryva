@@ -122,6 +122,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => setMobileOpen(false), [location.pathname])
 
+  // Focus mode: the proctored assessment gets a clean, distraction-free,
+  // full-screen experience — no sidebar, top bar, mobile drawer, or AI panel.
+  const isFocusMode = /^\/app\/applications\/[^/]+\/assessment$/.test(location.pathname)
+  if (isFocusMode) {
+    return (
+      <div className="min-h-screen bg-background">
+        <GlobalProgress />
+        <Suspense fallback={<div className="py-24"><PageSpinner label="Loading…" /></div>}>
+          {children}
+        </Suspense>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <GlobalProgress />
