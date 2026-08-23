@@ -681,6 +681,13 @@ export default function ApplicantView() {
             <div className="mt-4 flex flex-wrap items-center gap-6">
               <ScoreRing score={app.match_score} label="AI match fit" hint="From the student's matching" />
               {hasAssignment && <ScoreRing score={attempt?.score ?? null} label="AI assessment" hint="Run the review below" />}
+              {shortlistCand && (
+                <ScoreRing
+                  score={shortlistCand.score_unavailable ? undefined : Math.round(shortlistCand.fit_score ?? shortlistCand.score * 100)}
+                  label="Smart Shortlist fit"
+                  hint="Employer-facing AI read"
+                />
+              )}
             </div>
 
             {app.match_rationale && (
@@ -742,8 +749,8 @@ export default function ApplicantView() {
                 </div>
                 <div className="mt-1.5 text-xs text-muted-foreground">
                   {shortlistCand.score_unavailable
-                    ? 'Match score not available — this is an AI estimate.'
-                    : <>Fit {Math.round(shortlistCand.fit_score ?? shortlistCand.score * 100)}</>}
+                    ? 'Match score not available — this verdict is an AI estimate, not a computed fit.'
+                    : <>This candidate’s Smart Shortlist fit is {Math.round(shortlistCand.fit_score ?? shortlistCand.score * 100)}/100.</>}
                 </div>
                 {shortlistCand.decision_note && <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{shortlistCand.decision_note}</p>}
               </div>
