@@ -466,12 +466,6 @@ export default function ApplicantView() {
               </div>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap items-center gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Tags:</span>
-            {TAG_OPTIONS.map((t) => (
-              <TagChip key={t} tag={t} active={(app.tags ?? []).includes(t)} onClick={() => toggleTag(t)} />
-            ))}
-          </div>
             <div className="mt-5 border-t border-border pt-5"><StageTracker status={app.status} onStage={(s) => { if (s.to) setStatus(s.to); setTab(s.tab) }} /></div>
         </CardBody>
       </Card>
@@ -815,13 +809,21 @@ export default function ApplicantView() {
 				<aside className="space-y-4 lg:sticky lg:top-[7.5rem] lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto">
 					<Card>
 						<CardBody className="space-y-3">
-							<div className="flex items-center gap-3">
-								<Avatar name={app.full_name} src={app.student_avatar_url || monogramAvatar(app.full_name)} size={40} className="rounded-xl" />
+							<div className="flex flex-col items-center gap-2 text-center">
+								<Avatar name={app.full_name} src={app.student_avatar_url || monogramAvatar(app.full_name)} size={64} className="rounded-2xl" />
 								<div className="min-w-0">
-									<p className="truncate text-sm font-semibold">{app.full_name}</p>
-									<p className="truncate text-xs text-muted-foreground">
+									<p className="text-sm font-semibold">{app.full_name}</p>
+									<p className="text-xs text-muted-foreground">
 										{app.school ?? ''}{app.year ? ` · Y${app.year}` : ''}
 									</p>
+								</div>
+							</div>
+							<div>
+								<p className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tags</p>
+								<div className="mt-1.5 flex flex-wrap justify-center gap-1">
+									{TAG_OPTIONS.map((t) => (
+										<TagChip key={t} tag={t} active={(app.tags ?? []).includes(t)} onClick={() => toggleTag(t)} />
+									))}
 								</div>
 							</div>
 							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -874,17 +876,6 @@ export default function ApplicantView() {
 								<Button size="sm" variant="default" className="w-full gap-1.5" onClick={sendMessage} loading={busyMsg} disabled={!draftMsg.trim()}>
 									<Send className="h-4 w-4" /> Send
 								</Button>
-							</div>
-						</CardBody>
-					</Card>
-
-					<Card>
-						<CardBody className="space-y-3">
-							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tags</p>
-							<div className="flex flex-wrap gap-1">
-								{(app.tags?.length ?? 0) > 0 ? app.tags!.map((t) => (
-									<TagChip key={t} tag={t} active={(app.tags ?? []).includes(t)} />
-								)) : <span className="text-xs text-muted-foreground">None yet</span>}
 							</div>
 						</CardBody>
 					</Card>
