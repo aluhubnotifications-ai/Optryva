@@ -24,16 +24,18 @@ export const VIOLATION_LABEL: Record<ProctorViolation, string> = {
 }
 
 const TICK_MS = 300
-const SECOND_PERSON_MS = 600
-const NO_FACE_MS = 1500
-const HEAD_DOWN_MS = 1500
-const MOTION_MS = 2000
-const NOISE_MS = 1200
+const SECOND_PERSON_MS = 2500
+const NO_FACE_MS = 4000
+const HEAD_DOWN_MS = 6000
+const MOTION_MS = 5000
+const NOISE_MS = 4000
 // Mean absolute per-pixel diff on a 32x24 grayscale frame (0..255). Small motions
-// (breathing, slight shifts) stay well under this; only sustained large motion trips it.
-const MOTION_THRESHOLD = 12
-// Web Audio RMS (0..1). Normal room silence is ~0.01; speech is 0.1–0.3.
-const NOISE_THRESHOLD = 0.15
+// (breathing, typing, slight shifts) stay well under this; only sustained large
+// motion trips it.
+const MOTION_THRESHOLD = 22
+// Web Audio RMS (0..1). Normal room silence is ~0.01; speech is 0.1–0.3. Set high
+// so everyday ambient noise and the occasional cough/keyboard clack are tolerated.
+const NOISE_THRESHOLD = 0.28
 
 /**
  * Privacy-preserving proctor: the webcam and mic are analysed LIVE in the browser
@@ -157,12 +159,14 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
             const preds = await model.estimateFaces(video, false)
             faceCount = preds.length
             if (preds.length) {
-              // A face sitting low in the frame (normY > ~0.62) means the
-              // candidate is looking down / away — a common cheating tell.
+              // A face sitting low in the frame (normY > ~0.66) means the
+              // candidate is clearly looking down / away. Glancing at the
+              // keyboard to type briefly won't reach this, and the grace period
+              // below gives several seconds of leeway before any cancellation.
               const f = preds[0]
               const centerY = (f.topLeft[1] + f.bottomRight[1]) / 2
               const normY = centerY / (video.videoHeight || 240)
-              if (normY > 0.62) headDownNow = true
+              if (normY > 0.66) headDownNow = true
             }
           } catch {
             faceCount = 0
