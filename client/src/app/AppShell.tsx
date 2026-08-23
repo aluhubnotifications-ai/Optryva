@@ -128,6 +128,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Focus mode: the proctored assessment gets a clean, distraction-free,
   // full-screen experience — no sidebar, top bar, mobile drawer, or AI panel.
   const isFocusMode = /^\/app\/applications\/[^/]+\/assessment$/.test(location.pathname)
+  // On the applicant detail page the focus is the application itself — the nav
+  // sidebar (and its toggle/drawer) is omitted entirely so nothing competes with
+  // the candidate view.
+  const isApplicantView = /^\/app\/applicants\/[^/]+$/.test(location.pathname)
   if (isFocusMode) {
     return (
       <div className="min-h-screen bg-background">
@@ -143,16 +147,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-background">
       <GlobalProgress />
       {/* Sidebar (desktop) — hidden by default, toggled from the top bar */}
+      {!isApplicantView && (
       <aside className={cn(
         "fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-border bg-card/40 transition-transform duration-200 lg:flex",
         sidebarOpen ? "translate-x-0" : "-translate-x-full",
       )}>
         <SidebarInner nav={nav} badges={badges} />
       </aside>
+      )}
 
       {/* Mobile drawer */}
       <AnimatePresence>
-        {mobileOpen && (
+        {!isApplicantView && mobileOpen && (
           <>
             <motion.div
               className="fixed inset-0 z-40 bg-black/50 lg:hidden"
@@ -175,8 +181,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </AnimatePresence>
 
       {/* Main column */}
-      <div className={cn("transition-[padding] duration-200 lg:pl-64", !sidebarOpen && "lg:pl-0")}>
-        <Topbar onMenu={() => setMobileOpen(true)} onToggleSidebar={() => setSidebarOpen((o) => !o)} sidebarOpen={sidebarOpen} />
+      <div className={cn("transition-[padding] duration-200 lg:pl-64", !sidebarOpen && "lg:pl-0", isApplicantView && "lg:pl-0")}>
+        <Topbar onMenu={() => setMobileOpen(true)} onToggleSidebar={() => setSidebarOpen((o) => !o)} sidebarOpen={sidebarOpen} showNav={!isApplicantView} />
         <main className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
           <Suspense fallback={<div className="py-24"><PageSpinner label="Loading…" /></div>}>
             {children}
@@ -295,7 +301,7 @@ function CountrySelect() {
   )
 }
 
-function Topbar({ onMenu, onToggleSidebar, sidebarOpen }: { onMenu: () => void; onToggleSidebar: () => void; sidebarOpen: boolean }) {
+function Topbar({ onMenu, onToggleSidebar, sidebarOpen, showNav = true }: { onMenu: () => void; onToggleSidebar: () => void; sidebarOpen: boolean; showNav?: boolean }) {
   const { theme, toggle } = useTheme()
   const user = useCurrentUser()
   const navigate = useNavigate()
@@ -305,16 +311,20 @@ function Topbar({ onMenu, onToggleSidebar, sidebarOpen }: { onMenu: () => void; 
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md sm:px-6 lg:px-8">
-      <button onClick={onMenu} className="rounded-lg p-2 hover:bg-muted lg:hidden" aria-label="Open menu">
-        <Menu className="h-5 w-5" />
-      </button>
-      <button
-        onClick={onToggleSidebar}
-        className={cn("hidden rounded-lg p-2 hover:bg-muted lg:inline-flex", sidebarOpen && "bg-muted")}
-        aria-label="Toggle navigation"
-      >
-        <Menu className="h-5 w-5" />
-      </button>
+      {showNav && (
+        <button onClick={onMenu} className="rounded-lg p-2 hover:bg-muted lg:hidden" aria-label="Open menu">
+          <Menu className="h-5 w-5" />
+        </button>
+      )}
+      {showNav && (
+        <button
+          onClick={onToggleSidebar}
+          className={cn("hidden rounded-lg p-2 hover:bg-muted lg:inline-flex", sidebarOpen && "bg-muted")}
+          aria-label="Toggle navigation"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+      )}
 
       <form
         onSubmit={(e) => {

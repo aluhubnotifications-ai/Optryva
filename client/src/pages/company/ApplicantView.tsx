@@ -689,11 +689,9 @@ export default function ApplicantView() {
             <Button variant="outline" size="sm" className="gap-1.5" onClick={advance} disabled={!NEXT_STATUS[app.status]}>
               <ChevronRight className="h-4 w-4" /> Advance
             </Button>
-            {actions.map((a) => (
-              <Button key={a.status} size="sm" variant={a.variant} className="gap-1.5" onClick={() => setStatus(a.status)} disabled={app.status === a.status}>
-                <a.icon className="h-4 w-4" /> {a.label}
-              </Button>
-            ))}
+            <Button size="sm" variant="danger" className="gap-1.5" onClick={() => setStatus('rejected')} disabled={app.status === 'rejected'}>
+              <XCircle className="h-4 w-4" /> Reject
+            </Button>
             <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => navigate(`/app/messages?thread=${app.id}&scope=application`)}>
               <MessageSquare className="h-4 w-4" /> Message
             </Button>
