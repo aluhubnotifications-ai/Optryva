@@ -14,7 +14,7 @@ const DOC_LABELS: Record<string, string> = {
 }
 
 function isViewable(url?: string): boolean {
-  return !!url && url !== '#' && (url.startsWith('data:') || /^https?:\/\//.test(url))
+  return !!url && url !== '#' && (url.startsWith('data:') || url.startsWith('/api/documents/') || /^https?:\/\//.test(url))
 }
 
 /** Open a stored document. Data URLs are converted to a blob: URL first, because

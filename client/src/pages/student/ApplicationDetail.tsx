@@ -115,6 +115,23 @@ export default function ApplicationDetail() {
         </CardBody>
       </Card>
 
+      {/* Application sent */}
+      <Card className="border-success/30 bg-success/5">
+        <CardBody className="flex items-center gap-3">
+          <CheckCircle2 className="h-6 w-6 shrink-0 text-success" />
+          <div>
+            <p className="font-semibold">Application sent to {brand}</p>
+            <p className="text-xs text-muted-foreground">
+              {!job.assignment
+                ? 'The employer will review your application and update you here.'
+                : eligible
+                  ? 'Next step: complete your proctored assessment below.'
+                  : "Your assessment unlocks once you're shortlisted."}
+            </p>
+          </div>
+        </CardBody>
+      </Card>
+
       {/* Actions */}
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         {canTake && (
@@ -174,22 +191,30 @@ export default function ApplicationDetail() {
                 <p className="text-sm leading-relaxed text-muted-foreground">{app.cover_note}</p>
               </div>
             )}
-            {job.assignment && <div className="mt-6 border-t border-border pt-4"><h3 className="flex items-center gap-2 font-semibold"><ClipboardCheck className="h-4 w-4 text-accent" /> {job.assignment.title}</h3><p className="mt-1 text-xs text-muted-foreground">
-                {app.assignment_status === 'submitted'
-                  ? app.assignment_late
-                    ? 'Submitted after the deadline (marked late).'
-                    : 'Submitted.'
-                  : eligible
-                    ? exhausted
-                      ? `No attempts left (used ${app.attempts ?? 0} of ${maxAttempts}).`
-                      : 'Pending — take it from the button above.'
-                    : "Unlocks once you're shortlisted."}
-                {deadline && ` Complete by ${formatDate(deadline.toISOString())}.`}
-              </p>
-              {app.assignment_status !== 'submitted' && eligible && !exhausted && (
-                <Button className="mt-3 gap-1.5" onClick={() => setTakingTest(true)}><ClipboardCheck className="h-4 w-4" /> Take assessment</Button>
-              )}
-              <div className="mt-3 space-y-2">{(job.assignment.questions?.length ? job.assignment.questions.map((question) => ({ id: question.id, label: question.prompt })) : job.assignment.rubric.map((criterion) => ({ id: criterion.id, label: criterion.label }))).map((item) => { const entry = app.assignment_answers?.find((e) => (e.question_id ?? e.criterion_id) === item.id); const answer = entry?.answer; const text = Array.isArray(answer) ? answer.join(', ') : answer?.startsWith('data:') ? (entry?.file_name ?? 'File attached') : answer; return <div key={item.id}><p className="text-sm font-medium">{item.label}</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{text || 'No answer submitted.'}</p></div> })}</div></div>}
+            {job.assignment && (
+              <div className="mt-6 border-t border-border pt-4">
+                <h3 className="flex items-center gap-2 font-semibold"><ClipboardCheck className="h-4 w-4 text-accent" /> {job.assignment.title}</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {app.assignment_status === 'submitted'
+                    ? (app.assignment_late ? 'Submitted after the deadline (marked late).' : 'Submitted.')
+                    : eligible
+                      ? exhausted
+                        ? `No attempts left (used ${app.attempts ?? 0} of ${maxAttempts}).`
+                        : 'Pending — complete it from the button below.'
+                      : "Unlocks once you're shortlisted."}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Time limit: {job.assignment.duration_minutes ?? 30} min per attempt</span>
+                  {deadline && <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Complete by {formatDate(deadline.toISOString())}</span>}
+                </div>
+                {app.assignment_status !== 'submitted' && eligible && !exhausted && (
+                  <Button className="mt-3 gap-1.5" onClick={() => setTakingTest(true)}><ClipboardCheck className="h-4 w-4" /> Take assessment</Button>
+                )}
+                {app.assignment_status === 'submitted' && (
+                  <div className="mt-3 space-y-2">{(job.assignment.questions?.length ? job.assignment.questions.map((question) => ({ id: question.id, label: question.prompt })) : job.assignment.rubric.map((criterion) => ({ id: criterion.id, label: criterion.label }))).map((item) => { const entry = app.assignment_answers?.find((e) => (e.question_id ?? e.criterion_id) === item.id); const answer = entry?.answer; const text = Array.isArray(answer) ? answer.join(', ') : answer?.startsWith('data:') ? (entry?.file_name ?? 'File attached') : answer; return <div key={item.id}><p className="text-sm font-medium">{item.label}</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{text || 'No answer submitted.'}</p></div> })}</div>
+                )}
+              </div>
+            )}
 
             {/* Assessment evaluation — shown only once the employer has reviewed,
                 and clearly labelled advisory. The human decision (status above +
