@@ -1,5 +1,6 @@
 import {
 	AlertTriangle,
+	CheckCircle2,
 	ClipboardCheck,
 	Info,
 	Lightbulb,
@@ -7,6 +8,7 @@ import {
 	ShieldCheck,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { GradeSummary, SubmittedAnswers } from "@/components/AssignmentReview";
 import EquipmentCheck, {
 	type EquipmentCheckHandle,
 } from "@/components/EquipmentCheck";
@@ -39,7 +41,11 @@ function QuestionField({
 	value?: string | string[];
 	onChange: (value: string | string[]) => void;
 }) {
-	const choices = (question.options ?? []).filter(Boolean) as string[];
+	const choices = (
+		question.type === "true_false"
+			? ["True", "False"]
+			: (question.options ?? []).filter(Boolean)
+	) as string[];
 	const selected = Array.isArray(value)
 		? value
 		: typeof value === "string" && value
@@ -159,6 +165,7 @@ export function AssessmentRunner({
 	const [proctorCancelled, setProctorCancelled] =
 		useState<ProctorViolation | null>(null);
 	const [proctorResult, setProctorResult] = useState<Application | null>(null);
+	const [submitted, setSubmitted] = useState<Application | null>(null);
 	const [remaining, setRemaining] = useState(durationMin * 60);
 	const [timeUp, setTimeUp] = useState(false);
 	const startedAt = useRef<number>(0);
@@ -207,7 +214,7 @@ export function AssessmentRunner({
 				duration_seconds,
 			});
 			toast({ title: "Test submitted", tone: "success" });
-			onComplete(updated);
+			setSubmitted(updated);
 		} catch (e) {
 			toast({
 				title: "Could not submit test",
@@ -217,6 +224,34 @@ export function AssessmentRunner({
 		} finally {
 			setSubmitting(false);
 		}
+	}
+
+	if (submitted) {
+		return (
+			<div className="space-y-5">
+				<div className="flex items-center gap-3 rounded-2xl border border-success/30 bg-success/5 p-5">
+					<CheckCircle2 className="h-7 w-7 shrink-0 text-success" />
+					<div>
+						<p className="font-semibold">Test submitted</p>
+						<p className="text-sm text-muted-foreground">
+							Thanks — your answers are in. Here's a summary of what you
+							submitted and the result so far.
+						</p>
+					</div>
+				</div>
+
+				<GradeSummary application={submitted} />
+
+				<div>
+					<h2 className="mb-3 font-semibold">Your answers</h2>
+					<SubmittedAnswers job={job} application={submitted} />
+				</div>
+
+				<Button className="w-full" onClick={() => onComplete(submitted)}>
+					Back to application
+				</Button>
+			</div>
+		);
 	}
 
 	if (proctorCancelled) {
@@ -367,6 +402,31 @@ export function AssessmentRunner({
 						{timeUp ? " — time up, submit now" : ` / ${durationMin}m`}
 					</div>
 				</div>
+				{/* Per-question progress so candidates always see how much of the
+						test is done (visible at a glance, reduces end-of-test anxiety). */}
+				{(() => {
+					const answered = questions.filter((q) => {
+						const v = answers[q.id];
+						return Array.isArray(v) ? v.length > 0 : !!String(v ?? "").trim();
+					}).length;
+					const pct = Math.round((answered / questions.length) * 100);
+					return (
+						<div className="mt-4">
+							<div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+								<span>
+									Answered {answered} of {questions.length}
+								</span>
+								<span>{pct}%</span>
+							</div>
+							<div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+								<div
+									className="h-full rounded-full bg-accent transition-all"
+									style={{ width: `${pct}%` }}
+								/>
+							</div>
+						</div>
+					);
+				})()}
 				<div className="mt-4 space-y-3">
 					{questions.map((question) => (
 						<QuestionField

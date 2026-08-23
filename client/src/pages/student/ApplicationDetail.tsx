@@ -1,11 +1,14 @@
 import {
+	AlertTriangle,
 	ArrowLeft,
+	CalendarDays,
 	CheckCircle2,
 	ClipboardCheck,
 	Clock,
 	FileText,
 	LayoutDashboard,
 	MessageSquare,
+	Repeat,
 	Sparkles,
 	Trash2,
 } from "lucide-react";
@@ -13,8 +16,8 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AIResearchPanel } from "@/components/AIResearchPanel";
 import { AppProgressSteps } from "@/components/AppProgressSteps";
+import { GradeSummary, SubmittedAnswers } from "@/components/AssignmentReview";
 import { DocumentList } from "@/components/DocumentList";
-import { ScoreRing } from "@/components/ScoreRing";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Avatar, Badge, Card, CardBody } from "@/components/ui/primitives";
@@ -46,6 +49,7 @@ export default function ApplicationDetail() {
 	const [loading, setLoading] = useState(true);
 	const [research, setResearch] = useState(false);
 	const [confirmDelete, setConfirmDelete] = useState(false);
+	const [tab, setTab] = useState("overview");
 
 	useEffect(() => {
 		(async () => {
@@ -102,6 +106,37 @@ export default function ApplicationDetail() {
 				)
 			: null;
 
+	const assessmentState = !job.assignment
+		? "Not required"
+		: app.assignment_status === "submitted"
+			? app.assignment_late
+				? "Submitted (late)"
+				: "Submitted"
+			: eligible
+				? exhausted
+					? "No attempts left"
+					: "Ready to take"
+				: "Shortlist to unlock";
+
+	const facts = [
+		{ icon: CalendarDays, label: "Applied", value: formatDate(app.created_at) },
+		{ icon: ClipboardCheck, label: "Assessment", value: assessmentState },
+		...(deadline
+			? [
+					{
+						icon: Clock,
+						label: "Due by",
+						value: formatDate(deadline.toISOString()),
+					},
+				]
+			: []),
+		{
+			icon: Repeat,
+			label: "Attempts",
+			value: `${app.attempts ?? 0} / ${maxAttempts}`,
+		},
+	];
+
 	async function withdraw() {
 		await applicationsApi.remove(app!.id);
 		toast({ title: "Application withdrawn", tone: "info" });
@@ -117,11 +152,11 @@ export default function ApplicationDetail() {
 				<ArrowLeft className="h-4 w-4" /> Back to applications
 			</Link>
 
-			{/* Header */}
-			<Card>
+			{/* Hero */}
+			<Card className="overflow-hidden">
 				<CardBody>
-					<div className="flex flex-wrap items-start justify-between gap-3">
-						<div className="flex gap-3">
+					<div className="flex flex-wrap items-start justify-between gap-4">
+						<div className="flex gap-4">
 							<Link
 								to={`/app/companies/${job.company_id}`}
 								className="shrink-0"
@@ -130,18 +165,18 @@ export default function ApplicationDetail() {
 								<Avatar
 									name={brand}
 									src={job.original_company_logo_url || company?.avatar_url}
-									size={52}
-									className="rounded-xl"
+									size={56}
+									className="rounded-2xl"
 								/>
 							</Link>
 							<div>
 								<Link
 									to={`/app/jobs?job=${job.id}`}
-									className="text-xl font-bold tracking-tight hover:text-primary"
+									className="text-2xl font-bold tracking-tight hover:text-primary"
 								>
 									{job.title}
 								</Link>
-								<p className="text-sm text-muted-foreground">
+								<p className="mt-0.5 text-sm text-muted-foreground">
 									<Link
 										to={`/app/companies/${job.company_id}`}
 										className="hover:text-primary hover:underline"
@@ -150,50 +185,146 @@ export default function ApplicationDetail() {
 									</Link>{" "}
 									· {job.location}
 								</p>
-								<p className="mt-0.5 text-xs text-muted-foreground">
+								<p className="mt-1 text-xs text-muted-foreground">
 									Applied {formatDate(app.created_at)}
 								</p>
 							</div>
 						</div>
-						<Badge tone={statusTone[app.status]} className="capitalize">
+						<Badge
+							tone={statusTone[app.status]}
+							className="shrink-0 capitalize px-3 py-1 text-sm"
+						>
 							{app.status === "hired" ? "Accepted" : app.status}
 						</Badge>
 					</div>
+
+					{/* Key facts — at-a-glance summary */}
+					<div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+						{facts.map((f) => (
+							<div
+								key={f.label}
+								className="rounded-xl border border-border bg-muted/30 p-3"
+							>
+								<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+									<f.icon className="h-3.5 w-3.5" /> {f.label}
+								</div>
+								<p className="mt-1 text-sm font-semibold">{f.value}</p>
+							</div>
+						))}
+					</div>
+
 					<div className="mt-5 border-t border-border pt-5">
 						<AppProgressSteps status={app.status} />
 					</div>
 				</CardBody>
 			</Card>
 
-			{/* Application sent */}
-			<Card className="border-success/30 bg-success/5">
-				<CardBody className="flex items-center gap-3">
-					<CheckCircle2 className="h-6 w-6 shrink-0 text-success" />
-					<div>
-						<p className="font-semibold">Application sent to {brand}</p>
-						<p className="text-xs text-muted-foreground">
-							{!job.assignment
-								? "The employer will review your application and update you here."
-								: eligible
-									? "Next step: complete your proctored assessment below."
-									: "Your assessment unlocks once you're shortlisted."}
-						</p>
-					</div>
-				</CardBody>
-			</Card>
+			{/* Priority: the single most important next action */}
+			{canTake ? (
+				<Card className="border-primary/30 bg-primary/5">
+					<CardBody className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+						<div className="flex items-start gap-3">
+							<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+								<ClipboardCheck className="h-5 w-5" />
+							</div>
+							<div>
+								<p className="font-semibold">Your assessment is ready</p>
+								<p className="text-sm text-muted-foreground">
+									Complete it in one sitting — you'll need your camera and
+									microphone.
+								</p>
+							</div>
+						</div>
+						<Button
+							className="shrink-0 gap-1.5"
+							onClick={() => navigate(`/app/applications/${app.id}/assessment`)}
+						>
+							<ClipboardCheck className="h-4 w-4" /> Take assessment
+						</Button>
+					</CardBody>
+				</Card>
+			) : job.assignment && app.assignment_status === "submitted" ? (
+				app.assignment_score != null ? (
+					<Card className="border-success/30 bg-success/5">
+						<CardBody className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+							<div className="flex items-start gap-3">
+								<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-success/15 text-success">
+									<CheckCircle2 className="h-5 w-5" />
+								</div>
+								<div>
+									<p className="font-semibold">Assessment reviewed</p>
+									<p className="text-sm text-muted-foreground">
+										The employer has reviewed your assessment. See your results.
+									</p>
+								</div>
+							</div>
+							<Button
+								variant="outline"
+								className="shrink-0 gap-1.5"
+								onClick={() => setTab("results")}
+							>
+								<Sparkles className="h-4 w-4" /> View results
+							</Button>
+						</CardBody>
+					</Card>
+				) : (
+					<Card className="border-success/30 bg-success/5">
+						<CardBody className="flex items-start gap-3">
+							<CheckCircle2 className="h-6 w-6 shrink-0 text-success" />
+							<div>
+								<p className="font-semibold">Assessment submitted</p>
+								<p className="text-sm text-muted-foreground">
+									Your answers are in. Results will appear here once the
+									employer reviews them.
+								</p>
+							</div>
+						</CardBody>
+					</Card>
+				)
+			) : job.assignment && eligible && exhausted ? (
+				<Card className="border-danger/30 bg-danger/5">
+					<CardBody className="flex items-start gap-3">
+						<AlertTriangle className="h-6 w-6 shrink-0 text-danger" />
+						<div>
+							<p className="font-semibold">No assessment attempts left</p>
+							<p className="text-sm text-muted-foreground">
+								You've used all {maxAttempts} attempts. Message the employer if
+								you think this was a mistake.
+							</p>
+						</div>
+					</CardBody>
+				</Card>
+			) : job.assignment && !eligible ? (
+				<Card className="border-border bg-muted/30">
+					<CardBody className="flex items-start gap-3">
+						<Clock className="h-6 w-6 shrink-0 text-muted-foreground" />
+						<div>
+							<p className="font-semibold">Assessment unlocks later</p>
+							<p className="text-sm text-muted-foreground">
+								This assessment opens once you're shortlisted for the role.
+							</p>
+						</div>
+					</CardBody>
+				</Card>
+			) : (
+				<Card className="border-success/30 bg-success/5">
+					<CardBody className="flex items-start gap-3">
+						<CheckCircle2 className="h-6 w-6 shrink-0 text-success" />
+						<div>
+							<p className="font-semibold">Application sent to {brand}</p>
+							<p className="text-sm text-muted-foreground">
+								The employer will review your application and update you here.
+							</p>
+						</div>
+					</CardBody>
+				</Card>
+			)}
 
-			{/* Actions */}
-			<div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-				{canTake && (
-					<Button
-						className="w-full gap-1.5 sm:w-auto"
-						onClick={() => navigate(`/app/applications/${app.id}/assessment`)}
-					>
-						<ClipboardCheck className="h-4 w-4" /> Take assessment
-					</Button>
-				)}
+			{/* Secondary actions */}
+			<div className="flex flex-wrap gap-2">
 				<Button
-					className="w-full gap-1.5 sm:w-auto"
+					variant="outline"
+					className="gap-1.5"
 					onClick={() =>
 						navigate(`/app/messages?thread=${app.id}&scope=application`)
 					}
@@ -202,21 +333,21 @@ export default function ApplicationDetail() {
 				</Button>
 				<Button
 					variant="outline"
-					className="w-full gap-1.5 sm:w-auto"
+					className="gap-1.5"
 					onClick={() => setResearch(true)}
 				>
 					<Sparkles className="h-4 w-4 text-primary" /> AI Research
 				</Button>
 				<Button
 					variant="ghost"
-					className="w-full gap-1.5 text-danger sm:w-auto"
+					className="gap-1.5 text-danger"
 					onClick={() => setConfirmDelete(true)}
 				>
 					<Trash2 className="h-4 w-4" /> Withdraw
 				</Button>
 			</div>
 
-			<Tabs defaultValue="overview" className="space-y-4">
+			<Tabs value={tab} onValueChange={setTab} className="space-y-4">
 				<TabsList className="flex flex-wrap">
 					<TabsTrigger value="overview">
 						<LayoutDashboard className="mr-1.5 inline h-4 w-4" />
@@ -340,35 +471,8 @@ export default function ApplicationDetail() {
 											</Button>
 										)}
 									{app.assignment_status === "submitted" && (
-										<div className="mt-3 space-y-2">
-											{(job.assignment.questions?.length
-												? job.assignment.questions.map((question) => ({
-														id: question.id,
-														label: question.prompt,
-													}))
-												: job.assignment.rubric.map((criterion) => ({
-														id: criterion.id,
-														label: criterion.label,
-													}))
-											).map((item) => {
-												const entry = app.assignment_answers?.find(
-													(e) => (e.question_id ?? e.criterion_id) === item.id,
-												);
-												const answer = entry?.answer;
-												const text = Array.isArray(answer)
-													? answer.join(", ")
-													: answer?.startsWith("data:")
-														? (entry?.file_name ?? "File attached")
-														: answer;
-												return (
-													<div key={item.id}>
-														<p className="text-sm font-medium">{item.label}</p>
-														<p className="whitespace-pre-wrap text-sm text-muted-foreground">
-															{text || "No answer submitted."}
-														</p>
-													</div>
-												);
-											})}
+										<div className="mt-4">
+											<SubmittedAnswers job={job} application={app} />
 										</div>
 									)}
 								</>
@@ -384,74 +488,7 @@ export default function ApplicationDetail() {
 				<TabsContent value="results">
 					<Card>
 						<CardBody>
-							{app.assignment_score != null ? (
-								<>
-									<h3 className="flex items-center gap-2 font-semibold">
-										<Sparkles className="h-4 w-4 text-primary" /> Your
-										assessment evaluation
-									</h3>
-									<p className="mt-1 text-xs text-muted-foreground">
-										This AI-assisted evaluation is one input the employer used.
-										The final decision shown at the top is made by a human and
-										may differ.
-									</p>
-									<div className="mt-3 flex items-center gap-4">
-										<ScoreRing
-											score={app.assignment_score}
-											size={64}
-											showLabel
-										/>
-										<div className="text-sm">
-											<p className="font-medium">
-												Recommendation:{" "}
-												<span className="capitalize">
-													{app.ai_recommendation ?? "—"}
-												</span>
-											</p>
-											{app.decision_reason && (
-												<p className="mt-1 text-muted-foreground">
-													Employer note: {app.decision_reason}
-												</p>
-											)}
-										</div>
-									</div>
-									{app.assignment_ai_feedback?.overall && (
-										<p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-											{app.assignment_ai_feedback.overall}
-										</p>
-									)}
-									{app.assignment_ai_feedback?.perQuestion?.length ? (
-										<div className="mt-3 space-y-2">
-											{app.assignment_ai_feedback.perQuestion.map((pq) => {
-												const q =
-													job.assignment?.questions?.find(
-														(x) => x.id === pq.id,
-													) ??
-													job.assignment?.rubric?.find((x) => x.id === pq.id);
-												const qLabel =
-													(q as any)?.prompt ?? (q as any)?.label ?? "Question";
-												return (
-													<div key={pq.id}>
-														<p className="text-sm font-medium">{qLabel}</p>
-														<p className="whitespace-pre-wrap text-sm text-muted-foreground">
-															{pq.feedback}
-														</p>
-													</div>
-												);
-											})}
-										</div>
-									) : null}
-								</>
-							) : (
-								<div className="py-10 text-center">
-									<Sparkles className="mx-auto h-8 w-8 text-muted-foreground/40" />
-									<p className="mt-2 font-medium">No results yet</p>
-									<p className="mt-1 text-sm text-muted-foreground">
-										Results will appear here once the employer reviews your
-										assessment.
-									</p>
-								</div>
-							)}
+							<GradeSummary application={app} />
 						</CardBody>
 					</Card>
 				</TabsContent>
