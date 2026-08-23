@@ -163,53 +163,42 @@ jobs.get('/company/:companyId', async (req, res) => {
 // Degrades gracefully: with no Mistral key we return the (still explainable)
 // match scores/reasons; with no scorer at all the applicant is still listed.
 // ---------------------------------------------------------------------------
-jobs.get('/:jobId/shortlist', async (req, res) => {
-  const jobId = req.params.jobId
-  const job = must(await sb.from('job_listings').select('*').eq('id', jobId).maybeSingle()) as any
-  if (!job) return res.status(404).json({ error: 'not_found' })
-  if (job.company_id !== req.user!.id && !isAdminEmail(req.user!.email)) return res.status(403).json({ error: 'forbidden' })
+const SHORTLIST_STATUS = ['pending', 'reviewed', 'shortlisted', 'hired', 'rejected']
+const SHORTLIST_VERSION = 1
 
+// Build the full Smart Shortlist payload for a job.
+// - `force` re-scores EVERY applicant (employer "Rescore"); otherwise getMatch
+//   reuses each applicant's cached score, so only NEW applicants (no cache entry)
+//   are scored on the fly and written to ai_match_cache — never re-scoring the rest.
+async function buildShortlist(job: any, force: boolean): Promise<any> {
+  const jobId = job.id
   const jobMatch = rowToMatchJob(job)
 
   // Pool = applicants to this job ONLY. Matched-but-not-applied browsers are
   // excluded so the shortlist count always matches the "Applicants" count and the
-  // screen never shows a candidate the employer hasn't actually received. An
-  // applicant without a prior cached match is scored on the fly below.
-  const appRows = (must(await sb.from('applications').select('*').eq('job_id', jobId).in('status', ['pending', 'reviewed', 'shortlisted', 'hired', 'rejected'])) as any[]) ?? []
+  // screen never shows a candidate the employer hasn't actually received.
+  const appRows = (must(await sb.from('applications').select('*').eq('job_id', jobId).in('status', SHORTLIST_STATUS)) as any[]) ?? []
   const appByStudent = new Map(appRows.map((a) => [a.student_id, a]))
-  const cacheRows = (must(await sb.from('ai_match_cache').select('student_id, payload, resume_id, stale').eq('job_id', jobId)) as any[]) ?? []
-  const cacheByStudent = new Map(cacheRows.map((r) => [r.student_id, r]))
   const studentIds = appRows.map((a) => a.student_id)
 
   if (!studentIds.length) {
-    return res.json({
-      job_id: jobId,
-      mistral: hasMistral(),
-      summary: null,
-      candidates: [],
-      note: 'No applicants for this role yet.',
-    })
+    return { job_id: jobId, mistral: hasMistral(), summary: null, candidates: [], scored: 0, total: 0, note: 'No applicants for this role yet.' }
   }
 
-  // Resolve a match for every candidate: use a fresh (non-stale) cached score,
-  // otherwise score on the fly via getMatch (which caches the result). Applicants
-  // with no prior match get scored here too, so the shortlist is never empty just
-  // because someone applied without "matching" first.
+  // Resolve a match for every candidate. With force=false, getMatch returns the
+  // cached score when one exists (fresh + current engine), so only applicants
+  // without a cached match are scored now — and that new score is cached. With
+  // force=true, getMatch ignores the cache and re-scores everyone.
+  const opts = force ? { cache: false as const } : { cache: true as const }
   const resolved = await Promise.all(
     studentIds.map(async (sid) => {
-      const cached = cacheByStudent.get(sid)
       let m: any = null
-      if (cached && cached.stale !== 1) {
-        try { m = JSON.parse(cached.payload) } catch { m = null }
-      }
-      if (!m) {
-        try { m = await getMatch(sid, jobMatch, { cache: true }) } catch { m = null }
-      }
+      try { m = await getMatch(sid, jobMatch, opts) } catch { m = null }
       // Even if scoring is fully unavailable, still surface the candidate — but
       // flag it so the UI never shows a fabricated fit number as if it were real.
       const scoreUnavailable = !m
       if (!m) m = { score: 0, matched_skills: [], reasons: [], mismatch_flags: [], breakdown: null }
-      return { student_id: sid, resume_id: cached?.resume_id ?? null, m, scoreUnavailable }
+      return { student_id: sid, m, scoreUnavailable }
     }),
   )
   const parsed = (resolved.filter(Boolean) as any[]).sort((a: any, b: any) => (b.m.score ?? 0) - (a.m.score ?? 0))
@@ -223,12 +212,12 @@ jobs.get('/:jobId/shortlist', async (req, res) => {
   const candidates = parsed.map((x: any) => {
     const p = profById.get(x.student_id) ?? {}
     const app = appByStudent.get(x.student_id)
-    const matchedResumeId = app?.resume_id ?? x.resume_id ?? null
+    const matchedResumeId = app?.resume_id ?? null
     const curResumeId = curResumeByStudent.get(x.student_id) ?? null
     const snapshot: any = app?.resume_snapshot ? j.parse(app.resume_snapshot, null) : null
     return {
       student_id: x.student_id,
-      resume_id: x.resume_id,
+      resume_id: matchedResumeId,
       name: p.full_name ?? 'Candidate',
       avatar_url: p.avatar_url ?? null,
       major: p.major ?? null,
@@ -277,7 +266,73 @@ jobs.get('/:jobId/shortlist', async (req, res) => {
   // or let it outrank genuinely-scored candidates. Keep only the qualitative note.
   for (const c of candidates as any[]) if (c.score_unavailable) c.fit_score = null
 
-  return res.json({ job_id: jobId, mistral: hasMistral(), summary, candidates })
+  const scored = candidates.filter((c: any) => !c.score_unavailable).length
+  return { job_id: jobId, mistral: hasMistral(), summary, candidates, scored, total: candidates.length, note: null }
+}
+
+jobs.get('/:jobId/shortlist', async (req, res) => {
+  const jobId = req.params.jobId
+  const job = must(await sb.from('job_listings').select('*').eq('id', jobId).maybeSingle()) as any
+  if (!job) return res.status(404).json({ error: 'not_found' })
+  if (job.company_id !== req.user!.id && !isAdminEmail(req.user!.email)) return res.status(403).json({ error: 'forbidden' })
+
+  const force = req.query.rescore === '1' || req.query.rescore === 'true'
+  const cached = !force ? ((await sb.from('shortlist_cache').select('*').eq('job_id', jobId).maybeSingle()).data as any) : null
+
+  let needsCompute = !cached
+  if (cached && !needsCompute) {
+    // Invalidate when a NEW application arrived since the last compute, or the
+    // engine version changed — otherwise serve the cached shortlist untouched.
+    const newest = (await sb.from('applications').select('created_at').eq('job_id', jobId).in('status', SHORTLIST_STATUS).order('created_at', { ascending: false }).limit(1)).data?.[0]
+    if (newest && new Date(newest.created_at) > new Date(cached.computed_at)) needsCompute = true
+    else if (cached.engine_version !== SHORTLIST_VERSION) needsCompute = true
+  }
+
+  if (!needsCompute && cached) {
+    const stored = JSON.parse(cached.payload)
+    return res.json({ ...stored, cached: true, computed_at: cached.computed_at })
+  }
+
+  const result = await buildShortlist(job, force)
+  const payload = { job_id: result.job_id, mistral: result.mistral, summary: result.summary, candidates: result.candidates, scored: result.scored, total: result.total, note: result.note }
+  const computedAt = new Date().toISOString()
+  try {
+    await sb.from('shortlist_cache').upsert({
+      job_id: jobId,
+      payload: JSON.stringify(payload),
+      total: result.total,
+      scored: result.scored,
+      engine_version: SHORTLIST_VERSION,
+      mistral: result.mistral,
+      computed_at: computedAt,
+    })
+  } catch { /* best-effort cache write */ }
+  return res.json({ ...payload, cached: false, computed_at: computedAt })
+})
+
+// Employer-initiated full re-score: re-runs getMatch for every applicant (ignoring
+// the match cache) and refreshes the shortlist cache.
+jobs.post('/:jobId/shortlist/rescore', async (req, res) => {
+  const jobId = req.params.jobId
+  const job = must(await sb.from('job_listings').select('*').eq('id', jobId).maybeSingle()) as any
+  if (!job) return res.status(404).json({ error: 'not_found' })
+  if (job.company_id !== req.user!.id && !isAdminEmail(req.user!.email)) return res.status(403).json({ error: 'forbidden' })
+
+  const result = await buildShortlist(job, true)
+  const payload = { job_id: result.job_id, mistral: result.mistral, summary: result.summary, candidates: result.candidates, scored: result.scored, total: result.total, note: result.note }
+  const computedAt = new Date().toISOString()
+  try {
+    await sb.from('shortlist_cache').upsert({
+      job_id: jobId,
+      payload: JSON.stringify(payload),
+      total: result.total,
+      scored: result.scored,
+      engine_version: SHORTLIST_VERSION,
+      mistral: result.mistral,
+      computed_at: computedAt,
+    })
+  } catch { /* best-effort cache write */ }
+  return res.json({ ...payload, cached: false, computed_at: computedAt, rescored: true })
 })
 
 async function mistralShortlistAid(job: any, candidates: any[]): Promise<{ summary?: string; candidates?: any[] } | null> {

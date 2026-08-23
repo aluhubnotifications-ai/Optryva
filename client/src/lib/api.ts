@@ -302,6 +302,10 @@ export const jobsApi = {
   async shortlist(jobId: string): Promise<SmartShortlistResponse> {
     return (await apiFetch(`/jobs/${jobId}/shortlist`)) as SmartShortlistResponse
   },
+  // Employer-initiated full re-score of every applicant for a job.
+  async rescoreShortlist(jobId: string): Promise<SmartShortlistResponse> {
+    return (await apiFetch(`/jobs/${jobId}/shortlist/rescore`, { method: 'POST' })) as SmartShortlistResponse
+  },
 }
 
 export interface SmartShortlistCandidate {
@@ -342,6 +346,13 @@ export interface SmartShortlistResponse {
   summary: string | null
   candidates: SmartShortlistCandidate[]
   note?: string
+  // Scoring progress: how many applicants have a real match score vs the total.
+  scored?: number
+  total?: number
+  // Cache metadata (server sets these).
+  cached?: boolean
+  computed_at?: string
+  rescored?: boolean
 }
 
 /* ----------------------------- Applications (real backend) ----------------------------- */

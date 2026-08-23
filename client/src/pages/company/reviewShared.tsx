@@ -336,6 +336,40 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
   return (
     <>
       <HumanAuthorityBanner />
+      {/* Scoring progress + cache status + employer re-score action. */}
+      <Card>
+        <CardBody className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Match scoring</p>
+            {data.total ? (
+              <div className="mt-1.5 flex items-center gap-3">
+                <div className="h-2 w-44 overflow-hidden rounded-full bg-muted">
+                  <div className="h-full bg-primary" style={{ width: `${Math.round(((data.scored ?? 0) / data.total) * 100)}%` }} />
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {data.scored}/{data.total} scored ({Math.round(((data.scored ?? 0) / data.total) * 100)}%)
+                  {data.scored != null && data.total != null && data.scored < data.total && (
+                    <> · {data.total - data.scored} not scored</>
+                  )}
+                </span>
+              </div>
+            ) : (
+              <span className="text-xs text-muted-foreground">No applicants yet</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {data.cached && (
+              <Badge tone="outline">
+                Cached{data.computed_at ? ` · ${formatDate(data.computed_at)}` : ''}
+              </Badge>
+            )}
+            {data.rescored && <Badge tone="success">Re-scored</Badge>}
+            <Button size="sm" variant="outline" onClick={async () => { setBusyId('rescore'); try { setData(await jobsApi.rescoreShortlist(jobId)) } finally { setBusyId(null) } }} disabled={busyId === 'rescore'}>
+              <RefreshCw className="h-3.5 w-3.5" /> Rescore
+            </Button>
+          </div>
+        </CardBody>
+      </Card>
       {data.mistral && data.summary && (
         <Card>
           <CardBody>
