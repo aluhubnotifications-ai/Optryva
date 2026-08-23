@@ -363,7 +363,12 @@ export default function ApplicantView() {
     const cur = app!.tags ?? []
     const next = cur.length === 1 && cur[0] === tag ? [] : [tag]
     const updated = await applicationsApi.review(app!.id, { tags: next })
-    if (updated) { setApp({ ...app!, ...updated }); markStale() }
+    if (updated) {
+      setApp({ ...app!, ...updated })
+      // Keep the left-hand applicant sidebar in sync immediately (real time).
+      setJobApplicants((list) => (list ?? []).map((ja) => (ja.id === app!.id ? { ...ja, tags: updated.tags ?? [] } : ja)))
+      markStale()
+    }
     toast({ title: next.length ? `Tagged “${tag}”` : `Removed “${tag}”`, tone: 'success' })
     setTagMenu(false)
   }
