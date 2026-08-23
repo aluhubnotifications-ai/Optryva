@@ -376,105 +376,7 @@ export default function ApplicationDetail() {
 				</Button>
 			</div>
 
-				</div>
 
-				<aside className="space-y-4 lg:sticky lg:top-[7.5rem] lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto">
-					<Card>
-						<CardBody className="space-y-3">
-							<div className="flex items-center gap-3">
-								<Avatar
-									name={brand}
-									src={job.original_company_logo_url || company?.avatar_url}
-									size={40}
-									className="rounded-xl"
-								/>
-								<div className="min-w-0">
-									<p className="truncate text-sm font-semibold">{brand}</p>
-									<p className="truncate text-xs text-muted-foreground">
-										{job.title} · {job.location}
-									</p>
-								</div>
-							</div>
-							<dl className="divide-y divide-border">
-								<div className="flex items-center justify-between gap-3 py-2">
-									<dt className="text-xs text-muted-foreground">Applied</dt>
-									<dd className="text-sm font-medium">
-										{formatDate(app.created_at)}
-									</dd>
-								</div>
-								<div className="flex items-center justify-between gap-3 py-2">
-									<dt className="text-xs text-muted-foreground">Status</dt>
-									<dd>
-										<Badge
-											tone={statusTone[app.status]}
-											className="capitalize"
-										>
-											{app.status === "hired" ? "Accepted" : app.status}
-										</Badge>
-									</dd>
-								</div>
-								<div className="flex items-center justify-between gap-3 py-2">
-									<dt className="text-xs text-muted-foreground">Assessment</dt>
-									<dd className="text-sm font-medium">{assessmentState}</dd>
-								</div>
-								<div className="flex items-center justify-between gap-3 py-2">
-									<dt className="text-xs text-muted-foreground">Attempts</dt>
-									<dd className="text-sm font-medium">
-										{app.attempts ?? 0} / {maxAttempts}
-									</dd>
-								</div>
-								<div className="flex items-center justify-between gap-3 py-2">
-									<dt className="text-xs text-muted-foreground">Test submitted</dt>
-									<dd className="text-sm font-medium text-right">
-										{app.assignment_submitted_at ? (
-											<span className="flex items-center justify-end gap-1.5">
-												{formatDate(app.assignment_submitted_at)}
-												{app.assignment_late && (
-													<Badge
-														tone="danger"
-														className="px-1.5 py-0.5 text-[10px]"
-													>
-														Late
-													</Badge>
-												)}
-											</span>
-										) : (
-											"—"
-										)}
-									</dd>
-								</div>
-								{deadline && (
-									<div className="flex items-center justify-between gap-3 py-2">
-										<dt className="text-xs text-muted-foreground">Due by</dt>
-										<dd className="text-sm font-medium">
-											{formatDate(deadline.toISOString())}
-										</dd>
-									</div>
-								)}
-							</dl>
-						</CardBody>
-					</Card>
-
-					<Card>
-						<CardBody className="space-y-3">
-							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-								Process
-							</p>
-							<div className="mt-1">
-								<AppProgressSteps status={app.status} />
-							</div>
-						</CardBody>
-					</Card>
-
-					<Card>
-						<CardBody className="space-y-3">
-							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-								What's next
-							</p>
-							<div className="mt-1">{nextUp}</div>
-						</CardBody>
-					</Card>
-				</aside>
 
 			<Tabs value={tab} onValueChange={setTab} className="space-y-4 min-w-0">
 				<TabsList className="flex flex-wrap">
@@ -622,6 +524,91 @@ export default function ApplicationDetail() {
 					</Card>
 				</TabsContent>
 			</Tabs>
+				</div>
+
+				<aside className="space-y-4 lg:sticky lg:top-[7.5rem] lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto">
+					<Card>
+						<CardBody className="space-y-3">
+							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+								Application
+							</p>
+							<dl className="divide-y divide-border">
+								<div className="flex items-center justify-between gap-3 py-2">
+									<dt className="text-xs text-muted-foreground">Applied</dt>
+									<dd className="text-sm font-medium">
+										{formatDate(app.created_at)}
+									</dd>
+								</div>
+								<div className="flex items-center justify-between gap-3 py-2">
+									<dt className="text-xs text-muted-foreground">Status</dt>
+									<dd>
+										<Badge tone={statusTone[app.status]} className="capitalize">
+											{app.status === "hired" ? "Accepted" : app.status}
+										</Badge>
+									</dd>
+								</div>
+								<div className="flex items-center justify-between gap-3 py-2">
+									<dt className="text-xs text-muted-foreground">Assessment</dt>
+									<dd className="text-sm font-medium">{assessmentState}</dd>
+								</div>
+								<div className="flex items-center justify-between gap-3 py-2">
+									<dt className="text-xs text-muted-foreground">Attempts</dt>
+									<dd className="text-sm font-medium">
+										{app.attempts ?? 0} / {maxAttempts}
+									</dd>
+								</div>
+								<div className="flex items-center justify-between gap-3 py-2">
+									<dt className="text-xs text-muted-foreground">Test submitted</dt>
+									<dd className="text-sm font-medium text-right">
+										{app.assignment_submitted_at ? (
+											<span className="flex items-center justify-end gap-1.5">
+												{formatDate(app.assignment_submitted_at)}
+												{app.assignment_late && (
+													<Badge
+														tone="danger"
+														className="px-1.5 py-0.5 text-[10px]"
+													>
+														Late
+													</Badge>
+												)}
+											</span>
+										) : (
+											"—"
+										)}
+									</dd>
+								</div>
+								{deadline && (
+									<div className="flex items-center justify-between gap-3 py-2">
+										<dt className="text-xs text-muted-foreground">Due by</dt>
+										<dd className="text-sm font-medium">
+											{formatDate(deadline.toISOString())}
+										</dd>
+									</div>
+								)}
+							</dl>
+						</CardBody>
+					</Card>
+
+					<Card>
+						<CardBody className="space-y-3">
+							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+								Process
+							</p>
+							<div className="mt-1">
+								<AppProgressSteps status={app.status} />
+							</div>
+						</CardBody>
+					</Card>
+
+					<Card>
+						<CardBody className="space-y-3">
+							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+								What's next
+							</p>
+							<div className="mt-1">{nextUp}</div>
+						</CardBody>
+					</Card>
+				</aside>
 			</div>
 
 			<AIResearchPanel
