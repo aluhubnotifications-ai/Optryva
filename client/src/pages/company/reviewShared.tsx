@@ -368,11 +368,15 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
                     {c.location && <span className="text-xs text-muted-foreground">· {c.location}</span>}
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    <ScorePill label={c.score_unavailable ? 'Fit (est.)' : 'Fit'} score={displayScore} />
-                    {c.score_unavailable && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-                        Match score unavailable — AI estimate only
-                      </span>
+                    {c.score_unavailable ? (
+                      <>
+                        <Badge tone="outline">Not scored</Badge>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                          Match score unavailable — AI estimate only
+                        </span>
+                      </>
+                    ) : (
+                      <ScorePill label="Fit" score={displayScore} />
                     )}
                     {c.verdict && (
                       <Badge tone={c.verdict === 'strong' ? 'success' : c.verdict === 'weak' ? 'danger' : 'accent'} className="capitalize">

@@ -272,6 +272,10 @@ jobs.get('/:jobId/shortlist', async (req, res) => {
     }
     candidates.sort((a: any, b: any) => (b.fit_score ?? b.score) - (a.fit_score ?? a.score))
   }
+  // A "fit_score" produced by Mistral for a candidate with NO real match score is
+  // an unsupported guess (no evidence to rank on), so never present it as a number
+  // or let it outrank genuinely-scored candidates. Keep only the qualitative note.
+  for (const c of candidates as any[]) if (c.score_unavailable) c.fit_score = null
 
   return res.json({ job_id: jobId, mistral: hasMistral(), summary, candidates })
 })
