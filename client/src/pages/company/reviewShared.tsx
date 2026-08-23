@@ -310,7 +310,7 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
           <p className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
             <Sparkles className="h-6 w-6" />
           </p>
-          {data?.note ?? 'No matched candidates for this role yet.'}
+          {data?.note ?? 'No applicants or matched candidates for this role yet.'}
         </CardBody>
       </Card>
     )

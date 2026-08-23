@@ -155,11 +155,13 @@ jobs.get('/company/:companyId', async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // Employer Smart Shortlist (Optryva AI Smart, Phase 5).
-// Surfaces the students ALREADY matched to a posted job (from ai_match_cache),
-// enriches each with profile + applied status, and asks Mistral to produce an
-// employer-facing decision aid (fit verdict + decision note) so the employer can
-// decide who to interview. Degrades gracefully: with no Mistral key we return the
-// cached Claude scores/reasons, which are already explainable.
+// Surfaces the candidates for a posted job = applicants UNION students already
+// matched to it. An applicant who never browsed the role (no cached score) is
+// STILL shown — we score them on the fly via getMatch. Each candidate is enriched
+// with profile + applied status, and Mistral produces an employer-facing decision
+// aid (fit verdict + decision note) so the employer can decide who to interview.
+// Degrades gracefully: with no Mistral key we return the (still explainable)
+// match scores/reasons; with no scorer at all the applicant is still listed.
 // ---------------------------------------------------------------------------
 jobs.get('/:jobId/shortlist', async (req, res) => {
   const jobId = req.params.jobId
@@ -167,45 +169,50 @@ jobs.get('/:jobId/shortlist', async (req, res) => {
   if (!job) return res.status(404).json({ error: 'not_found' })
   if (job.company_id !== req.user!.id && !isAdminEmail(req.user!.email)) return res.status(403).json({ error: 'forbidden' })
 
-  const cacheRows = await (async () => {
-    const rows = (must(await sb.from('ai_match_cache').select('student_id, payload, resume_id, stale').eq('job_id', jobId)) as any[]) ?? []
-    const jobMatch = rowToMatchJob(job)
-    // Re-score entries invalidated by a résumé/profile edit so the employer sees
-    // the refreshed analysis (and an updated score), instead of a stale or dropped
-    // row. getMatch re-caches with the current résumé when it re-scores.
-    return Promise.all(
-      rows.map(async (r) => {
-        let m: any = null
-        try { m = JSON.parse(r.payload) } catch { return null }
-        if (r.stale === 1) {
-          try {
-            const fresh = await getMatch(r.student_id, jobMatch, { cache: true })
-            if (fresh) m = fresh
-          } catch { /* keep stale payload as fallback */ }
-        }
-        return { student_id: r.student_id, resume_id: r.resume_id, m }
-      }),
-    )
-  })()
-  const parsed = (cacheRows.filter(Boolean) as any[]).sort((a: any, b: any) => (b.m.score ?? 0) - (a.m.score ?? 0))
+  const jobMatch = rowToMatchJob(job)
 
-  if (!parsed.length) {
+  // Pool = applicants to this job UNION students already matched to it.
+  const appRows = (must(await sb.from('applications').select('*').eq('job_id', jobId).in('status', ['pending', 'reviewed', 'shortlisted', 'hired', 'rejected'])) as any[]) ?? []
+  const appByStudent = new Map(appRows.map((a) => [a.student_id, a]))
+  const cacheRows = (must(await sb.from('ai_match_cache').select('student_id, payload, resume_id, stale').eq('job_id', jobId)) as any[]) ?? []
+  const cacheByStudent = new Map(cacheRows.map((r) => [r.student_id, r]))
+  const studentIds = Array.from(new Set([...appRows.map((a) => a.student_id), ...cacheRows.map((r) => r.student_id)]))
+
+  if (!studentIds.length) {
     return res.json({
       job_id: jobId,
       mistral: hasMistral(),
       summary: null,
       candidates: [],
-      note: 'No students have been matched to this role yet. Candidates appear here once they browse the role and get scored.',
+      note: 'No applicants or matched candidates for this role yet.',
     })
   }
 
-  const ids = parsed.map((x: any) => x.student_id)
-  const profRows = (must(await sb.from('profiles').select('id, full_name, avatar_url, major, location, skills').in('id', ids)) as any[]) ?? []
+  // Resolve a match for every candidate: use a fresh (non-stale) cached score,
+  // otherwise score on the fly via getMatch (which caches the result). Applicants
+  // with no prior match get scored here too, so the shortlist is never empty just
+  // because someone applied without "matching" first.
+  const resolved = await Promise.all(
+    studentIds.map(async (sid) => {
+      const cached = cacheByStudent.get(sid)
+      let m: any = null
+      if (cached && cached.stale !== 1) {
+        try { m = JSON.parse(cached.payload) } catch { m = null }
+      }
+      if (!m) {
+        try { m = await getMatch(sid, jobMatch, { cache: true }) } catch { m = null }
+      }
+      // Even if scoring is fully unavailable, still surface the candidate.
+      if (!m) m = { score: 0, matched_skills: [], reasons: ['No match score available yet.'], mismatch_flags: [] }
+      return { student_id: sid, resume_id: cached?.resume_id ?? null, m }
+    }),
+  )
+  const parsed = (resolved.filter(Boolean) as any[]).sort((a: any, b: any) => (b.m.score ?? 0) - (a.m.score ?? 0))
+
+  const profRows = (must(await sb.from('profiles').select('id, full_name, avatar_url, major, location, skills').in('id', studentIds)) as any[]) ?? []
   const profById = new Map(profRows.map((p) => [p.id, p]))
-  const appRows = (must(await sb.from('applications').select('*').eq('job_id', jobId).in('student_id', ids).in('status', ['pending', 'reviewed', 'shortlisted', 'hired', 'rejected'])) as any[]) ?? []
-  const appByStudent = new Map(appRows.map((a) => [a.student_id, a]))
   // The candidate's CURRENT active résumé, to detect post-apply edits.
-  const curRows = (must(await sb.from('resume_profiles').select('id, student_id').eq('active', 1).in('student_id', ids)) as any[]) ?? []
+  const curRows = (must(await sb.from('resume_profiles').select('id, student_id').eq('active', 1).in('student_id', studentIds)) as any[]) ?? []
   const curResumeByStudent = new Map(curRows.map((r) => [r.student_id, r.id]))
 
   const candidates = parsed.map((x: any) => {
