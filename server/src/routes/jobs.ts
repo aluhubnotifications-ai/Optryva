@@ -281,6 +281,10 @@ jobs.get('/:jobId/shortlist', async (req, res) => {
 
   let needsCompute = !cached
   if (cached && !needsCompute) {
+    // Self-heal: if the last compute left some candidates unscored (e.g. the
+    // scorer was briefly unavailable), recompute so their scores get retried —
+    // otherwise the shortlist would stay stuck showing "0/N scored".
+    if ((cached.scored ?? 0) < (cached.total ?? 0)) needsCompute = true
     // Invalidate when a NEW application arrived since the last compute, or the
     // engine version changed — otherwise serve the cached shortlist untouched.
     const newest = (await sb.from('applications').select('created_at').eq('job_id', jobId).in('status', SHORTLIST_STATUS).order('created_at', { ascending: false }).limit(1)).data?.[0]

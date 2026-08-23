@@ -275,6 +275,7 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
   const [data, setData] = useState<SmartShortlistResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [retries, setRetries] = useState(0)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -289,11 +290,22 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
     let alive = true
     const run = () => jobsApi.shortlist(jobId).then((d) => alive && setData(d)).catch(() => alive && setData(null)).finally(() => alive && setLoading(false))
     setLoading(true)
+    setRetries(0)
     run()
     return () => {
       alive = false
     }
   }, [jobId])
+
+  // If scoring is still incomplete (some candidates unscored), keep retrying in the
+  // background so the ranking fills in while the employer waits, instead of leaving
+  // a stuck "0/N scored" state.
+  useEffect(() => {
+    if (data && data.total && data.scored != null && data.scored < data.total && retries < 4) {
+      const t = setTimeout(() => { setRetries((r) => r + 1); load() }, 2500)
+      return () => clearTimeout(t)
+    }
+  }, [data, retries, load])
 
   async function act(applicationId: string, status: string) {
     setBusyId(applicationId)
@@ -349,7 +361,7 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
                 <span className="text-xs text-muted-foreground">
                   {data.scored}/{data.total} scored ({Math.round(((data.scored ?? 0) / data.total) * 100)}%)
                   {data.scored != null && data.total != null && data.scored < data.total && (
-                    <> · {data.total - data.scored} not scored</>
+                    <> · {data.total - data.scored} not scored — scoring in progress…</>
                   )}
                 </span>
               </div>
