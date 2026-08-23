@@ -25,6 +25,7 @@ import {
   ChevronRight,
   Pencil,
   UserPlus,
+  RefreshCw,
   type LucideIcon,
 } from 'lucide-react'
 import { applicationsApi, jobsApi, messagesApi } from '@/lib/api'
@@ -679,6 +680,33 @@ export default function ApplicantView() {
               <div className="mt-3 flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
                 <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                 <p className="text-muted-foreground"><span className="font-medium text-foreground">Why this fit:</span> {app.match_rationale}</p>
+              </div>
+            )}
+
+            {app.resume_snapshot && (
+              <div className="mt-3 rounded-lg border border-border bg-muted/30 p-3 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium text-foreground">Résumé used for matching</p>
+                  {app.resume_snapshot.name && <span className="text-muted-foreground">· {app.resume_snapshot.name}</span>}
+                  {app.resume_changed && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                      <RefreshCw className="h-3 w-3" /> Updated after applying
+                    </span>
+                  )}
+                </div>
+                {app.resume_snapshot.summary && <p className="mt-1 text-muted-foreground">{app.resume_snapshot.summary}</p>}
+                {app.resume_snapshot && app.resume_snapshot.skills && app.resume_snapshot.skills.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {app.resume_snapshot.skills.slice(0, 8).map((s: string) => (
+                      <Badge key={s} tone="primary" className="text-[11px]">{s}</Badge>
+                    ))}
+                  </div>
+                )}
+                {app.resume_changed && (
+                  <p className="mt-2 text-xs text-amber-700">
+                    The candidate edited their résumé after applying. The match score above reflects the résumé used at apply time; their current résumé may differ — review both before deciding.
+                  </p>
+                )}
               </div>
             )}
 

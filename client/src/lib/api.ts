@@ -297,6 +297,45 @@ export const jobsApi = {
       return {}
     }
   },
+  // Employer Smart Shortlist (Optryva AI Smart): matched students for a posted job,
+  // enriched with a Mistral employer-facing decision aid when available.
+  async shortlist(jobId: string): Promise<SmartShortlistResponse> {
+    return (await apiFetch(`/jobs/${jobId}/shortlist`)) as SmartShortlistResponse
+  },
+}
+
+export interface SmartShortlistCandidate {
+  student_id: string
+  resume_id: string | null
+  name: string
+  avatar_url: string | null
+  major: string | null
+  location: string | null
+  skills: string[]
+  applied: boolean
+  application_id: string | null
+  application_status: string | null
+  score: number
+  matched_skills: string[]
+  reasons: string[]
+  mismatch_flags: string[]
+  matched_resume_id?: string | null
+  matched_resume_name?: string | null
+  current_resume_id?: string | null
+  resume_changed?: boolean
+  fit_score?: number
+  verdict?: 'strong' | 'possible' | 'weak' | null
+  decision_note?: string | null
+  fit_strengths?: string[]
+  fit_gaps?: string[]
+}
+
+export interface SmartShortlistResponse {
+  job_id: string
+  mistral: boolean
+  summary: string | null
+  candidates: SmartShortlistCandidate[]
+  note?: string
 }
 
 /* ----------------------------- Applications (real backend) ----------------------------- */

@@ -33,6 +33,34 @@ async function attachStudentProfiles(rows: any[]) {
   }
 }
 
+// resume_id / resume_snapshot (migration 0035) may not be applied yet; detect
+// once so the apply flow degrades gracefully and the feature activates on deploy.
+let hasResumeSnapshotCols = false
+async function resumeSnapshotColsExist(): Promise<boolean> {
+  if (hasResumeSnapshotCols) return true
+  const { error } = await sb.from('applications').select('resume_id').limit(1)
+  hasResumeSnapshotCols = !error
+  return hasResumeSnapshotCols
+}
+
+/** Flag applications whose candidate edited their résumé AFTER applying: compare
+ *  the résumé that produced the match (application.resume_id) against the
+ *  student's CURRENT active résumé. Best-effort — never blocks the response. */
+async function attachResumeChanged(rows: any[]) {  const ids = Array.from(new Set((rows ?? []).map((r) => r.student_id).filter(Boolean)))
+  if (!ids.length) return
+  try {
+    const cur = (must(await sb.from('resume_profiles').select('id, student_id').eq('active', 1).in('student_id', ids)) as any[]) ?? []
+    const curMap = new Map(cur.map((r) => [r.student_id, r.id]))
+    for (const r of rows) {
+      const matched = r.resume_id ?? null
+      const curId = curMap.get(r.student_id) ?? null
+      r.resume_changed = !!matched && !!curId && matched !== curId
+    }
+  } catch {
+    /* best-effort */
+  }
+}
+
 applications.get('/mine', async (req, res) => {
   const rows = must(await sb.from('applications').select('*').eq('student_id', req.user!.id).order('created_at', { ascending: false })) as any[]
   res.json(rows.map(rowToApplication))
@@ -48,6 +76,7 @@ applications.get('/job/:jobId', async (req, res) => {
   // retry history lives in the timeline.
   const rows = must(await sb.from('applications').select('*').eq('job_id', req.params.jobId).in('status', ['pending', 'reviewed', 'shortlisted', 'hired', 'rejected']).order('created_at', { ascending: false })) as any[]
   await attachStudentProfiles(rows)
+  await attachResumeChanged(rows)
   res.json(rows.map(rowToApplication))
 })
 
@@ -61,6 +90,7 @@ applications.get('/company', async (req, res) => {
   // Employers only see submitted applications (hide drafts / cancelled attempts).
   const rows = must(await sb.from('applications').select('*').in('job_id', ids).in('status', ['pending', 'reviewed', 'shortlisted', 'hired', 'rejected']).order('created_at', { ascending: false })) as any[]
   await attachStudentProfiles(rows)
+  await attachResumeChanged(rows)
   res.json(rows.map(rowToApplication))
 })
 
@@ -71,6 +101,7 @@ applications.get('/:id', async (req, res) => {
   const allowed = r.student_id === req.user!.id || job?.company_id === req.user!.id || isAdminEmail(req.user!.email)
   if (!allowed) return res.status(403).json({ error: 'forbidden' })
   await attachStudentProfiles([r])
+  await attachResumeChanged([r])
   res.json(rowToApplication(r))
 })
 
@@ -93,11 +124,15 @@ applications.post('/', async (req, res) => {
 
   const ts = now()
   // Carry the AI match score + rationale we showed the student at apply time onto
-  // the application so the employer can see the same evidence during review.
+  // the application so the employer can see the same evidence during review. Also
+  // snapshot the résumé that produced the match, so reviewers can compare it to the
+  // candidate's CURRENT résumé (e.g. gaps filled after applying).
   let matchScore: number | null = null
   let matchRationale: string | null = null
+  let resumeId: string | null = null
+  let resumeSnapshot: any = null
   try {
-    const c = (await sb.from('ai_match_cache').select('payload').eq('student_id', req.user!.id).eq('job_id', b.job_id).maybeSingle()).data as any
+    const c = (await sb.from('ai_match_cache').select('payload, resume_id').eq('student_id', req.user!.id).eq('job_id', b.job_id).maybeSingle()).data as any
     if (c?.payload) {
       const p = JSON.parse(c.payload)
       matchScore = p.score ?? null
@@ -106,7 +141,16 @@ applications.post('/', async (req, res) => {
       const parts = [...(skills.length ? [`Strong in ${skills.slice(0, 4).join(', ')}`] : []), ...reasons].filter(Boolean)
       matchRationale = parts.length ? parts.join(' ') : null
     }
+    resumeId = c?.resume_id ?? null
   } catch { /* no cached score — leave null */ }
+  if (resumeId) {
+    try {
+      const rp = (await sb.from('resume_profiles').select('id, name, summary, skills, projects').eq('id', resumeId).maybeSingle()).data as any
+      if (rp) {
+        resumeSnapshot = { id: rp.id, name: rp.name, summary: rp.summary ?? null, skills: j.parse(rp.skills, []), projects: j.parse(rp.projects, []) }
+      }
+    } catch { /* best-effort snapshot */ }
+  }
 
   // Attempts represent *test* attempts consumed. Submitting the application itself
   // does NOT consume one — under the apply-first model the candidate takes the
@@ -147,6 +191,13 @@ applications.post('/', async (req, res) => {
     must(await sb.from('applications').update(row).eq('id', id))
   } else {
     must(await sb.from('applications').insert(row))
+  }
+  // Snapshot the résumé used for matching once the column exists (migration 0035).
+  // Best-effort: skipped safely if the migration hasn't been applied yet.
+  if (await resumeSnapshotColsExist()) {
+    try {
+      must(await sb.from('applications').update({ resume_id: resumeId, resume_snapshot: j.stringify(resumeSnapshot) }).eq('id', id))
+    } catch { /* best-effort */ }
   }
   await notify(job.company_id, 'new_application', 'New application received', `${b.full_name} applied to ${job.title}`, id)
   const created = must(await sb.from('applications').select('*').eq('id', id).maybeSingle())

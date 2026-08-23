@@ -7,6 +7,7 @@ import {
   MapPin,
   Pencil,
   Plus,
+  Sparkles,
   Trash2,
   Users,
 } from 'lucide-react'
@@ -18,10 +19,10 @@ import type { Application, JobListing } from '@/types'
 import { Badge, Card, CardBody, Skeleton } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/toast'
-import { ApplicantInbox, ExternalListingPanel } from '@/pages/company/reviewShared'
+import { ApplicantInbox, ExternalListingPanel, SmartShortlist } from '@/pages/company/reviewShared'
 import { cn, daysUntil } from '@/lib/utils'
 
-type PanelTab = 'applicants' | 'details'
+type PanelTab = 'applicants' | 'details' | 'shortlist'
 type Selection = 'all' | string
 
 function listingStats(apps: Application[], jobId: string) {
@@ -228,6 +229,7 @@ export default function Listings() {
                   <div className="flex gap-1 border-b border-border">
                     {([
                       ['applicants', `Applicants (${selectedApps.length})`, Users],
+                      ['shortlist', 'Smart Shortlist', Sparkles],
                       ['details', 'Job details', Briefcase],
                     ] as const).map(([key, label, Icon]) => (
                       <button
@@ -253,6 +255,8 @@ export default function Listings() {
                       <JobPostingView job={selectedJob} brand={brand} logo={logo} />
                     </CardBody>
                   </Card>
+                ) : tab === 'shortlist' ? (
+                  <SmartShortlist jobId={selectedJob.id} />
                 ) : (
                   <ApplicantInbox
                     apps={selectedApps}

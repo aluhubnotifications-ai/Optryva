@@ -33,6 +33,18 @@ function owned(id: string, studentId: string) {
   return sb.from('resume_profiles').select('*').eq('id', id).eq('student_id', studentId).maybeSingle()
 }
 
+// A résumé edit changes the evidence the matcher scores on, so any cached matches
+// for this student are now stale. Mark them stale (best-effort) — they get
+// re-scored with the fresh résumé the next time they're requested (e.g. when an
+// employer opens the Smart Shortlist). Mirror of the profile-update invalidation.
+async function markMatchesStale(studentId: string) {
+  try {
+    await sb.from('ai_match_cache').update({ stale: 1 }).eq('student_id', studentId)
+  } catch {
+    /* best-effort invalidation */
+  }
+}
+
 async function storageColumnExists(): Promise<boolean> {
   const { error } = await sb.from('resume_profiles').select('cv_storage_path').limit(1)
   return !error
@@ -74,6 +86,7 @@ resumes.get('/', async (req, res) => {
         updated_at: ts,
       }
       must(await sb.from('resume_profiles').insert(first))
+      await markMatchesStale(req.user!.id)
       rows = [first]
     }
   }
@@ -113,6 +126,7 @@ resumes.post('/', async (req, res) => {
   }
   for (const field of arrays) row[field] = j.stringify(Array.isArray(b[field]) ? b[field] : [])
   must(await sb.from('resume_profiles').insert(row))
+  await markMatchesStale(req.user!.id)
   const created = must(await owned(id, req.user!.id))
   res.json(rowToResume(created))
 })
@@ -140,6 +154,7 @@ resumes.patch('/:id', async (req, res) => {
   for (const field of arrays) if (field in b) update[field] = j.stringify(Array.isArray(b[field]) ? b[field] : [])
   if ('name' in b && !String(b.name ?? '').trim()) return res.status(400).json({ error: 'name_required' })
   must(await sb.from('resume_profiles').update(update).eq('id', req.params.id).eq('student_id', req.user!.id))
+  await markMatchesStale(req.user!.id)
   const updated = must(await owned(req.params.id, req.user!.id))
   res.json(rowToResume(updated))
 })
@@ -148,5 +163,6 @@ resumes.delete('/:id', async (req, res) => {
   const current = must(await owned(req.params.id, req.user!.id)) as any
   if (!current) return res.status(404).json({ error: 'not_found' })
   must(await sb.from('resume_profiles').delete().eq('id', req.params.id).eq('student_id', req.user!.id))
+  await markMatchesStale(req.user!.id)
   res.json({ ok: true })
 })

@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Check, CheckSquare, ExternalLink, Eye, ShieldCheck, Sparkles, Square, X } from 'lucide-react'
-import { applicationsApi } from '@/lib/api'
+import { ArrowRight, Check, CheckSquare, ExternalLink, Eye, RefreshCw, ShieldCheck, Sparkles, Square, X } from 'lucide-react'
+import { applicationsApi, jobsApi } from '@/lib/api'
+import type { SmartShortlistResponse } from '@/lib/api'
 import type { Application, ApplicationStatus, JobListing } from '@/types'
 import { Avatar, Badge, Card, CardBody, Skeleton, Textarea } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
@@ -267,5 +268,126 @@ export function ExternalListingPanel({ job, opens }: { job: JobListing; opens: n
         )}
       </CardBody>
     </Card>
+  )
+}
+
+export function SmartShortlist({ jobId }: { jobId: string }) {
+  const [data, setData] = useState<SmartShortlistResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    jobsApi
+      .shortlist(jobId)
+      .then((d) => alive && setData(d))
+      .catch(() => alive && setData(null))
+      .finally(() => alive && setLoading(false))
+    return () => {
+      alive = false
+    }
+  }, [jobId])
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Card key={i}>
+            <CardBody>
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="mt-2 h-3 w-1/4" />
+            </CardBody>
+          </Card>
+        ))}
+      </div>
+    )
+  }
+
+  if (!data || !data.candidates.length) {
+    return (
+      <Card>
+        <CardBody className="py-12 text-center text-sm text-muted-foreground">
+          <p className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <Sparkles className="h-6 w-6" />
+          </p>
+          {data?.note ?? 'No matched candidates for this role yet.'}
+        </CardBody>
+      </Card>
+    )
+  }
+
+  return (
+    <>
+      <HumanAuthorityBanner />
+      {data.mistral && data.summary && (
+        <Card>
+          <CardBody>
+            <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Sparkles className="h-4 w-4 text-primary" /> AI shortlist summary
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">{data.summary}</p>
+          </CardBody>
+        </Card>
+      )}
+      {!data.mistral && (
+        <div className="rounded-xl border border-amber-300/40 bg-amber-50/60 p-3 text-xs text-amber-700">
+          Mistral isn’t configured, so this shortlist shows the matching model’s scores and reasons only. Add a Mistral key to get per-candidate fit verdicts and decision notes.
+        </div>
+      )}
+      <div className="space-y-3">
+        {data.candidates.map((c) => {
+          const displayScore = Math.round(c.fit_score ?? c.score * 100)
+          return (
+            <Card key={c.student_id}>
+              <CardBody className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+                <Avatar name={c.name} src={c.avatar_url ?? undefined} size={44} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <p className="font-semibold">{c.name}</p>
+                    {c.major && <span className="text-sm text-muted-foreground">{c.major}</span>}
+                    {c.location && <span className="text-xs text-muted-foreground">· {c.location}</span>}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    <ScorePill label="Fit" score={displayScore} />
+                    {c.verdict && (
+                      <Badge tone={c.verdict === 'strong' ? 'success' : c.verdict === 'weak' ? 'danger' : 'accent'} className="capitalize">
+                        {c.verdict}
+                      </Badge>
+                    )}
+                    {c.applied && c.application_id && (
+                      <Link to={`/app/applicants/${c.application_id}`} className="text-xs font-medium text-primary hover:underline">
+                        View application
+                      </Link>
+                    )}
+                    {c.resume_changed && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                        <RefreshCw className="h-3 w-3" /> Résumé edited since applying
+                      </span>
+                    )}
+                  </div>
+                  {c.decision_note && <p className="mt-2 text-sm text-foreground">{c.decision_note}</p>}
+                  {c.matched_skills.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {c.matched_skills.map((s) => (
+                        <Badge key={s} tone="primary" className="text-xs">
+                          {s}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  {c.reasons.length > 0 && (
+                    <ul className="mt-2 list-disc space-y-0.5 pl-4 text-xs text-muted-foreground">
+                      {c.reasons.slice(0, 3).map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </CardBody>
+            </Card>
+          )
+        })}
+      </div>
+    </>
   )
 }

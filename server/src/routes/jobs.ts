@@ -1,11 +1,14 @@
 import { Router } from '@/lib/http'
 import { sb, must, j } from '@/db'
 import { requireAuth } from '@/lib/auth'
+import { isAdminEmail } from '@/lib/admin'
 import { rowToJob } from '@/lib/serialize'
 import { uid, now, notify } from '@/lib/util'
 import { embedJob } from '@/lib/enrich'
 import { jobVisibleTo, schoolGates } from '@/lib/visibility'
 import { cacheGet, cacheSet, cacheDeletePrefix } from '@/lib/cache'
+import { mistralJsonBlocks, hasMistral } from '@/lib/mistral'
+import { getMatch, rowToMatchJob } from './ai/helpers'
 
 export const jobs = Router()
 jobs.use(requireAuth)
@@ -149,6 +152,152 @@ jobs.get('/company/:companyId', async (req, res) => {
   const gates = await schoolGates([req.params.companyId])
   res.json(rows.filter((r) => jobVisibleTo(r, viewer, gates)).map(rowToJob))
 })
+
+// ---------------------------------------------------------------------------
+// Employer Smart Shortlist (Optryva AI Smart, Phase 5).
+// Surfaces the students ALREADY matched to a posted job (from ai_match_cache),
+// enriches each with profile + applied status, and asks Mistral to produce an
+// employer-facing decision aid (fit verdict + decision note) so the employer can
+// decide who to interview. Degrades gracefully: with no Mistral key we return the
+// cached Claude scores/reasons, which are already explainable.
+// ---------------------------------------------------------------------------
+jobs.get('/:jobId/shortlist', async (req, res) => {
+  const jobId = req.params.jobId
+  const job = must(await sb.from('job_listings').select('*').eq('id', jobId).maybeSingle()) as any
+  if (!job) return res.status(404).json({ error: 'not_found' })
+  if (job.company_id !== req.user!.id && !isAdminEmail(req.user!.email)) return res.status(403).json({ error: 'forbidden' })
+
+  const cacheRows = await (async () => {
+    const rows = (must(await sb.from('ai_match_cache').select('student_id, payload, resume_id, stale').eq('job_id', jobId)) as any[]) ?? []
+    const jobMatch = rowToMatchJob(job)
+    // Re-score entries invalidated by a résumé/profile edit so the employer sees
+    // the refreshed analysis (and an updated score), instead of a stale or dropped
+    // row. getMatch re-caches with the current résumé when it re-scores.
+    return Promise.all(
+      rows.map(async (r) => {
+        let m: any = null
+        try { m = JSON.parse(r.payload) } catch { return null }
+        if (r.stale === 1) {
+          try {
+            const fresh = await getMatch(r.student_id, jobMatch, { cache: true })
+            if (fresh) m = fresh
+          } catch { /* keep stale payload as fallback */ }
+        }
+        return { student_id: r.student_id, resume_id: r.resume_id, m }
+      }),
+    )
+  })()
+  const parsed = (cacheRows.filter(Boolean) as any[]).sort((a: any, b: any) => (b.m.score ?? 0) - (a.m.score ?? 0))
+
+  if (!parsed.length) {
+    return res.json({
+      job_id: jobId,
+      mistral: hasMistral(),
+      summary: null,
+      candidates: [],
+      note: 'No students have been matched to this role yet. Candidates appear here once they browse the role and get scored.',
+    })
+  }
+
+  const ids = parsed.map((x: any) => x.student_id)
+  const profRows = (must(await sb.from('profiles').select('id, full_name, avatar_url, major, location, skills').in('id', ids)) as any[]) ?? []
+  const profById = new Map(profRows.map((p) => [p.id, p]))
+  const appRows = (must(await sb.from('applications').select('*').eq('job_id', jobId).in('student_id', ids).in('status', ['pending', 'reviewed', 'shortlisted', 'hired', 'rejected'])) as any[]) ?? []
+  const appByStudent = new Map(appRows.map((a) => [a.student_id, a]))
+  // The candidate's CURRENT active résumé, to detect post-apply edits.
+  const curRows = (must(await sb.from('resume_profiles').select('id, student_id').eq('active', 1).in('student_id', ids)) as any[]) ?? []
+  const curResumeByStudent = new Map(curRows.map((r) => [r.student_id, r.id]))
+
+  const candidates = parsed.map((x: any) => {
+    const p = profById.get(x.student_id) ?? {}
+    const app = appByStudent.get(x.student_id)
+    const matchedResumeId = app?.resume_id ?? x.resume_id ?? null
+    const curResumeId = curResumeByStudent.get(x.student_id) ?? null
+    const snapshot: any = app?.resume_snapshot ? j.parse(app.resume_snapshot, null) : null
+    return {
+      student_id: x.student_id,
+      resume_id: x.resume_id,
+      name: p.full_name ?? 'Candidate',
+      avatar_url: p.avatar_url ?? null,
+      major: p.major ?? null,
+      location: p.location ?? null,
+      skills: j.parse(p.skills, []),
+      applied: !!app,
+      application_id: app?.id ?? null,
+      application_status: app?.status ?? null,
+      score: x.m.score ?? 0,
+      matched_skills: x.m.matched_skills ?? [],
+      reasons: x.m.reasons ?? [],
+      mismatch_flags: x.m.mismatch_flags ?? [],
+      matched_resume_id: matchedResumeId,
+      matched_resume_name: snapshot?.name ?? null,
+      current_resume_id: curResumeId,
+      resume_changed: !!app && !!matchedResumeId && !!curResumeId && matchedResumeId !== curResumeId,
+    }
+  })
+
+  // Mistral employer-facing decision aid (graceful: skipped if no key / fails).
+  let summary: string | null = null
+  const aid = await mistralShortlistAid(job, candidates)
+  if (aid) {
+    summary = aid.summary ?? null
+    const byId = new Map((aid.candidates ?? []).map((c: any) => [c.student_id, c]))
+    for (const c of candidates as any[]) {
+      const e = byId.get(c.student_id)
+      if (e) {
+        c.fit_score = typeof e.fit_score === 'number' ? e.fit_score : c.score
+        c.verdict = e.verdict ?? null
+        c.decision_note = e.decision_note ?? null
+        c.fit_strengths = e.strengths ?? []
+        c.fit_gaps = e.gaps ?? []
+      }
+    }
+    candidates.sort((a: any, b: any) => (b.fit_score ?? b.score) - (a.fit_score ?? a.score))
+  }
+
+  return res.json({ job_id: jobId, mistral: hasMistral(), summary, candidates })
+})
+
+async function mistralShortlistAid(job: any, candidates: any[]): Promise<{ summary?: string; candidates?: any[] } | null> {
+  if (!hasMistral()) return null
+  const top = candidates.slice(0, 25)
+  const system =
+    'You are an impartial hiring decision assistant for an EMPLOYER reviewing a shortlist of students already matched to a role. ' +
+    'For each candidate give an employer-focused FIT VERDICT and a concise DECISION NOTE that helps the employer decide whether to interview. ' +
+    'Be honest: surface both strengths and gaps relative to the role. Output STRICT JSON only.'
+  const schema = {
+    summary: 'string — 1-2 sentence overview of shortlist quality for this role',
+    candidates: [
+      {
+        student_id: 'string (must match the provided id exactly)',
+        fit_score: 'number 0-100 (your independent employer-facing fit estimate)',
+        verdict: "one of 'strong' | 'possible' | 'weak'",
+        decision_note: 'string — 2-3 sentences: why interview or not, with the key tradeoff',
+        strengths: ['string'],
+        gaps: ['string'],
+      },
+    ],
+  }
+  const cands = top
+    .map(
+      (c, i) =>
+        `${i + 1}. id=${c.student_id} name=${c.name} major=${c.major ?? ''} location=${c.location ?? ''} ` +
+        `skills=[${c.skills.join(', ')}] baseScore=${c.score} matchedSkills=[${c.matched_skills.join(', ')}] ` +
+        `reasons=[${c.reasons.join(' | ')}] gaps=[${c.mismatch_flags.join(', ')}]`,
+    )
+    .join('\n')
+  const content: any[] = [
+    {
+      type: 'text',
+      text:
+        `ROLE:\nTitle: ${job.title}\nType: ${job.listing_type}\nTags: ${j.parse(job.tags, []).join(', ')}\n` +
+        `Description: ${(job.description || '').slice(0, 3000)}\n` +
+        `Qualifications: ${j.parse(job.qualifications, []).join('; ')}\n\n` +
+        `CANDIDATES (base score is 0-1 from the matching model):\n${cands}`,
+    },
+  ]
+  return mistralJsonBlocks<{ summary?: string; candidates?: any[] }>({ system, content, schema, maxTokens: 2500, temperature: 0.2 })
+}
 
 jobs.get('/:id', async (req, res) => {
   const r = must(await sb.from('job_listings').select('*').eq('id', req.params.id).maybeSingle()) as any

@@ -173,6 +173,9 @@ export interface Application {
   assignment_late?: boolean
   match_score?: number
   match_rationale?: string
+  resume_id?: string | null
+  resume_snapshot?: { id: string; name: string; summary?: string | null; skills?: string[]; projects?: any[] } | null
+  resume_changed?: boolean
   student_avatar_url?: string
   student_skills?: string[]
   student_bio?: string
