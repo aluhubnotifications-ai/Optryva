@@ -11,6 +11,7 @@ import {
   ClipboardCheck,
   Check,
   ArrowRight,
+  ShieldCheck,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Label, Textarea, Select, Badge } from '@/components/ui/primitives'
@@ -18,6 +19,15 @@ import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/toast'
 import { aiApi, applicationsApi } from '@/lib/api'
 import { ProctorMonitor, VIOLATION_LABEL } from '@/components/ProctorMonitor'
+
+const PROCTOR_RULES = [
+  'Your camera, microphone, and screen are monitored live for the whole test. Nothing is recorded or sent anywhere.',
+  'You must share your entire screen. The proctor watches live for other windows, tabs, or apps.',
+  'If a second person appears, you leave the camera frame, there is loud noise, or excessive movement, the test is cancelled.',
+  'Switching tabs, minimizing, or leaving the test window cancels the test immediately.',
+  'Stopping the camera, microphone, or screen share also cancels the test immediately.',
+  'You have a limited number of attempts, set by the employer. Breaking the rules uses one up.',
+]
 import type { ProctorViolation } from '@/components/ProctorMonitor'
 import { cn, fileToDataUrl, formatBytes } from '@/lib/utils'
 import type { AiAssignmentQuestion, Application, AppDocument, JobListing, Profile } from '@/types'
@@ -84,6 +94,8 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
   const [savingDraft, setSavingDraft] = useState(false)
   const [proctorCancelled, setProctorCancelled] = useState<ProctorViolation | null>(null)
   const [proctorResult, setProctorResult] = useState<Application | null>(null)
+  const [consentGiven, setConsentGiven] = useState(false)
+  const [consentChecked, setConsentChecked] = useState(false)
 
   // Resume a previously saved draft (and detect an already-submitted application)
   // so a candidate can come back later and pick up where they left off.
@@ -93,6 +105,8 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
     setAlreadyApplied(null)
     setProctorCancelled(null)
     setProctorResult(null)
+    setConsentGiven(false)
+    setConsentChecked(false)
     setAssignmentAnswers({})
     setAssignmentFileNames({})
     setInterviewFirst(false)
@@ -315,7 +329,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
             : `You've used all ${maxAttempts} attempts for this test.`}
         </p>
         {canRetry ? (
-          <Button className="mt-3" onClick={() => { setProctorCancelled(null); setActive('assessment') }}>Try again</Button>
+          <Button className="mt-3" onClick={() => { setProctorCancelled(null); setConsentGiven(false); setConsentChecked(false); setActive('assessment') }}>Try again</Button>
         ) : (
           <Button className="mt-3" onClick={() => onClose?.()}>Back</Button>
         )}
@@ -327,7 +341,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
 
   return (
     <div className="space-y-5">
-      <ProctorMonitor active={proctoring} onViolation={handleProctorViolation} />
+      <ProctorMonitor active={proctoring && consentGiven} onViolation={handleProctorViolation} />
         <nav className="flex flex-wrap items-center gap-1 sm:gap-2">
           {sections.map((s, i) => (
             <Fragment key={s.id}>
@@ -398,7 +412,23 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
 
         {active === 'assessment' && hasAssignment && assignment && (
           <section className="space-y-3">
-            <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4">
+            {!consentGiven ? (
+              <div className="rounded-2xl border border-border bg-card p-5">
+                <div className="flex items-center gap-2 text-primary">
+                  <ShieldCheck className="h-5 w-5" />
+                  <p className="font-semibold">Test rules and consent</p>
+                </div>
+                <ul className="mt-3 space-y-2 text-sm text-muted-foreground list-disc pl-5">
+                  {PROCTOR_RULES.map((rule, i) => (<li key={i}>{rule}</li>))}
+                </ul>
+                <label className="mt-4 flex items-start gap-2 text-sm">
+                  <input type="checkbox" checked={consentChecked} onChange={(e) => setConsentChecked(e.target.checked)} className="mt-0.5 h-4 w-4 accent-primary" />
+                  <span>I agree to be monitored by camera, microphone, and screen sharing for the duration of this test, and I understand the test will be cancelled if these rules are broken.</span>
+                </label>
+                <Button className="mt-4" disabled={!consentChecked} onClick={() => setConsentGiven(true)}>Start test</Button>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4">
               <div className="flex items-start gap-3">
                 <ClipboardCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
                 <div className="min-w-0">
@@ -427,6 +457,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
                 ))}
               </div>
             </div>
+            )}
           </section>
         )}
 
@@ -498,7 +529,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
             {active === 'submission' ? (
               <Button onClick={submit} disabled={!valid} loading={submitting}>Submit application</Button>
             ) : (
-              <Button type="button" className="gap-1.5" onClick={() => { if (nextId) setActive(nextId) }}>Next <ArrowRight className="h-4 w-4" /></Button>
+              <Button type="button" className="gap-1.5" disabled={proctoring && !consentGiven} onClick={() => { if (nextId) setActive(nextId) }}>Next <ArrowRight className="h-4 w-4" /></Button>
             )}
           </div>
         </div>

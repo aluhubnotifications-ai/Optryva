@@ -9,6 +9,8 @@ export type ProctorViolation =
   | 'excessive_movement'
   | 'noise'
   | 'tab_switch'
+  | 'screen_denied'
+  | 'screen_left'
 
 export const VIOLATION_LABEL: Record<ProctorViolation, string> = {
   permission_denied: "Camera/microphone permission is required to take this test.",
@@ -17,6 +19,8 @@ export const VIOLATION_LABEL: Record<ProctorViolation, string> = {
   excessive_movement: 'Excessive movement was detected.',
   noise: 'Loud noise was detected.',
   tab_switch: 'You left the test window.',
+  screen_denied: 'Screen sharing is required to take this test.',
+  screen_left: 'You stopped sharing your screen.',
 }
 
 const TICK_MS = 300
@@ -31,17 +35,20 @@ const MOTION_THRESHOLD = 12
 const NOISE_THRESHOLD = 0.15
 
 /**
- * Privacy-preserving proctor: the webcam + mic feed is analysed locally in the
- * browser by a free model (TensorFlow.js / BlazeFace). Nothing is recorded and
- * nothing is sent anywhere — it only watches for integrity violations and calls
- * `onViolation` so the host can cancel the test. Cancels on: a second person,
- * the candidate leaving frame, sustained loud noise, abnormal movement, or
- * leaving/switching the test tab/window.
+ * Privacy-preserving proctor: the webcam, mic, and screen share are analysed
+ * LIVE in the browser by a free model (TensorFlow.js / BlazeFace). Nothing is
+ * recorded and nothing is sent anywhere — it only watches for integrity
+ * violations and calls `onViolation` so the host can cancel the test. Cancels
+ * on: a second person, the candidate leaving frame, sustained loud noise,
+ * abnormal movement, leaving/switching the tab, or denying/stopping the camera,
+ * mic, or screen share.
  */
 export function ProctorMonitor({ active, onViolation }: { active: boolean; onViolation: (reason: ProctorViolation) => void }) {
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null) // self-view camera
+  const screenRef = useRef<HTMLVideoElement>(null) // live screen share
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
+  const cameraStreamRef = useRef<MediaStream | null>(null)
+  const screenStreamRef = useRef<MediaStream | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const runningRef = useRef(false)
   const firedRef = useRef(false)
@@ -57,31 +64,57 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
     firedRef.current = false
     lastGrayRef.current = null
 
-    // Leaving the tab/window is treated as walking away — cancel immediately.
+    // Leaving the tab/window, or stopping the screen share, is treated as
+    // walking away — cancel immediately.
     function onLeave() {
       if (runningRef.current) violate('tab_switch')
     }
 
     async function start() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
+        const camera = await navigator.mediaDevices.getUserMedia({
           video: { width: 320, height: 240 },
           audio: true,
         })
         if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop())
+          camera.getTracks().forEach((t) => t.stop())
           return
         }
-        streamRef.current = stream
+        cameraStreamRef.current = camera
         if (videoRef.current) {
-          videoRef.current.srcObject = stream
+          videoRef.current.srcObject = camera
           await videoRef.current.play().catch(() => {})
+        }
+
+        // Screen share is required and watched live (never recorded). If the
+        // candidate refuses, the test can't start.
+        let screen: MediaStream | null = null
+        try {
+          screen = await navigator.mediaDevices.getDisplayMedia({ video: true })
+        } catch {
+          if (!cancelled) return violate('screen_denied')
+        }
+        if (cancelled) {
+          screen?.getTracks().forEach((t) => t.stop())
+          return
+        }
+        if (screen) {
+          screenStreamRef.current = screen
+          if (screenRef.current) {
+            screenRef.current.srcObject = screen
+            await screenRef.current.play().catch(() => {})
+          }
+          screen.getVideoTracks().forEach((track) => {
+            track.addEventListener('ended', () => {
+              if (runningRef.current) violate('screen_left')
+            })
+          })
         }
 
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
         const audioCtx = new AudioCtx()
         audioCtxRef.current = audioCtx
-        const source = audioCtx.createMediaStreamSource(stream)
+        const source = audioCtx.createMediaStreamSource(camera)
         const analyser = audioCtx.createAnalyser()
         analyser.fftSize = 512
         source.connect(analyser)
@@ -95,7 +128,6 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
         if (cancelled) return
         setStatus('Proctoring active')
 
-        // Leaving the tab/window is treated as walking away — cancel immediately.
         window.addEventListener('blur', onLeave)
         document.addEventListener('visibilitychange', onLeave)
 
@@ -203,8 +235,10 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
     function cleanup() {
       window.removeEventListener('blur', onLeave)
       document.removeEventListener('visibilitychange', onLeave)
-      streamRef.current?.getTracks().forEach((t) => t.stop())
-      streamRef.current = null
+      cameraStreamRef.current?.getTracks().forEach((t) => t.stop())
+      cameraStreamRef.current = null
+      screenStreamRef.current?.getTracks().forEach((t) => t.stop())
+      screenStreamRef.current = null
       audioCtxRef.current?.close().catch(() => {})
       audioCtxRef.current = null
       lastGrayRef.current = null
@@ -222,15 +256,23 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
 
   const ready = status === 'Proctoring active'
   const message = !ready
-    ? 'Starting proctor… allow camera & mic'
+    ? 'Starting proctor… allow camera, mic & screen share'
     : warning ?? 'Keep your head centered in the frame'
 
   if (!active) return null
   return (
     <div className="pointer-events-none fixed inset-0 z-50">
-      <div className="absolute bottom-4 right-4 flex flex-col items-end gap-2">
+      <div className="absolute right-4 top-4 flex flex-col items-end gap-2">
+        <div className={cn('flex items-center gap-1 rounded-full bg-black/75 px-3 py-1 text-xs font-medium text-white', !ready && 'opacity-80')}>
+          <ShieldCheck className="h-3.5 w-3.5 text-success" /> {ready ? 'Proctoring live' : 'Starting…'}
+        </div>
+        {/* Self-view so the candidate can see themselves (positioned up). */}
         <div className={cn('overflow-hidden rounded-xl border-2 bg-black shadow-lg', warning ? 'border-danger' : 'border-primary/70')}>
-          <video ref={videoRef} autoPlay muted playsInline className="h-60 w-80 object-cover" />
+          <video ref={videoRef} autoPlay muted playsInline className="h-52 w-72 object-cover" />
+        </div>
+        {/* Live screen share (monitored, never recorded). */}
+        <div className="overflow-hidden rounded-xl border-2 border-accent/60 bg-black shadow-lg">
+          <video ref={screenRef} autoPlay muted playsInline className="h-32 w-72 object-cover" />
         </div>
         <div className={cn('max-w-xs rounded-lg px-4 py-2 text-center text-lg font-semibold shadow', warning ? 'bg-danger text-white' : 'bg-primary/95 text-primary-foreground')}>
           {message}
