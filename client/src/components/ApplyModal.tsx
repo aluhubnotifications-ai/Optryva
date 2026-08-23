@@ -11,26 +11,14 @@ import {
   ClipboardCheck,
   Check,
   ArrowRight,
-  ShieldCheck,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Label, Textarea, Select, Badge } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/toast'
 import { aiApi, applicationsApi } from '@/lib/api'
-import { ProctorMonitor, VIOLATION_LABEL } from '@/components/ProctorMonitor'
-
-const PROCTOR_RULES = [
-  'Your camera and microphone are monitored live for the whole test. Nothing is recorded or sent anywhere.',
-  'When the test starts you will be asked to allow camera & microphone. The test then locks into fullscreen (hiding your browser tabs) automatically.',
-  'If a second person appears, you leave the camera frame, you look down/away, there is loud noise, or excessive movement, the test is cancelled.',
-  'Switching tabs, minimizing, leaving the test window, or exiting fullscreen cancels the test immediately.',
-  'Stopping the camera or microphone also cancels the test immediately.',
-  'You have a limited number of attempts, set by the employer. Breaking the rules uses one up.',
-]
-import type { ProctorViolation } from '@/components/ProctorMonitor'
 import { cn, fileToDataUrl, formatBytes } from '@/lib/utils'
-import type { AiAssignmentQuestion, Application, AppDocument, JobListing, Profile } from '@/types'
+import type { Application, AppDocument, JobListing, Profile } from '@/types'
 
 const OPTIONAL_DOCS: { kind: AppDocument['kind']; label: string }[] = [
   { kind: 'cover', label: 'Cover Letter' },
@@ -42,7 +30,7 @@ const OPTIONAL_DOCS: { kind: AppDocument['kind']; label: string }[] = [
 ]
 
 type CoachResult = Awaited<ReturnType<typeof aiApi.coach>>
-type Step = 'info' | 'resume' | 'assessment' | 'submission'
+type Step = 'info' | 'resume' | 'submission'
 
 interface ApplyModalProps {
   open: boolean
@@ -87,14 +75,8 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
       : {},
   )
   const [submitting, setSubmitting] = useState(false)
-  const [assignmentAnswers, setAssignmentAnswers] = useState<Record<string, string | string[]>>({})
-  const [interviewFirst, setInterviewFirst] = useState(false)
   const [alreadyApplied, setAlreadyApplied] = useState<Application | null>(null)
   const [savingDraft, setSavingDraft] = useState(false)
-  const [proctorCancelled, setProctorCancelled] = useState<ProctorViolation | null>(null)
-  const [proctorResult, setProctorResult] = useState<Application | null>(null)
-  const [consentGiven, setConsentGiven] = useState(false)
-  const [consentChecked, setConsentChecked] = useState(false)
 
   // Resume a previously saved draft (and detect an already-submitted application)
   // so a candidate can come back later and pick up where they left off.
@@ -102,21 +84,15 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
     if (!job?.id) return
     let cancelled = false
     setAlreadyApplied(null)
-    setProctorCancelled(null)
-    setProctorResult(null)
-    setConsentGiven(false)
-    setConsentChecked(false)
-    setAssignmentAnswers({})
-    setInterviewFirst(false)
     applicationsApi
       .byStudent(user.id)
       .then((list) => {
         if (cancelled) return
-        const maxAttempts = job?.assignment?.max_attempts ?? 10
         const existing = list.find((a) => a.job_id === job.id && a.status !== 'draft')
         if (existing) {
           // A cancelled attempt can be retried until attempts run out; only block
           // (already-applied) when it's a real submission or attempts are exhausted.
+          const maxAttempts = job?.assignment?.max_attempts ?? 10
           if (existing.status === 'cancelled' && (existing.attempts ?? 0) < maxAttempts) setAlreadyApplied(null)
           else setAlreadyApplied(existing)
         }
@@ -138,9 +114,6 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
         const d: Record<string, AppDocument> = {}
         for (const doc of draft.documents ?? []) d[doc.kind] = doc
         setDocs(d)
-        // The test (assessment) is intentionally NOT restored from a draft — it is
-        // only ever completed and submitted, so a student can't pre-fill answers
-        // offline and resume them. assignmentAnswers stays empty.
       })
       .catch(() => {})
     return () => {
@@ -151,25 +124,12 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
   // AI coach
   const [coachLoading, setCoachLoading] = useState(false)
   const [coach, setCoach] = useState<CoachResult | null>(null)
-  const assignment = job?.assignment
   const externalApply = !!job?.apply_url
   const crossPosted = !!job?.original_company_name
   // A candidate assignment only applies to a genuine in-app application by the company
   // itself — not to external-link listings or roles forwarded from another company.
-  const hasAssignment = !!assignment && !externalApply && !crossPosted
-  const questions = assignment?.questions ?? []
-  const answerFilled = (question: AiAssignmentQuestion) => {
-    const answer = assignmentAnswers[question.id]
-    if (question.type === 'essay') {
-      const text = typeof answer === 'string' ? answer : ''
-      const wc = countWords(text)
-      if (!text.trim()) return false
-      if (question.minWords && wc < question.minWords) return false
-      if (question.maxWords && wc > question.maxWords) return false
-      return true
-    }
-    return Array.isArray(answer) ? answer.length > 0 : !!answer?.trim()
-  }
+  // The test is always taken *after* the application is submitted (apply-first).
+  const hasAssignment = !!job?.assignment && !externalApply && !crossPosted
 
   const valid = useMemo(
     () => form.full_name && /\S+@\S+\.\S+/.test(form.email) && form.school && form.year && docs.cv,
@@ -210,6 +170,8 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
     }
     setSubmitting(true)
     try {
+      // Apply-first: no test answers are sent here. The proctored assessment is
+      // completed afterwards from the application, once this is submitted.
       const app = await applicationsApi.create({
         student_id: user.id,
         job_id: job.id,
@@ -221,14 +183,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
         school: form.school,
         year: form.year ? Number(form.year) : undefined,
         linkedin: form.linkedin || undefined,
-        assignment_answers: hasAssignment
-          ? questions.length
-            ? questions.map((question) => ({
-                question_id: question.id,
-                answer: assignmentAnswers[question.id] ?? '',
-              }))
-            : assignment.rubric.map((criterion) => ({ criterion_id: criterion.id, answer: assignmentAnswers[criterion.id] ?? '' }))
-          : [],
+        assignment_answers: [],
       })
       toast({ title: 'Application submitted! 🎉', description: `${job.title} — good luck!`, tone: 'success' })
       onSubmitted?.(app)
@@ -266,26 +221,9 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
     }
   }
 
-  // ---- Section wizard (mirrors the company listing editor) ----
-  const sectionOrder: Step[] = hasAssignment ? ['info', 'resume', 'assessment', 'submission'] : ['info', 'resume', 'submission']
+  // ---- Section wizard ----
+  const sectionOrder: Step[] = ['info', 'resume', 'submission']
   const [active, setActive] = useState<Step>('info')
-  const proctoring = active === 'assessment' && hasAssignment && !proctorCancelled
-  const proctoringRef = useRef(proctoring)
-  proctoringRef.current = proctoring
-  const handleProctorViolationRef = useRef<(r: ProctorViolation) => void>(() => {})
-
-  // Fullscreen lock: the test runs in fullscreen so browser tabs / other windows
-  // are hidden. Exiting fullscreen during the test is treated as walking away.
-  useEffect(() => {
-    function onFs() {
-      if (proctoringRef.current && !document.fullscreenElement) handleProctorViolationRef.current('left_fullscreen')
-    }
-    document.addEventListener('fullscreenchange', onFs)
-    return () => document.removeEventListener('fullscreenchange', onFs)
-  }, [])
-  useEffect(() => {
-    if (!proctoring && document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
-  }, [proctoring])
   const sectionIndex = sectionOrder.indexOf(active)
   const prevId = sectionIndex > 0 ? sectionOrder[sectionIndex - 1] : null
   const nextId = sectionIndex < sectionOrder.length - 1 ? sectionOrder[sectionIndex + 1] : null
@@ -293,15 +231,12 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
   const sections: { id: Step; label: string; done: boolean; optional?: boolean }[] = [
     { id: 'info', label: 'Your info', done: !!(form.full_name && form.email && form.school && form.year) },
     { id: 'resume', label: 'Résumé', done: !!docs.cv },
-    ...(hasAssignment
-      ? [{ id: 'assessment' as Step, label: 'Assessment', done: questions.every((q) => !q.required || answerFilled(q)), optional: !assignment?.due_before_interview }]
-      : []),
     { id: 'submission', label: 'Submit', done: false },
   ]
 
   if (alreadyApplied) {
     const exhausted = alreadyApplied.status === 'cancelled'
-    const maxAttempts = assignment?.max_attempts ?? 10
+    const maxAttempts = job?.assignment?.max_attempts ?? 10
     return (
       <div className={`space-y-4 rounded-2xl border p-6 text-center ${exhausted ? 'border-danger/30 bg-danger/5' : 'border-border bg-card'}`}>
         {exhausted && <AlertTriangle className="mx-auto h-8 w-8 text-danger" />}
@@ -320,7 +255,6 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
                 try {
                   await applicationsApi.remove(alreadyApplied.id)
                   setAlreadyApplied(null)
-                  setAssignmentAnswers({})
                   toast({ title: 'Application withdrawn', description: 'You can apply again from scratch.', tone: 'success' })
                 } catch (e) {
                   toast({ title: 'Could not withdraw', description: e instanceof Error ? e.message : undefined, tone: 'error' })
@@ -336,230 +270,155 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
     )
   }
 
-  function handleProctorViolation(reason: ProctorViolation) {
-    setProctorCancelled(reason)
-    if (job?.id) applicationsApi.proctorCancel({ job_id: job.id, reason }).then(setProctorResult).catch(() => {})
-  }
-  handleProctorViolationRef.current = handleProctorViolation
-
-  if (proctorCancelled) {
-    const maxAttempts = assignment?.max_attempts ?? 10
-    const used = proctorResult?.attempts ?? 1
-    const canRetry = used < maxAttempts
-    return (
-      <div className="space-y-4 rounded-2xl border border-danger/30 bg-danger/5 p-6 text-center">
-        <AlertTriangle className="mx-auto h-8 w-8 text-danger" />
-        <p className="text-lg font-semibold">{canRetry ? 'Test cancelled — you can retry' : 'Test cancelled — no attempts left'}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{VIOLATION_LABEL[proctorCancelled]}</p>
-        <p className="text-xs text-muted-foreground">
-          {canRetry
-            ? `Attempt ${used} of ${maxAttempts}. You can take the test again.`
-            : `You've used all ${maxAttempts} attempts for this test.`}
-        </p>
-        {canRetry ? (
-          <Button className="mt-3" onClick={() => { setProctorCancelled(null); setConsentGiven(false); setConsentChecked(false); setActive('assessment') }}>Try again</Button>
-        ) : (
-          <Button className="mt-3" onClick={() => onClose?.()}>Back</Button>
-        )}
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-5">
-      <ProctorMonitor active={proctoring && consentGiven} onViolation={handleProctorViolation} />
-        <nav className="flex flex-wrap items-center gap-1 sm:gap-2">
-          {sections.map((s, i) => (
-            <Fragment key={s.id}>
-              <button type="button" disabled={proctoring} onClick={() => setActive(s.id)} className={cn('flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium', active === s.id ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/40', proctoring && 'pointer-events-none opacity-50')}>
-                <span className={cn('flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold', s.done || active === s.id ? 'bg-primary text-primary-foreground' : 'bg-muted')}>
-                  {s.done ? <Check className="h-3.5 w-3.5" /> : i + 1}
-                </span>
-                {s.label}
-                {s.optional && !s.done && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Optional</span>}
-              </button>
-              {i < sections.length - 1 && <span className="h-px w-5 bg-border sm:w-8" />}
-            </Fragment>
-          ))}
-        </nav>
+      <nav className="flex flex-wrap items-center gap-1 sm:gap-2">
+        {sections.map((s, i) => (
+          <Fragment key={s.id}>
+            <button type="button" onClick={() => setActive(s.id)} className={cn('flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium', active === s.id ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/40')}>
+              <span className={cn('flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold', s.done || active === s.id ? 'bg-primary text-primary-foreground' : 'bg-muted')}>
+                {s.done ? <Check className="h-3.5 w-3.5" /> : i + 1}
+              </span>
+              {s.label}
+            </button>
+            {i < sections.length - 1 && <span className="h-px w-5 bg-border sm:w-8" />}
+          </Fragment>
+        ))}
+      </nav>
 
-        {active === 'info' && (
-          <section className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <Label>Full name <span className="text-danger">*</span></Label>
-              <Input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
-            </div>
-            <div>
-              <Label>Email <span className="text-danger">*</span></Label>
-              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-            </div>
-            <div>
-              <Label>Phone</Label>
-              <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+1 555 0100" />
-            </div>
-            <div>
-              <Label>School / University <span className="text-danger">*</span></Label>
-              <Input value={form.school} onChange={(e) => setForm({ ...form, school: e.target.value })} />
-            </div>
-            <div>
-              <Label>Year of study <span className="text-danger">*</span></Label>
-              <Select value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })}>
-                <option value="">Select…</option>
-                <option value="1">Year 1</option>
-                <option value="2">Year 2</option>
-                <option value="3">Year 3</option>
-                <option value="4">Year 4</option>
-              </Select>
-            </div>
-            <div>
-              <Label>LinkedIn</Label>
-              <Input value={form.linkedin} onChange={(e) => setForm({ ...form, linkedin: e.target.value })} placeholder="https://linkedin.com/in/…" />
-            </div>
-          </section>
-        )}
+      {active === 'info' && (
+        <section className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label>Full name <span className="text-danger">*</span></Label>
+            <Input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
+          </div>
+          <div>
+            <Label>Email <span className="text-danger">*</span></Label>
+            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          </div>
+          <div>
+            <Label>Phone</Label>
+            <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+1 555 0100" />
+          </div>
+          <div>
+            <Label>School / University <span className="text-danger">*</span></Label>
+            <Input value={form.school} onChange={(e) => setForm({ ...form, school: e.target.value })} />
+          </div>
+          <div>
+            <Label>Year of study <span className="text-danger">*</span></Label>
+            <Select value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })}>
+              <option value="">Select…</option>
+              <option value="1">Year 1</option>
+              <option value="2">Year 2</option>
+              <option value="3">Year 3</option>
+              <option value="4">Year 4</option>
+            </Select>
+          </div>
+          <div>
+            <Label>LinkedIn</Label>
+            <Input value={form.linkedin} onChange={(e) => setForm({ ...form, linkedin: e.target.value })} placeholder="https://linkedin.com/in/…" />
+          </div>
+        </section>
+      )}
 
-        {active === 'resume' && (
-          <section className="space-y-3">
-            <p className="text-xs text-muted-foreground">Your résumé is pre-selected from your profile — the one used when matching you to this role. You can replace it if needed.</p>
-            <FileDrop
-              label="CV / Résumé *"
-              doc={docs.cv}
-              required
-              onPick={(f) => setDoc('cv', f)}
-              onRemove={() => setDoc('cv', null)}
-            />
-            <div className="grid gap-2 sm:grid-cols-2">
-              {OPTIONAL_DOCS.map((d) => (
-                <FileDrop key={d.kind} label={d.label} compact doc={docs[d.kind]} onPick={(f) => setDoc(d.kind, f)} onRemove={() => setDoc(d.kind, null)} />
-              ))}
-            </div>
-          </section>
-        )}
+      {active === 'resume' && (
+        <section className="space-y-3">
+          <p className="text-xs text-muted-foreground">Your résumé is pre-selected from your profile — the one used when matching you to this role. You can replace it if needed.</p>
+          <FileDrop
+            label="CV / Résumé *"
+            doc={docs.cv}
+            required
+            onPick={(f) => setDoc('cv', f)}
+            onRemove={() => setDoc('cv', null)}
+          />
+          <div className="grid gap-2 sm:grid-cols-2">
+            {OPTIONAL_DOCS.map((d) => (
+              <FileDrop key={d.kind} label={d.label} compact doc={docs[d.kind]} onPick={(f) => setDoc(d.kind, f)} onRemove={() => setDoc(d.kind, null)} />
+            ))}
+          </div>
+        </section>
+      )}
 
-        {active === 'assessment' && hasAssignment && assignment && (
-          <section className="space-y-3">
-            {!consentGiven ? (
-              <div className="rounded-2xl border border-border bg-card p-5">
-                <div className="flex items-center gap-2 text-primary">
-                  <ShieldCheck className="h-5 w-5" />
-                  <p className="font-semibold">Test rules and consent</p>
-                </div>
-                <ul className="mt-3 space-y-2 text-sm text-muted-foreground list-disc pl-5">
-                  {PROCTOR_RULES.map((rule, i) => (<li key={i}>{rule}</li>))}
-                </ul>
-                <label className="mt-4 flex items-start gap-2 text-sm">
-                  <input type="checkbox" checked={consentChecked} onChange={(e) => setConsentChecked(e.target.checked)} className="mt-0.5 h-4 w-4 accent-primary" />
-                  <span>I agree to be monitored by camera, microphone, and screen sharing for the duration of this test, and I understand the test will be cancelled if these rules are broken.</span>
-                </label>
-                <Button className="mt-4" disabled={!consentChecked} onClick={() => { setConsentGiven(true); document.documentElement.requestFullscreen?.().catch(() => {}) }}>Start test</Button>
+      {active === 'submission' && (
+        <section className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ReviewRow label="Name" value={form.full_name} />
+            <ReviewRow label="Email" value={form.email} />
+            <ReviewRow label="School" value={form.school} />
+            <ReviewRow label="Year" value={form.year ? `Year ${form.year}` : '—'} />
+            <ReviewRow label="Résumé" value={docs.cv?.name ?? 'Not attached'} />
+            <ReviewRow label="Assessment" value={hasAssignment ? 'After you apply' : 'Not included'} />
+          </div>
+
+          {hasAssignment && (
+            <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4 text-sm text-muted-foreground">
+              <p className="flex items-center gap-2 font-medium text-accent"><ClipboardCheck className="h-4 w-4" /> This role includes a short proctored assessment.</p>
+              <p className="mt-1">You'll take it <span className="font-medium">right after you submit</span> — from your application, on the next screen. Your camera and microphone are monitored live for the test (nothing is recorded).</p>
+            </div>
+          )}
+
+          <div>
+            <Label>Cover note</Label>
+            <Textarea value={coverNote} onChange={(e) => setCoverNote(e.target.value)} placeholder="Tell them why you're a great fit…" className="min-h-[120px]" />
+          </div>
+
+          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="flex items-center gap-2 font-semibold">
+                  <Sparkles className="h-5 w-5 text-primary" /> AI Application Coach
+                </p>
+                <p className="text-xs text-muted-foreground">Draft a tailored cover paragraph, get it critiqued, then refined.</p>
               </div>
-            ) : (
-              <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4">
-              <div className="flex items-start gap-3">
-                <ClipboardCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
-                <div className="min-w-0">
-                  <p className="font-semibold">{assignment.title}</p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{assignment.prompt}</p>
-                  <p className="mt-2 text-xs text-muted-foreground">Your test answers aren't saved as a draft — complete and submit to record them.</p>
-                  {assignment.due_before_interview ? (
-                    <p className="mt-2 text-xs font-medium text-accent">Required with your application — it's reviewed before your interview.</p>
-                  ) : (
-                    <div className="mt-2 space-y-2">
-                      <p className="text-xs font-medium text-accent">Optional exercise — you can complete it after you apply.</p>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" checked={interviewFirst} onChange={(e) => setInterviewFirst(e.target.checked)} className="h-4 w-4 accent-primary" />
-                        I'd like to interview before the test
-                      </label>
-                      {interviewFirst && (
-                        <p className="text-xs text-muted-foreground">We'll let the company know you'd prefer to interview first; you can submit this assignment afterward.</p>
-                      )}
-                    </div>
-                  )}
-                </div>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={runCoach} loading={coachLoading}>
+                <Wand2 className="h-4 w-4 text-primary" /> {coach ? 'Regenerate' : 'Draft with AI'}
+              </Button>
+            </div>
+
+            {coach && (
+              <div className="mt-4 space-y-3 animate-fade-in">
+                <Stage n={1} title="Draft">
+                  <p className="text-sm leading-relaxed text-muted-foreground">{coach.draft}</p>
+                </Stage>
+                <Stage n={2} title="Critique" verdict={coach.critique.verdict}>
+                  <div className="space-y-1.5 text-sm">
+                    {coach.critique.strengths.map((s, i) => (
+                      <p key={`s${i}`} className="flex gap-2 text-muted-foreground"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />{s}</p>
+                    ))}
+                    {coach.critique.weaknesses.map((w, i) => (
+                      <p key={`w${i}`} className="flex gap-2 text-muted-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />{w}</p>
+                    ))}
+                  </div>
+                </Stage>
+                <Stage n={3} title="Final" highlight>
+                  <p className="text-sm leading-relaxed">{coach.final}</p>
+                  <Button size="sm" className="mt-3 gap-1.5" onClick={() => setCoverNote(coach.final)}>
+                    <ThumbsUp className="h-4 w-4" /> Use this paragraph
+                  </Button>
+                </Stage>
               </div>
-              <div className="mt-4 space-y-3">
-                {(questions.length ? questions : assignment.rubric.map((criterion) => ({ id: criterion.id, type: 'essay' as const, prompt: criterion.label, required: true }))).map((question) => (
-                  <QuestionField key={question.id} question={question} value={assignmentAnswers[question.id]} onChange={(value) => setAssignmentAnswers((current) => ({ ...current, [question.id]: value }))} />
-                ))}
-              </div>
-            </div>
-            )}
-          </section>
-        )}
-
-        {active === 'submission' && (
-          <section className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <ReviewRow label="Name" value={form.full_name} />
-              <ReviewRow label="Email" value={form.email} />
-              <ReviewRow label="School" value={form.school} />
-              <ReviewRow label="Year" value={form.year ? `Year ${form.year}` : '—'} />
-              <ReviewRow label="Résumé" value={docs.cv?.name ?? 'Not attached'} />
-              <ReviewRow label="Assessment" value={hasAssignment ? `${questions.filter((q) => answerFilled(q)).length}/${questions.length} answered` : 'Not included'} />
-            </div>
-
-            <div>
-              <Label>Cover note</Label>
-              <Textarea value={coverNote} onChange={(e) => setCoverNote(e.target.value)} placeholder="Tell them why you're a great fit…" className="min-h-[120px]" />
-            </div>
-
-            <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="flex items-center gap-2 font-semibold">
-                    <Sparkles className="h-5 w-5 text-primary" /> AI Application Coach
-                  </p>
-                  <p className="text-xs text-muted-foreground">Draft a tailored cover paragraph, get it critiqued, then refined.</p>
-                </div>
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={runCoach} loading={coachLoading}>
-                  <Wand2 className="h-4 w-4 text-primary" /> {coach ? 'Regenerate' : 'Draft with AI'}
-                </Button>
-              </div>
-
-              {coach && (
-                <div className="mt-4 space-y-3 animate-fade-in">
-                  <Stage n={1} title="Draft">
-                    <p className="text-sm leading-relaxed text-muted-foreground">{coach.draft}</p>
-                  </Stage>
-                  <Stage n={2} title="Critique" verdict={coach.critique.verdict}>
-                    <div className="space-y-1.5 text-sm">
-                      {coach.critique.strengths.map((s, i) => (
-                        <p key={`s${i}`} className="flex gap-2 text-muted-foreground"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />{s}</p>
-                      ))}
-                      {coach.critique.weaknesses.map((w, i) => (
-                        <p key={`w${i}`} className="flex gap-2 text-muted-foreground"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />{w}</p>
-                      ))}
-                    </div>
-                  </Stage>
-                  <Stage n={3} title="Final" highlight>
-                    <p className="text-sm leading-relaxed">{coach.final}</p>
-                    <Button size="sm" className="mt-3 gap-1.5" onClick={() => setCoverNote(coach.final)}>
-                      <ThumbsUp className="h-4 w-4" /> Use this paragraph
-                    </Button>
-                  </Stage>
-                </div>
-              )}
-            </div>
-
-            {!valid && <p className="text-xs text-muted-foreground">Fill the required fields (*) and attach your résumé{assignment?.due_before_interview ? ' and complete the required assignment questions' : ''} to submit.</p>}
-          </section>
-        )}
-
-        <div className="flex items-center gap-2 border-t border-border pt-4">
-          <Button variant="ghost" onClick={onClose} disabled={proctoring}>Cancel</Button>
-          <Button variant="outline" type="button" onClick={saveDraft} loading={savingDraft}>Save draft</Button>
-          <div className="ml-auto flex gap-2">
-            {active !== 'info' && (
-              <Button variant="outline" type="button" disabled={proctoring} onClick={() => { if (prevId) setActive(prevId) }}>Back</Button>
-            )}
-            {active === 'submission' ? (
-              <Button onClick={submit} disabled={!valid} loading={submitting}>Submit application</Button>
-            ) : (
-              <Button type="button" className="gap-1.5" disabled={proctoring && !consentGiven} onClick={() => { if (nextId) setActive(nextId) }}>Next <ArrowRight className="h-4 w-4" /></Button>
             )}
           </div>
+
+          {!valid && <p className="text-xs text-muted-foreground">Fill the required fields (*) and attach your résumé to submit.</p>}
+        </section>
+      )}
+
+      <div className="flex items-center gap-2 border-t border-border pt-4">
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button variant="outline" type="button" onClick={saveDraft} loading={savingDraft}>Save draft</Button>
+        <div className="ml-auto flex gap-2">
+          {active !== 'info' && (
+            <Button variant="outline" type="button" onClick={() => { if (prevId) setActive(prevId) }}>Back</Button>
+          )}
+          {active === 'submission' ? (
+            <Button onClick={submit} disabled={!valid} loading={submitting}>Submit application</Button>
+          ) : (
+            <Button type="button" className="gap-1.5" onClick={() => { if (nextId) setActive(nextId) }}>Next <ArrowRight className="h-4 w-4" /></Button>
+          )}
         </div>
       </div>
+    </div>
   )
 }
 
@@ -583,59 +442,6 @@ function Stage({ n, title, children, verdict, highlight }: { n: number; title: s
       {children}
     </div>
   )
-}
-
-function countWords(s: string): number {
-  return (s.trim().match(/\S+/g) ?? []).length
-}
-
-function QuestionField({ question, value, onChange }: { question: AiAssignmentQuestion; value?: string | string[]; onChange: (value: string | string[]) => void }) {
-  const selected = Array.isArray(value) ? value : []
-  const choices = question.type === 'true_false' ? ['True', 'False'] : question.options ?? []
-  const limitHint =
-    question.minWords || question.maxWords
-      ? ` (${question.minWords ? `${question.minWords}–` : ''}${question.maxWords ?? ''} words${question.minWords && !question.maxWords ? ' min' : ''})`
-      : ''
-  return <div>
-    <Label>{question.prompt || 'Assignment question'} {question.required && <span className="text-danger">*</span>}{limitHint && <span className="ml-1 font-normal text-muted-foreground">{limitHint}</span>}</Label>
-    {question.type === 'essay' ? (
-      <div>
-        <Textarea
-          value={typeof value === 'string' ? value : ''}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Write your answer…"
-          className="min-h-[100px]"
-        />
-        {(question.minWords || question.maxWords) && (() => {
-          const wc = countWords(typeof value === 'string' ? value : '')
-          const over = question.maxWords ? wc > question.maxWords : false
-          const under = question.minWords ? wc < question.minWords : false
-          return (
-            <p className={`mt-1 text-xs ${over || under ? 'text-danger' : 'text-muted-foreground'}`}>
-              {wc} words{question.maxWords ? ` / ${question.maxWords} max` : ''}
-              {question.minWords ? ` · ${question.minWords} min` : ''}
-              {over ? ' — too long' : under ? ' — too short' : ''}
-            </p>
-          )
-        })()}
-      </div>
-    ) : (
-      <div className="space-y-2">
-        {choices.map((choice) => (
-          <label key={choice} className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm hover:border-accent">
-            <input
-              type={question.type === 'multiple_choice' ? 'checkbox' : 'radio'}
-              name={question.id}
-              checked={question.type === 'multiple_choice' ? selected.includes(choice) : value === choice}
-              onChange={() => (question.type === 'multiple_choice' ? onChange(selected.includes(choice) ? selected.filter((item) => item !== choice) : [...selected, choice]) : onChange(choice))}
-              className="h-4 w-4 accent-primary"
-            />
-            {choice}
-          </label>
-        ))}
-      </div>
-    )}
-  </div>
 }
 
 function FileDrop({

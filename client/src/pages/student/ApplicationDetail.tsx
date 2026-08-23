@@ -133,6 +133,19 @@ export default function ApplicationDetail() {
         </Button>
       </div>
 
+      {takingTest && job.assignment && (
+        <Card>
+          <CardBody>
+            <AssessmentRunner
+              job={job}
+              application={app}
+              onComplete={(updated) => { setApp(updated); setTakingTest(false) }}
+              onClose={() => setTakingTest(false)}
+            />
+          </CardBody>
+        </Card>
+      )}
+
       <div className="grid gap-5 lg:grid-cols-3">
         {/* Timeline */}
         <Card className="lg:col-span-2">
@@ -172,7 +185,11 @@ export default function ApplicationDetail() {
                       : 'Pending — take it from the button above.'
                     : "Unlocks once you're shortlisted."}
                 {deadline && ` Complete by ${formatDate(deadline.toISOString())}.`}
-              </p><div className="mt-3 space-y-2">{(job.assignment.questions?.length ? job.assignment.questions.map((question) => ({ id: question.id, label: question.prompt })) : job.assignment.rubric.map((criterion) => ({ id: criterion.id, label: criterion.label }))).map((item) => { const entry = app.assignment_answers?.find((e) => (e.question_id ?? e.criterion_id) === item.id); const answer = entry?.answer; const text = Array.isArray(answer) ? answer.join(', ') : answer?.startsWith('data:') ? (entry?.file_name ?? 'File attached') : answer; return <div key={item.id}><p className="text-sm font-medium">{item.label}</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{text || 'No answer submitted.'}</p></div> })}</div></div>}
+              </p>
+              {app.assignment_status !== 'submitted' && eligible && !exhausted && (
+                <Button className="mt-3 gap-1.5" onClick={() => setTakingTest(true)}><ClipboardCheck className="h-4 w-4" /> Take assessment</Button>
+              )}
+              <div className="mt-3 space-y-2">{(job.assignment.questions?.length ? job.assignment.questions.map((question) => ({ id: question.id, label: question.prompt })) : job.assignment.rubric.map((criterion) => ({ id: criterion.id, label: criterion.label }))).map((item) => { const entry = app.assignment_answers?.find((e) => (e.question_id ?? e.criterion_id) === item.id); const answer = entry?.answer; const text = Array.isArray(answer) ? answer.join(', ') : answer?.startsWith('data:') ? (entry?.file_name ?? 'File attached') : answer; return <div key={item.id}><p className="text-sm font-medium">{item.label}</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{text || 'No answer submitted.'}</p></div> })}</div></div>}
 
             {/* Assessment evaluation — shown only once the employer has reviewed,
                 and clearly labelled advisory. The human decision (status above +
@@ -228,17 +245,6 @@ export default function ApplicationDetail() {
           <Button variant="ghost" onClick={() => setConfirmDelete(false)}>Cancel</Button>
           <Button variant="danger" onClick={withdraw}>Withdraw</Button>
         </div>
-      </Modal>
-
-      <Modal open={takingTest} onClose={() => setTakingTest(false)} size="xl" title={`Proctored assessment — ${job.assignment?.title ?? ''}`}>
-        {takingTest && job.assignment && (
-          <AssessmentRunner
-            job={job}
-            application={app}
-            onComplete={(updated) => { setApp(updated); setTakingTest(false) }}
-            onClose={() => setTakingTest(false)}
-          />
-        )}
       </Modal>
     </div>
   )

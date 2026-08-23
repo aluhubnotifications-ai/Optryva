@@ -108,13 +108,15 @@ applications.post('/', async (req, res) => {
     }
   } catch { /* no cached score — leave null */ }
 
-  // Each (re)submission consumes an attempt. A previously cancelled application
-  // is a consumed attempt; a successful resubmit of an already-applied row is not.
+  // Attempts represent *test* attempts consumed. Submitting the application itself
+  // does NOT consume one — under the apply-first model the candidate takes the
+  // proctored test afterwards (PATCH /:id/assignment), and that's when an attempt
+  // is counted (or a proctor cancellation does). So a fresh application starts at
+  // 0; a resumed draft keeps whatever attempts were already consumed.
   const prevAttempts = dup?.attempts ?? 0
-  const isResubmitOfApplied = !!dup && dup.status === 'pending'
   const maxAttempts = job.assignment?.max_attempts && job.assignment.max_attempts > 0 ? job.assignment.max_attempts : 10
-  const attempts = isResubmitOfApplied ? prevAttempts : prevAttempts + 1
-  if (!isResubmitOfApplied && prevAttempts >= maxAttempts) {
+  const attempts = prevAttempts
+  if (prevAttempts >= maxAttempts) {
     return res.status(403).json({ error: 'attempts_exhausted' })
   }
 
