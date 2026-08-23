@@ -44,20 +44,21 @@ const TAG_OPTIONS = ['Strong fit', 'Consider', 'Needs follow-up', 'Referral', 'W
 
 // Each tag gets a distinct colour so they read at a glance in the profile and
 // the applicant list.
-const TAG_STYLES: Record<string, string> = {
-  'Strong fit': 'bg-success/15 text-success border-success/30',
-  'Consider': 'bg-accent/15 text-accent border-accent/30',
-  'Referral': 'bg-primary/15 text-primary border-primary/30',
-  'Needs follow-up': 'bg-warning/15 text-warning border-warning/30',
-  'Watch': 'bg-secondary/15 text-secondary-foreground border-secondary/30',
-  'Do not advance': 'bg-danger/15 text-danger border-danger/30',
+const TAG_STYLES: Record<string, { on: string; off: string }> = {
+  'Strong fit': { on: 'bg-success text-success-foreground border-success', off: 'bg-success/10 text-success border-success/30' },
+  'Consider': { on: 'bg-accent text-accent-foreground border-accent', off: 'bg-accent/10 text-accent border-accent/30' },
+  'Referral': { on: 'bg-primary text-primary-foreground border-primary', off: 'bg-primary/10 text-primary border-primary/30' },
+  'Needs follow-up': { on: 'bg-warning text-warning-foreground border-warning', off: 'bg-warning/10 text-warning border-warning/30' },
+  'Watch': { on: 'bg-secondary text-secondary-foreground border-secondary', off: 'bg-secondary/40 text-secondary-foreground border-secondary' },
+  'Do not advance': { on: 'bg-danger text-danger-foreground border-danger', off: 'bg-danger/10 text-danger border-danger/30' },
 }
 
-/** Coloured tag chip. Clickable (toggle) when `onClick` is supplied. */
+/** Coloured tag chip. Clickable (toggle) when `onClick` is supplied. Each tag
+ * keeps its own colour: a subtle tint when off, solid when on. */
 function TagChip({ tag, active, onClick }: { tag: string; active: boolean; onClick?: () => void }) {
   const cls = cn(
     'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition',
-    active ? TAG_STYLES[tag] : 'border-border bg-muted text-muted-foreground',
+    (TAG_STYLES[tag] ?? { on: 'border-border bg-muted text-muted-foreground', off: 'border-border bg-muted text-muted-foreground' })[active ? 'on' : 'off'],
   )
   if (onClick) {
     return (
@@ -329,9 +330,11 @@ export default function ApplicantView() {
 
   async function toggleTag(tag: string) {
     const cur = app!.tags ?? []
-    const next = cur.includes(tag) ? cur.filter((t) => t !== tag) : [...cur, tag]
+    const adding = !cur.includes(tag)
+    const next = adding ? [...cur, tag] : cur.filter((t) => t !== tag)
     const updated = await applicationsApi.review(app!.id, { tags: next })
-    if (updated) { setApp(updated); markStale() }
+    if (updated) { setApp({ ...app!, ...updated }); markStale() }
+    toast({ title: adding ? `Tagged “${tag}”` : `Removed “${tag}”`, tone: 'success' })
     setTagMenu(false)
   }
 
