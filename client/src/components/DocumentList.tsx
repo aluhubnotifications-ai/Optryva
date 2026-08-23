@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import { Download, Eye, FileText } from 'lucide-react'
 import type { AppDocument } from '@/types'
 import { formatBytes } from '@/lib/utils'
 import { fetchProtectedDocument } from '@/lib/api'
+import { DocumentViewer } from '@/components/DocumentViewer'
 
-const DOC_LABELS: Record<string, string> = {
+export const DOC_LABELS: Record<string, string> = {
   cv: 'CV / Résumé',
   cover: 'Cover Letter',
   transcript: 'Transcript',
@@ -15,23 +17,6 @@ const DOC_LABELS: Record<string, string> = {
 
 function isViewable(url?: string): boolean {
   return !!url && url !== '#' && (url.startsWith('data:') || url.startsWith('/api/documents/') || /^https?:\/\//.test(url))
-}
-
-/** Open a stored document. Data URLs are converted to a blob: URL first, because
- *  browsers block top-frame navigation straight to a `data:` URL. */
-async function openDoc(d: AppDocument) {
-  if (d.url.startsWith('data:')) {
-    const blob = await (await fetch(d.url)).blob()
-    const objUrl = URL.createObjectURL(blob)
-    window.open(objUrl, '_blank', 'noopener')
-    setTimeout(() => URL.revokeObjectURL(objUrl), 60_000)
-  } else if (d.url.startsWith('/api/documents/')) {
-    const objUrl = await fetchProtectedDocument(d.url)
-    window.open(objUrl, '_blank', 'noopener')
-    setTimeout(() => URL.revokeObjectURL(objUrl), 60_000)
-  } else {
-    window.open(d.url, '_blank', 'noopener')
-  }
 }
 
 async function downloadDoc(d: AppDocument) {
@@ -48,6 +33,7 @@ async function downloadDoc(d: AppDocument) {
 /** Shared renderer for an application's submitted documents, with working
  *  view + download actions. Used by both the student and company views. */
 export function DocumentList({ documents, emptyText = 'No documents submitted.' }: { documents: AppDocument[]; emptyText?: string }) {
+  const [viewerDoc, setViewerDoc] = useState<AppDocument | null>(null)
   if (!documents.length) return <p className="text-sm text-muted-foreground">{emptyText}</p>
   return (
     <div className="grid gap-2 sm:grid-cols-2">
@@ -62,7 +48,7 @@ export function DocumentList({ documents, emptyText = 'No documents submitted.' 
             </div>
             {viewable ? (
               <div className="flex shrink-0 items-center gap-0.5">
-                <button onClick={() => openDoc(d)} title="View" aria-label="View" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+                <button onClick={() => setViewerDoc(d)} title="View" aria-label="View" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
                   <Eye className="h-4 w-4" />
                 </button>
                 <button onClick={() => downloadDoc(d)} title="Download" aria-label="Download" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
@@ -75,6 +61,7 @@ export function DocumentList({ documents, emptyText = 'No documents submitted.' 
           </div>
         )
       })}
+      <DocumentViewer document={viewerDoc} open={!!viewerDoc} onClose={() => setViewerDoc(null)} />
     </div>
   )
 }

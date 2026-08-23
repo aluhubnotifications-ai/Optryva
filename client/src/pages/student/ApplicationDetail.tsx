@@ -247,16 +247,105 @@ export default function ApplicationDetail() {
 
 			<div className="grid gap-5 lg:grid-cols-[1fr_320px] items-start">
 				<div className="space-y-5 min-w-0">
-			{/* Hero */}
-			<Card>
-				<CardBody className="flex flex-wrap items-center justify-between gap-4">
-					<h1 className="text-2xl font-bold tracking-tight">{job.title}</h1>
-					<Badge
-						tone={statusTone[app.status]}
-						className="shrink-0 capitalize px-3 py-1 text-sm"
-					>
-						{app.status === "hired" ? "Accepted" : app.status}
-					</Badge>
+			{/* Hero — application profile */}
+			<Card className="overflow-hidden">
+				<CardBody>
+					<div className="flex flex-wrap items-start justify-between gap-4">
+						<div className="flex gap-4">
+							<Link
+								to={`/app/companies/${job.company_id}`}
+								className="shrink-0"
+								title={`View ${brand}`}
+							>
+								<Avatar
+									name={brand}
+									src={job.original_company_logo_url || company?.avatar_url}
+									size={56}
+									className="rounded-2xl"
+								/>
+							</Link>
+							<div>
+								<Link
+									to={`/app/jobs?job=${job.id}`}
+									className="text-2xl font-bold tracking-tight hover:text-primary"
+								>
+									{job.title}
+								</Link>
+								<p className="mt-0.5 text-sm text-muted-foreground">
+									<Link
+										to={`/app/companies/${job.company_id}`}
+										className="hover:text-primary hover:underline"
+									>
+										{brand}
+									</Link>{" "}
+									· {job.location}
+								</p>
+								<p className="mt-1 text-xs text-muted-foreground">
+									Applied {formatDate(app.created_at)}
+								</p>
+							</div>
+						</div>
+						<Badge
+							tone={statusTone[app.status]}
+							className="shrink-0 capitalize px-3 py-1 text-sm"
+						>
+							{app.status === "hired" ? "Accepted" : app.status}
+						</Badge>
+					</div>
+
+					<div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+						<div className="rounded-xl border border-border bg-muted/30 p-3">
+							<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+								Applied
+							</div>
+							<p className="mt-1 text-sm font-semibold">
+								{formatDate(app.created_at)}
+							</p>
+						</div>
+						<div className="rounded-xl border border-border bg-muted/30 p-3">
+							<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+								Assessment
+							</div>
+							<p className="mt-1 text-sm font-semibold">{assessmentState}</p>
+						</div>
+						<div className="rounded-xl border border-border bg-muted/30 p-3">
+							<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+								Attempts
+							</div>
+							<p className="mt-1 text-sm font-semibold">
+								{app.attempts ?? 0} / {maxAttempts}
+							</p>
+						</div>
+						<div className="rounded-xl border border-border bg-muted/30 p-3">
+							<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+								Test submitted
+							</div>
+							<p className="mt-1 flex items-center gap-1.5 text-sm font-semibold">
+								{app.assignment_submitted_at ? (
+									<>
+										{formatDate(app.assignment_submitted_at)}
+										{app.assignment_late && (
+											<Badge tone="danger" className="px-1.5 py-0.5 text-[10px]">
+												Late
+											</Badge>
+										)}
+									</>
+								) : (
+									"—"
+								)}
+							</p>
+						</div>
+						{deadline && (
+							<div className="rounded-xl border border-border bg-muted/30 p-3">
+								<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+									Due by
+								</div>
+								<p className="mt-1 text-sm font-semibold">
+									{formatDate(deadline.toISOString())}
+								</p>
+							</div>
+						)}
+					</div>
 				</CardBody>
 			</Card>
 
