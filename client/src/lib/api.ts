@@ -356,6 +356,12 @@ export const applicationsApi = {
   async proctorCancel(app: { job_id: string; reason: string }): Promise<Application> {
     return (await apiFetch('/applications/proctor-cancel', { method: 'POST', body: JSON.stringify(app) })) as Application
   },
+  // Submits the completed proctored test for an already-submitted application
+  // (apply-first flow). Returns the updated application with scoring.
+  async submitAssignment(id: string, payload: { assignment_answers: any[]; duration_seconds?: number }): Promise<Application> {
+    invalidateCache()
+    return (await apiFetch(`/applications/${id}/assignment`, { method: 'PATCH', body: JSON.stringify(payload) })) as Application
+  },
 }
 
 /* ----------------------------- Messaging ----------------------------- */

@@ -19,6 +19,7 @@ import { ScoreRing } from '@/components/ScoreRing'
 import { AppProgressSteps } from '@/components/AppProgressSteps'
 import { AIResearchPanel } from '@/components/AIResearchPanel'
 import { DocumentList } from '@/components/DocumentList'
+import { AssessmentRunner } from '@/components/AssessmentRunner'
 import { useToast } from '@/components/ui/toast'
 import { formatDate, timeAgo } from '@/lib/utils'
 
@@ -43,6 +44,7 @@ export default function ApplicationDetail() {
   const [loading, setLoading] = useState(true)
   const [research, setResearch] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [takingTest, setTakingTest] = useState(false)
 
   useEffect(() => {
     ;(async () => {
@@ -69,6 +71,15 @@ export default function ApplicationDetail() {
   }
 
   const brand = job.original_company_name || company?.company_name
+
+  const when = job.assignment?.required_when ?? 'after_application'
+  const eligible = when === 'after_application' || app.status === 'shortlisted'
+  const maxAttempts = job.assignment?.max_attempts ?? 10
+  const exhausted = (app.attempts ?? 0) >= maxAttempts
+  const canTake = !!job.assignment && app.assignment_status !== 'submitted' && eligible && !exhausted
+  const deadline = app.test_eligible_at && job.assignment?.window_days
+    ? new Date(new Date(app.test_eligible_at).getTime() + job.assignment.window_days * 86400000)
+    : null
 
   async function withdraw() {
     await applicationsApi.remove(app!.id)
@@ -106,6 +117,11 @@ export default function ApplicationDetail() {
 
       {/* Actions */}
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+        {canTake && (
+          <Button className="w-full gap-1.5 sm:w-auto" onClick={() => setTakingTest(true)}>
+            <ClipboardCheck className="h-4 w-4" /> Take assessment
+          </Button>
+        )}
         <Button className="w-full gap-1.5 sm:w-auto" onClick={() => navigate(`/app/messages?thread=${app.id}&scope=application`)}>
           <MessageSquare className="h-4 w-4" /> Message {brand}
         </Button>
@@ -132,7 +148,7 @@ export default function ApplicationDetail() {
                     {i < app.timeline.length - 1 && <div className="my-1 w-0.5 flex-1 bg-border" />}
                   </div>
                   <div className="pb-1">
-                    <p className="text-sm font-medium capitalize">{t.status === 'applied' ? 'Application submitted' : `Moved to ${t.status}`}</p>
+                    <p className="text-sm font-medium capitalize">{t.status === 'applied' ? 'Application submitted' : t.status === 'test_return' ? 'Test attempt returned' : t.status === 'test_submitted' ? (t.late ? 'Test submitted (late)' : 'Test submitted') : `Moved to ${t.status}`}</p>
                     <p className="flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-3 w-3" /> {timeAgo(t.at)}</p>
                   </div>
                 </li>
@@ -145,7 +161,18 @@ export default function ApplicationDetail() {
                 <p className="text-sm leading-relaxed text-muted-foreground">{app.cover_note}</p>
               </div>
             )}
-            {job.assignment && <div className="mt-6 border-t border-border pt-4"><h3 className="flex items-center gap-2 font-semibold"><ClipboardCheck className="h-4 w-4 text-accent" /> {job.assignment.title}</h3><p className="mt-1 text-xs text-muted-foreground">{app.assignment_status === 'submitted' ? 'Submitted with your application' : 'Pending submission'}</p><div className="mt-3 space-y-2">{(job.assignment.questions?.length ? job.assignment.questions.map((question) => ({ id: question.id, label: question.prompt })) : job.assignment.rubric.map((criterion) => ({ id: criterion.id, label: criterion.label }))).map((item) => { const entry = app.assignment_answers?.find((e) => (e.question_id ?? e.criterion_id) === item.id); const answer = entry?.answer; const text = Array.isArray(answer) ? answer.join(', ') : answer?.startsWith('data:') ? (entry?.file_name ?? 'File attached') : answer; return <div key={item.id}><p className="text-sm font-medium">{item.label}</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{text || 'No answer submitted.'}</p></div> })}</div></div>}
+            {job.assignment && <div className="mt-6 border-t border-border pt-4"><h3 className="flex items-center gap-2 font-semibold"><ClipboardCheck className="h-4 w-4 text-accent" /> {job.assignment.title}</h3><p className="mt-1 text-xs text-muted-foreground">
+                {app.assignment_status === 'submitted'
+                  ? app.assignment_late
+                    ? 'Submitted after the deadline (marked late).'
+                    : 'Submitted.'
+                  : eligible
+                    ? exhausted
+                      ? `No attempts left (used ${app.attempts ?? 0} of ${maxAttempts}).`
+                      : 'Pending — take it from the button above.'
+                    : "Unlocks once you're shortlisted."}
+                {deadline && ` Complete by ${formatDate(deadline.toISOString())}.`}
+              </p><div className="mt-3 space-y-2">{(job.assignment.questions?.length ? job.assignment.questions.map((question) => ({ id: question.id, label: question.prompt })) : job.assignment.rubric.map((criterion) => ({ id: criterion.id, label: criterion.label }))).map((item) => { const entry = app.assignment_answers?.find((e) => (e.question_id ?? e.criterion_id) === item.id); const answer = entry?.answer; const text = Array.isArray(answer) ? answer.join(', ') : answer?.startsWith('data:') ? (entry?.file_name ?? 'File attached') : answer; return <div key={item.id}><p className="text-sm font-medium">{item.label}</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{text || 'No answer submitted.'}</p></div> })}</div></div>}
 
             {/* Assessment evaluation — shown only once the employer has reviewed,
                 and clearly labelled advisory. The human decision (status above +
@@ -201,6 +228,17 @@ export default function ApplicationDetail() {
           <Button variant="ghost" onClick={() => setConfirmDelete(false)}>Cancel</Button>
           <Button variant="danger" onClick={withdraw}>Withdraw</Button>
         </div>
+      </Modal>
+
+      <Modal open={takingTest} onClose={() => setTakingTest(false)} size="xl" title={`Proctored assessment — ${job.assignment?.title ?? ''}`}>
+        {takingTest && job.assignment && (
+          <AssessmentRunner
+            job={job}
+            application={app}
+            onComplete={(updated) => { setApp(updated); setTakingTest(false) }}
+            onClose={() => setTakingTest(false)}
+          />
+        )}
       </Modal>
     </div>
   )

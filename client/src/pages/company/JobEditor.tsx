@@ -21,6 +21,9 @@ type AssignmentDraft = {
   title: string
   prompt: string
   dueBeforeInterview: boolean
+  requiredWhen: 'after_application' | 'after_shortlist'
+  windowDays: number | null
+  durationMinutes: number | null
   maxAttempts: number
   rubric: AiRubricCriterion[]
   questions: AiAssignmentQuestion[]
@@ -130,6 +133,9 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
           title: editing.assignment.title,
           prompt: editing.assignment.prompt,
           dueBeforeInterview: editing.assignment.due_before_interview ?? true,
+          requiredWhen: editing.assignment.required_when ?? 'after_application',
+          windowDays: editing.assignment.window_days ?? null,
+          durationMinutes: editing.assignment.duration_minutes ?? null,
           maxAttempts: editing.assignment.max_attempts ?? 10,
           rubric: editing.assignment.rubric ?? [],
           questions: editing.assignment.questions ?? [],
@@ -209,6 +215,9 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
       title: generated.title || prev?.title || '',
       prompt: generated.prompt || prev?.prompt || '',
       dueBeforeInterview: prev?.dueBeforeInterview ?? true,
+      requiredWhen: prev?.requiredWhen ?? 'after_application',
+      windowDays: prev?.windowDays ?? null,
+      durationMinutes: prev?.durationMinutes ?? null,
       maxAttempts: prev?.maxAttempts ?? 10,
       rubric: generated.rubric,
       questions: generated.questions,
@@ -223,6 +232,9 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
       title: prev?.title || `${f.title || 'Role'} practical challenge`,
       prompt: prev?.prompt || `Show us how you would approach a realistic problem for this ${f.type || 'role'}. Share your assumptions, decisions, and what you would measure.`,
       dueBeforeInterview: prev?.dueBeforeInterview ?? true,
+      requiredWhen: prev?.requiredWhen ?? 'after_application',
+      windowDays: prev?.windowDays ?? null,
+      durationMinutes: prev?.durationMinutes ?? null,
       maxAttempts: prev?.maxAttempts ?? 10,
       rubric: prev?.rubric?.length ? prev.rubric : [
         { id: 'clarity', label: 'Problem framing and clarity', points: 30 },
@@ -253,6 +265,9 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
       title: a.title.trim() || 'Practical challenge',
       prompt: a.prompt.trim(),
       due_before_interview: a.dueBeforeInterview,
+      required_when: a.requiredWhen ?? 'after_application',
+      window_days: a.windowDays && a.windowDays > 0 ? a.windowDays : null,
+      duration_minutes: a.durationMinutes && a.durationMinutes > 0 ? a.durationMinutes : null,
       max_attempts: a.maxAttempts && a.maxAttempts > 0 ? a.maxAttempts : 10,
       rubric: a.rubric.filter((r) => r.label.trim()).map((r) => ({ ...r, label: r.label.trim(), points: Number(r.points) || 0 })),
       questions: a.questions.filter((q) => q.prompt.trim()).map((q) => ({
@@ -552,6 +567,39 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
                 />
                 <span className="text-muted-foreground/70">default 10</span>
               </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  <span>When is the test required?</span>
+                  <Select value={assignment.requiredWhen} onChange={(e) => setAssignment({ ...assignment, requiredWhen: e.target.value as any })}>
+                    <option value="after_application">After the candidate applies</option>
+                    <option value="after_shortlist">Only after I shortlist them</option>
+                  </Select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  <span>Days to complete the test (window)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={60}
+                    value={assignment.windowDays ?? ''}
+                    onChange={(e) => setAssignment({ ...assignment, windowDays: e.target.value ? Number(e.target.value) : null })}
+                    placeholder="none"
+                    className="rounded-md border border-border bg-background px-2 py-1 text-foreground"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  <span>Test time limit (minutes)</span>
+                  <input
+                    type="number"
+                    min={5}
+                    max={240}
+                    value={assignment.durationMinutes ?? ''}
+                    onChange={(e) => setAssignment({ ...assignment, durationMinutes: e.target.value ? Number(e.target.value) : null })}
+                    placeholder="30"
+                    className="rounded-md border border-border bg-background px-2 py-1 text-foreground"
+                  />
+                </label>
+              </div>
               <div className="space-y-2">
                 <p className="text-sm font-medium">Rubric</p>
                 {assignment.rubric.map((criterion, i) => (
@@ -648,7 +696,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
 
       <Modal open={assignmentPreview} onClose={() => setAssignmentPreview(false)} size="xl" title="Preview — candidate assignment">
         {assignment?.prompt.trim() ? (
-          <AssignmentView assignment={{ title: assignment.title.trim() || 'Practical challenge', prompt: assignment.prompt.trim(), due_before_interview: assignment.dueBeforeInterview, max_attempts: assignment.maxAttempts ?? 10, rubric: assignment.rubric, questions: assignment.questions }} />
+          <AssignmentView assignment={{ title: assignment.title.trim() || 'Practical challenge', prompt: assignment.prompt.trim(), due_before_interview: assignment.dueBeforeInterview, required_when: assignment.requiredWhen, window_days: assignment.windowDays, duration_minutes: assignment.durationMinutes, max_attempts: assignment.maxAttempts ?? 10, rubric: assignment.rubric, questions: assignment.questions }} />
         ) : (
           <p className="text-sm text-muted-foreground">Add an assignment first to preview it.</p>
         )}
@@ -738,7 +786,7 @@ function PostingPreview({ open, onClose, f, assignment, user, isSchool }: { open
     posted_by_role: isSchool ? 'school' : 'company',
     original_company_name: isSchool && f.fromOther ? f.original_company_name : undefined,
     original_company_logo_url: isSchool && f.fromOther ? f.original_company_logo_url : undefined,
-    assignment: assignmentAllowed && assignment && assignment.prompt.trim() ? { title: assignment.title.trim() || 'Practical challenge', prompt: assignment.prompt.trim(), due_before_interview: assignment.dueBeforeInterview, max_attempts: assignment.maxAttempts ?? 10, rubric: assignment.rubric, questions: assignment.questions } as AiAssignment : undefined,
+    assignment: assignmentAllowed && assignment && assignment.prompt.trim() ? { title: assignment.title.trim() || 'Practical challenge', prompt: assignment.prompt.trim(), due_before_interview: assignment.dueBeforeInterview, required_when: assignment.requiredWhen, window_days: assignment.windowDays, duration_minutes: assignment.durationMinutes, max_attempts: assignment.maxAttempts ?? 10, rubric: assignment.rubric, questions: assignment.questions } as AiAssignment : undefined,
     created_at: new Date().toISOString(),
   }
   return (

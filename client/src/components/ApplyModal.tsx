@@ -172,8 +172,8 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
   }
 
   const valid = useMemo(
-    () => form.full_name && /\S+@\S+\.\S+/.test(form.email) && form.school && form.year && docs.cv && (!hasAssignment || !assignment?.due_before_interview || questions.every((question) => !question.required || answerFilled(question))),
-    [form, docs, job, hasAssignment, assignment, assignmentAnswers],
+    () => form.full_name && /\S+@\S+\.\S+/.test(form.email) && form.school && form.year && docs.cv,
+    [form, docs],
   )
 
   async function setDoc(kind: AppDocument['kind'], file: File | null) {

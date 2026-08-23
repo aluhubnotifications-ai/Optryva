@@ -330,7 +330,7 @@ export default function ApplicantView() {
             ) : null}
           </div>
           {(() => {
-            const returns = (app.timeline ?? []).filter((t: any) => t.status === 'cancelled')
+            const returns = (app.timeline ?? []).filter((t: any) => t.status === 'test_return')
             if (!returns.length) {
               return <p className="text-sm text-muted-foreground">No test returns recorded — the assessment was completed on the first attempt.</p>
             }

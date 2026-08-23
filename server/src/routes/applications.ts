@@ -118,6 +118,12 @@ applications.post('/', async (req, res) => {
     return res.status(403).json({ error: 'attempts_exhausted' })
   }
 
+  // Apply-first: the application is submitted now; the proctored test is taken
+  // afterwards. The candidate becomes eligible for the test immediately when the
+  // employer requires it 'after_application' (default), or only once shortlisted.
+  const requiredWhen = (job.assignment as any)?.required_when ?? 'after_application'
+  const testEligibleAt = requiredWhen === 'after_application' ? ts : null
+
   const id = dup?.id ?? uid('a')
   const timeline = j.parse<any[]>(dup?.timeline ?? '[]', [])
   timeline.push({ status: 'applied', at: ts })
@@ -128,6 +134,7 @@ applications.post('/', async (req, res) => {
     school: b.school ?? null, year: b.year ?? null, linkedin: b.linkedin ?? null,
     assignment_answers: j.stringify(b.assignment_answers ?? []),
     assignment_status: job.assignment ? (b.assignment_answers?.length ? 'submitted' : 'pending') : 'not_required',
+    test_eligible_at: testEligibleAt,
     attempts,
     match_score: matchScore,
     match_rationale: matchRationale,
@@ -199,11 +206,23 @@ applications.patch('/:id/status', async (req, res) => {
   if (!validStatuses.has(status)) return res.status(400).json({ error: 'invalid_status' })
   const job = must(await sb.from('job_listings').select('title, company_id').eq('id', r.job_id).maybeSingle()) as any
   if (!job || (job.company_id !== req.user!.id && !isAdminEmail(req.user!.email))) return res.status(403).json({ error: 'forbidden' })
+  const ts = now()
   const timeline = j.parse<any[]>(r.timeline, [])
-  timeline.push({ status, at: now() })
+  timeline.push({ status, at: ts })
+  // When the employer requires the test only after shortlisting, the candidate
+  // becomes eligible for the test at the moment they're shortlisted.
+  const patch0: any = {}
+  if (status === 'shortlisted') {
+    const jb = must(await sb.from('job_listings').select('assignment').eq('id', r.job_id).maybeSingle()) as any
+    const rw = jb?.assignment?.required_when ?? 'after_application'
+    if (rw === 'after_shortlist' && !r.test_eligible_at) {
+      patch0.test_eligible_at = ts
+      timeline.push({ status: 'applied', at: ts, note: 'test unlocked' })
+    }
+  }
   // Every status change is a human decision: record who made it, when, and why
   // (a reason is required when rejecting, so the call is traceable).
-  const patch: any = { status, timeline: j.stringify(timeline), decision_by: req.user!.id, decided_at: now() }
+  const patch: any = { status, timeline: j.stringify(timeline), decision_by: req.user!.id, decided_at: now(), ...patch0 }
   if (reason !== undefined) patch.decision_reason = reason || null
   must(await sb.from('applications').update(patch).eq('id', r.id))
   await notify(r.student_id, 'status_change', `Application update: ${status}`, `Your application for ${job?.title ?? 'a role'} is now ${status}.`, r.id)
@@ -261,11 +280,68 @@ applications.post('/:id/score-assignment', async (req, res) => {
   res.json(rowToApplication(updated))
 })
 
-// Records a proctor integrity violation (e.g. camera/mic denied, a second person
-// detected, the candidate left frame, sustained loud noise, excessive movement, or
-// leaving the test tab). Each violation consumes one attempt; the candidate may
-// retry until they hit the employer-set limit (assignment.max_attempts, default 10).
-// The cancelled application row is kept so the employer sees the violation history.
+// Submits the candidate's completed proctored test for an already-submitted
+// application (apply-first flow). Records whether it was late vs the employer's
+// window, marks the assignment done, and runs the AI scoring as a suggestion.
+applications.patch('/:id/assignment', async (req, res) => {
+  const { assignment_answers, duration_seconds } = req.body ?? {}
+  const r = must(await sb.from('applications').select('*').eq('id', req.params.id).maybeSingle()) as any
+  if (!r) return res.status(404).json({ error: 'not_found' })
+  if (r.student_id !== req.user!.id) return res.status(403).json({ error: 'forbidden' })
+  const job = must(await sb.from('job_listings').select('*').eq('id', r.job_id).maybeSingle()) as any
+  if (!job?.assignment) return res.status(400).json({ error: 'no_assignment' })
+  if (r.assignment_status === 'submitted') return res.json(rowToApplication(r))
+  const maxAttempts = job.assignment?.max_attempts && job.assignment.max_attempts > 0 ? job.assignment.max_attempts : 10
+  if ((r.attempts ?? 0) >= maxAttempts) return res.status(403).json({ error: 'attempts_exhausted' })
+
+  const ts = now()
+  // Late if past the eligibility window the employer set.
+  let late = false
+  if (r.test_eligible_at && job.assignment?.window_days) {
+    const due = new Date(new Date(r.test_eligible_at).getTime() + job.assignment.window_days * 86400000)
+    late = new Date(ts).getTime() > due.getTime()
+  }
+  const timeline = j.parse<any[]>(r.timeline ?? '[]', [])
+  timeline.push({ status: 'test_submitted', at: ts, late })
+  // An attempt is counted once the test is actually submitted. Cancellations
+  // along the way already incremented `attempts`; a clean first submit is #1.
+  const attempts = r.attempts ? r.attempts : 1
+  must(
+    await sb.from('applications').update({
+      assignment_answers: j.stringify(assignment_answers ?? []),
+      assignment_status: 'submitted',
+      assignment_submitted_at: ts,
+      assignment_late: late,
+      test_eligible_at: r.test_eligible_at ?? ts,
+      attempts,
+      timeline: j.stringify(timeline),
+    }).eq('id', r.id),
+  )
+  // Best-effort AI scoring so the employer sees a suggestion immediately.
+  try {
+    const answers = assignment_answers ?? []
+    const matchContext = r.match_score != null ? { score: r.match_score, rationale: r.match_rationale ?? null } : null
+    const result = await scoreAssignmentWithAI(job.assignment, answers, { title: job.title, type: job.type, description: job.description }, matchContext)
+    must(
+      await sb.from('applications').update({
+        assignment_score: result.score,
+        assignment_ai_feedback: j.stringify(result.feedback),
+        ai_recommendation: result.recommendation,
+        decision_by: req.user!.id,
+        decided_at: ts,
+      }).eq('id', r.id),
+    )
+  } catch { /* leave unscored */ }
+  const updated = must(await sb.from('applications').select('*').eq('id', r.id).maybeSingle())
+  res.json(rowToApplication(updated))
+})
+
+// Records a proctor integrity violation during the test (camera/mic denied, a
+// second person detected, the candidate left frame, looked down, sustained loud
+// noise, excessive movement, or left the tab/fullscreen). Each violation consumes
+// one attempt and is recorded on the already-submitted application — the
+// application itself stays "pending" (visible to the employer) and the candidate
+// can retry the test until they hit the employer-set limit.
 applications.post('/proctor-cancel', async (req, res) => {
   const { job_id, reason } = req.body ?? {}
   if (!job_id) return res.status(400).json({ error: 'missing_job' })
@@ -273,36 +349,16 @@ applications.post('/proctor-cancel', async (req, res) => {
   if (!job) return res.status(404).json({ error: 'job_not_found' })
   const maxAttempts = job.assignment?.max_attempts && job.assignment.max_attempts > 0 ? job.assignment.max_attempts : 10
   const existing = must(await sb.from('applications').select('*').eq('student_id', req.user!.id).eq('job_id', job_id).maybeSingle()) as any
+  if (!existing) return res.status(400).json({ error: 'no_application' })
+  // Test already completed — nothing to cancel.
+  if (existing.assignment_status === 'submitted') return res.json(rowToApplication(existing))
   const ts = now()
-  if (existing) {
-    // Already submitted successfully — nothing to cancel.
-    if (existing.status === 'pending') return res.json(rowToApplication(existing))
-    const attempts = (existing.attempts ?? 0) + 1
-    const timeline = j.parse<any[]>(existing.timeline ?? '[]', [])
-    timeline.push({ status: 'cancelled', at: ts, reason: reason ?? 'violation' })
-    must(await sb.from('applications').update({ status: 'cancelled', attempts, assignment_status: 'cancelled', timeline: j.stringify(timeline) }).eq('id', existing.id))
-    const updated = must(await sb.from('applications').select('*').eq('id', existing.id).maybeSingle())
-    return res.json(rowToApplication(updated))
-  }
-  const profile = must(await sb.from('profiles').select('full_name,email,school,year').eq('id', req.user!.id).maybeSingle()) as any
-  const id = uid('a')
-  const timeline = [{ status: 'cancelled', at: ts, reason: reason ?? 'violation' }]
-  must(await sb.from('applications').insert({
-    id,
-    student_id: req.user!.id,
-    job_id,
-    status: 'cancelled',
-    assignment_status: 'cancelled',
-    attempts: 1,
-    full_name: profile?.full_name ?? '',
-    email: profile?.email ?? '',
-    school: profile?.school ?? null,
-    year: profile?.year ?? null,
-    timeline: j.stringify(timeline),
-    created_at: ts,
-  }))
-  const created = must(await sb.from('applications').select('*').eq('id', id).maybeSingle())
-  res.json(rowToApplication(created))
+  const attempts = (existing.attempts ?? 0) + 1
+  const timeline = j.parse<any[]>(existing.timeline ?? '[]', [])
+  timeline.push({ status: 'test_return', at: ts, reason: reason ?? 'violation' })
+  must(await sb.from('applications').update({ attempts, timeline: j.stringify(timeline) }).eq('id', existing.id))
+  const updated = must(await sb.from('applications').select('*').eq('id', existing.id).maybeSingle())
+  res.json(rowToApplication(updated))
 })
 
 applications.delete('/:id', async (req, res) => {

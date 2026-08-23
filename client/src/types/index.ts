@@ -119,6 +119,14 @@ export interface AiAssignment {
   prompt: string
   due_before_interview: boolean
   max_attempts?: number
+  // When the proctored test is required relative to the application:
+  //  - 'after_application' (default): take it right after applying
+  //  - 'after_shortlist': only once the employer shortlists the candidate
+  required_when?: 'after_application' | 'after_shortlist'
+  // How many days the candidate has to complete the test once eligible (window).
+  window_days?: number | null
+  // Time limit for a single test session, in minutes (default 30).
+  duration_minutes?: number | null
   rubric: AiRubricCriterion[]
   questions?: AiAssignmentQuestion[]
 }
@@ -160,6 +168,9 @@ export interface Application {
   linkedin?: string
   assignment_answers?: { criterion_id?: string; question_id?: string; answer: string | string[]; file_name?: string }[]
   assignment_status?: 'not_required' | 'pending' | 'submitted'
+  test_eligible_at?: string | null
+  assignment_submitted_at?: string | null
+  assignment_late?: boolean
   match_score?: number
   match_rationale?: string
   student_avatar_url?: string
@@ -173,7 +184,7 @@ export interface Application {
   decided_at?: string
   attempts?: number
   created_at: string
-  timeline: { status: ApplicationStatus | 'applied'; at: string; reason?: string }[]
+  timeline: { status: ApplicationStatus | 'applied' | 'test_return' | 'test_submitted'; at: string; reason?: string; late?: boolean; note?: string }[]
 }
 
 export interface MatchBreakdown {
