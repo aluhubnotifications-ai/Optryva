@@ -462,18 +462,23 @@ export default function ApplicantView() {
               if (!events.length) {
                 return <p className="text-sm text-muted-foreground">No assessment activity recorded yet.</p>
               }
+              // An attempt is a "retake" once the employer has re-opened the test.
+              let seenUnlock = false
               return (
                 <ul className="space-y-2">
                   {events.map((t: any, i: number) => {
                     const isReturn = t.status === 'test_return'
+                    const isUnlock = t.status === 'test_unlocked'
                     const isSubmitted = t.status === 'test_submitted'
+                    if (isUnlock) seenUnlock = true
+                    const isRetakeSubmit = isSubmitted && seenUnlock
                     const tone = isReturn ? 'danger' : isSubmitted ? 'success' : 'default'
                     const Icon = isReturn ? RotateCcw : isSubmitted ? CheckCircle2 : Unlock
                     const label = isReturn
                       ? `Test returned — ${VIOLATION_LABEL[t.reason as keyof typeof VIOLATION_LABEL] ?? t.reason ?? 'Integrity violation'}`
                       : isSubmitted
-                        ? `Assessment submitted${t.late ? ' (late)' : ''}`
-                        : 'Test re-opened by employer'
+                        ? `Assessment submitted${isRetakeSubmit ? ' (retake)' : ''}${t.late ? ' (late)' : ''}`
+                        : 'Retake granted — test re-opened by employer'
                     return (
                       <li key={i} className={cn('flex items-start gap-2 rounded-lg border p-3 text-sm', tone === 'danger' ? 'border-danger/30 bg-danger/5' : tone === 'success' ? 'border-success/30 bg-success/5' : 'border-border bg-muted/30')}>
                         <Icon className={cn('mt-0.5 h-4 w-4 shrink-0', tone === 'danger' ? 'text-danger' : tone === 'success' ? 'text-success' : 'text-muted-foreground')} />

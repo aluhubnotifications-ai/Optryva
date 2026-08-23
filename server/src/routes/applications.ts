@@ -352,7 +352,7 @@ applications.post('/:id/unlock-test', async (req, res) => {
   if (!job.assignment) return res.status(400).json({ error: 'no_assignment' })
   const ts = now()
   const timeline = j.parse<any[]>(r.timeline ?? '[]', [])
-  timeline.push({ status: 'test_unlocked', at: ts, by: 'employer' })
+  timeline.push({ status: 'test_unlocked', at: ts, by: 'employer', retake: true })
   must(
     await sb.from('applications').update({
       assignment_status: 'pending',
