@@ -725,19 +725,19 @@ export default function ApplicantView() {
             )}
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              {attempt?.recommendation && <Badge tone={attempt.recommendation === 'advance' ? 'success' : attempt.recommendation === 'consider' ? 'accent' : 'danger'}>AI suggests: {attempt.recommendation}</Badge>}
+              {attempt?.recommendation && <Badge tone="outline">Assessment reviewed</Badge>}
               <Button size="sm" variant="outline" className="gap-1.5" onClick={runAiScore} loading={scoreBusy}>
                 <Sparkles className="h-4 w-4 text-accent" /> {attempt?.score != null ? 'Re-run AI' : 'Run AI review'}
               </Button>
             </div>
 
-            {/* Smart Shortlist verdict — reconciles with the assessment above (e.g.
-                assessment "consider" vs shortlist "weak") so the employer sees both. */}
+            {/* Smart Shortlist decision — the single AI hiring suggestion. The assessment
+                above is evidence only (score + feedback), not a competing decision. */}
             {shortlistCand && (
               <div className="mt-3 rounded-xl border border-accent/30 bg-accent/5 p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Sparkles className="h-4 w-4 shrink-0 text-accent" />
-                  <p className="text-sm font-medium text-foreground">Smart Shortlist verdict</p>
+                  <p className="text-sm font-medium text-foreground">Smart Shortlist decision</p>
                   {shortlistCand.verdict && (
                     <Badge tone={shortlistCand.verdict === 'strong' ? 'success' : shortlistCand.verdict === 'weak' ? 'danger' : 'accent'} className="capitalize">{shortlistCand.verdict}</Badge>
                   )}
