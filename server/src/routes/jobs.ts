@@ -171,12 +171,15 @@ jobs.get('/:jobId/shortlist', async (req, res) => {
 
   const jobMatch = rowToMatchJob(job)
 
-  // Pool = applicants to this job UNION students already matched to it.
+  // Pool = applicants to this job ONLY. Matched-but-not-applied browsers are
+  // excluded so the shortlist count always matches the "Applicants" count and the
+  // screen never shows a candidate the employer hasn't actually received. An
+  // applicant without a prior cached match is scored on the fly below.
   const appRows = (must(await sb.from('applications').select('*').eq('job_id', jobId).in('status', ['pending', 'reviewed', 'shortlisted', 'hired', 'rejected'])) as any[]) ?? []
   const appByStudent = new Map(appRows.map((a) => [a.student_id, a]))
   const cacheRows = (must(await sb.from('ai_match_cache').select('student_id, payload, resume_id, stale').eq('job_id', jobId)) as any[]) ?? []
   const cacheByStudent = new Map(cacheRows.map((r) => [r.student_id, r]))
-  const studentIds = Array.from(new Set([...appRows.map((a) => a.student_id), ...cacheRows.map((r) => r.student_id)]))
+  const studentIds = appRows.map((a) => a.student_id)
 
   if (!studentIds.length) {
     return res.json({
@@ -184,7 +187,7 @@ jobs.get('/:jobId/shortlist', async (req, res) => {
       mistral: hasMistral(),
       summary: null,
       candidates: [],
-      note: 'No applicants or matched candidates for this role yet.',
+      note: 'No applicants for this role yet.',
     })
   }
 
@@ -236,6 +239,10 @@ jobs.get('/:jobId/shortlist', async (req, res) => {
       matched_skills: x.m.matched_skills ?? [],
       reasons: x.m.reasons ?? [],
       mismatch_flags: x.m.mismatch_flags ?? [],
+      breakdown: x.m.breakdown ?? null,
+      assessment_status: app?.assignment_status ?? null,
+      assessment_score: app?.assignment_score ?? null,
+      assessment_feedback: app?.assignment_ai_feedback ? j.parse(app.assignment_ai_feedback, null) : null,
       matched_resume_id: matchedResumeId,
       matched_resume_name: snapshot?.name ?? null,
       current_resume_id: curResumeId,
@@ -254,6 +261,7 @@ jobs.get('/:jobId/shortlist', async (req, res) => {
       if (e) {
         c.fit_score = typeof e.fit_score === 'number' ? e.fit_score : c.score
         c.verdict = e.verdict ?? null
+        c.category = e.category ?? null
         c.decision_note = e.decision_note ?? null
         c.fit_strengths = e.strengths ?? []
         c.fit_gaps = e.gaps ?? []
@@ -269,9 +277,10 @@ async function mistralShortlistAid(job: any, candidates: any[]): Promise<{ summa
   if (!hasMistral()) return null
   const top = candidates.slice(0, 25)
   const system =
-    'You are an impartial hiring decision assistant for an EMPLOYER reviewing a shortlist of students already matched to a role. ' +
-    'For each candidate give an employer-focused FIT VERDICT and a concise DECISION NOTE that helps the employer decide whether to interview. ' +
-    'Be honest: surface both strengths and gaps relative to the role. Output STRICT JSON only.'
+    'You are an impartial hiring decision assistant for an EMPLOYER reviewing a shortlist of students who applied to a role. ' +
+    'For each candidate give an employer-focused FIT VERDICT and a concise, NEUTRAL, evidence-based DECISION NOTE that helps the employer decide. ' +
+    'Use careful, non-punitive language: distinguish "not qualified on available evidence", "insufficient evidence", and "potential fit after assessment or training". ' +
+    'Do NOT treat missing résumé evidence as proof the person lacks the skill, and do not label people harshly. Output STRICT JSON only.'
   const schema = {
     summary: 'string — 1-2 sentence overview of shortlist quality for this role',
     candidates: [
@@ -279,7 +288,8 @@ async function mistralShortlistAid(job: any, candidates: any[]): Promise<{ summa
         student_id: 'string (must match the provided id exactly)',
         fit_score: 'number 0-100 (your independent employer-facing fit estimate)',
         verdict: "one of 'strong' | 'possible' | 'weak'",
-        decision_note: 'string — 2-3 sentences: why interview or not, with the key tradeoff',
+        category: "one of 'not_qualified' | 'insufficient_evidence' | 'potential_fit'",
+        decision_note: 'string — 2-3 neutral sentences: what the evidence shows, the key gap or tradeoff, and the suggested next step (assessment / junior role / interview).',
         strengths: ['string'],
         gaps: ['string'],
       },

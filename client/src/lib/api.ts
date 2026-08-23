@@ -319,10 +319,15 @@ export interface SmartShortlistCandidate {
   matched_skills: string[]
   reasons: string[]
   mismatch_flags: string[]
+  breakdown?: { skills?: number; experience?: number; location?: number; compensation?: number } | null
+  assessment_status?: string | null
+  assessment_score?: number | null
+  assessment_feedback?: { overall: string; perQuestion: { id: string; feedback: string }[] } | null
   matched_resume_id?: string | null
   matched_resume_name?: string | null
   current_resume_id?: string | null
   resume_changed?: boolean
+  category?: 'not_qualified' | 'insufficient_evidence' | 'potential_fit' | null
   fit_score?: number
   verdict?: 'strong' | 'possible' | 'weak' | null
   decision_note?: string | null

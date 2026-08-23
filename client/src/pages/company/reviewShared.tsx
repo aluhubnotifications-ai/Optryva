@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, Check, CheckSquare, ExternalLink, Eye, RefreshCw, ShieldCheck, Sparkles, Square, X } from 'lucide-react'
 import { applicationsApi, jobsApi } from '@/lib/api'
@@ -274,19 +274,36 @@ export function ExternalListingPanel({ job, opens }: { job: JobListing; opens: n
 export function SmartShortlist({ jobId }: { jobId: string }) {
   const [data, setData] = useState<SmartShortlistResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState<string | null>(null)
 
-  useEffect(() => {
-    let alive = true
+  const load = useCallback(() => {
     setLoading(true)
     jobsApi
       .shortlist(jobId)
-      .then((d) => alive && setData(d))
-      .catch(() => alive && setData(null))
-      .finally(() => alive && setLoading(false))
+      .then((d) => setData(d))
+      .catch(() => setData(null))
+      .finally(() => setLoading(false))
+  }, [jobId])
+
+  useEffect(() => {
+    let alive = true
+    const run = () => jobsApi.shortlist(jobId).then((d) => alive && setData(d)).catch(() => alive && setData(null)).finally(() => alive && setLoading(false))
+    setLoading(true)
+    run()
     return () => {
       alive = false
     }
   }, [jobId])
+
+  async function act(applicationId: string, status: string) {
+    setBusyId(applicationId)
+    try {
+      await applicationsApi.setStatus(applicationId, status as any)
+      load()
+    } finally {
+      setBusyId(null)
+    }
+  }
 
   if (loading) {
     return (
@@ -310,7 +327,7 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
           <p className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
             <Sparkles className="h-6 w-6" />
           </p>
-          {data?.note ?? 'No applicants or matched candidates for this role yet.'}
+          {data?.note ?? 'No applicants for this role yet.'}
         </CardBody>
       </Card>
     )
@@ -334,9 +351,12 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
           Mistral isn’t configured, so this shortlist shows the matching model’s scores and reasons only. Add a Mistral key to get per-candidate fit verdicts and decision notes.
         </div>
       )}
-      <div className="space-y-3">
+       <div className="space-y-3">
         {data.candidates.map((c) => {
           const displayScore = Math.round(c.fit_score ?? c.score * 100)
+          const categoryTone = c.category === 'not_qualified' ? 'danger' : c.category === 'potential_fit' ? 'success' : 'accent'
+          const categoryLabel =
+            c.category === 'not_qualified' ? 'Not qualified on evidence' : c.category === 'insufficient_evidence' ? 'Insufficient evidence' : c.category === 'potential_fit' ? 'Potential fit' : null
           return (
             <Card key={c.student_id}>
               <CardBody className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
@@ -354,6 +374,7 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
                         {c.verdict}
                       </Badge>
                     )}
+                    {categoryLabel && <Badge tone={categoryTone}>{categoryLabel}</Badge>}
                     {c.applied && c.application_id && (
                       <Link to={`/app/applicants/${c.application_id}`} className="text-xs font-medium text-primary hover:underline">
                         View application
@@ -365,6 +386,18 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
                       </span>
                     )}
                   </div>
+
+                  {/* Assessment status */}
+                  {c.assessment_status && (
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+                      <Badge tone={c.assessment_status === 'completed' ? 'success' : c.assessment_status === 'started' ? 'accent' : 'outline'}>
+                        Assessment: {c.assessment_status}
+                      </Badge>
+                      {c.assessment_score != null && <span className="font-medium text-foreground">Score {c.assessment_score}</span>}
+                      {c.assessment_status !== 'completed' && <span className="text-muted-foreground">· Request assessment before deciding</span>}
+                    </div>
+                  )}
+
                   {c.decision_note && <p className="mt-2 text-sm text-foreground">{c.decision_note}</p>}
                   {c.matched_skills.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1">
@@ -375,12 +408,42 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
                       ))}
                     </div>
                   )}
+
+                  {/* Score breakdown (when available) */}
+                  {c.breakdown && (
+                    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-4">
+                      {Object.entries(c.breakdown).map(([k, v]) => (
+                        <div key={k} className="flex items-center justify-between gap-1">
+                          <span className="capitalize">{k}</span>
+                          <span className="font-medium text-foreground">{Math.round((v as number) * 100)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {c.reasons.length > 0 && (
                     <ul className="mt-2 list-disc space-y-0.5 pl-4 text-xs text-muted-foreground">
                       {c.reasons.slice(0, 3).map((r, i) => (
                         <li key={i}>{r}</li>
                       ))}
                     </ul>
+                  )}
+
+                  {/* Employer actions */}
+                  {c.applied && c.application_id && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button size="sm" variant="subtle" onClick={() => act(c.application_id!, 'shortlisted')} disabled={busyId === c.application_id}>
+                        <CheckSquare className="h-3.5 w-3.5" /> Shortlist
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => act(c.application_id!, 'rejected')} disabled={busyId === c.application_id}>
+                        <X className="h-3.5 w-3.5" /> Pass
+                      </Button>
+                      <Link to={`/app/applicants/${c.application_id}`}>
+                        <Button size="sm" variant="ghost">
+                          <Eye className="h-3.5 w-3.5" /> Review
+                        </Button>
+                      </Link>
+                    </div>
                   )}
                 </div>
               </CardBody>
