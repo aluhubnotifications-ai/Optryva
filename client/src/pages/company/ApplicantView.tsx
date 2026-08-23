@@ -42,6 +42,34 @@ import { cn, daysUntil, formatDate } from '@/lib/utils'
 
 const TAG_OPTIONS = ['Strong fit', 'Consider', 'Needs follow-up', 'Referral', 'Watch', 'Do not advance'] as const
 
+// Each tag gets a distinct colour so they read at a glance in the profile and
+// the applicant list.
+const TAG_STYLES: Record<string, string> = {
+  'Strong fit': 'bg-success/15 text-success border-success/30',
+  'Consider': 'bg-accent/15 text-accent border-accent/30',
+  'Referral': 'bg-primary/15 text-primary border-primary/30',
+  'Needs follow-up': 'bg-warning/15 text-warning border-warning/30',
+  'Watch': 'bg-secondary/15 text-secondary-foreground border-secondary/30',
+  'Do not advance': 'bg-danger/15 text-danger border-danger/30',
+}
+
+/** Coloured tag chip. Clickable (toggle) when `onClick` is supplied. */
+function TagChip({ tag, active, onClick }: { tag: string; active: boolean; onClick?: () => void }) {
+  const cls = cn(
+    'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition',
+    active ? TAG_STYLES[tag] : 'border-border bg-muted text-muted-foreground',
+  )
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={cls}>
+        {tag}
+        {active && <XCircle className="h-3 w-3" />}
+      </button>
+    )
+  }
+  return <span className={cls}>{tag}</span>
+}
+
 /* Greenhouse-style clickable hiring stages. Each stage jumps to the matching tab
  * and advances the candidate's status when clicked. */
 const STAGES: { label: string; tab: string; to: ApplicationStatus | null }[] = [
@@ -369,7 +397,7 @@ export default function ApplicantView() {
                         {(ja.tags?.length ?? 0) > 0 && (
                           <div className="mt-1 flex flex-wrap gap-1">
                             {ja.tags!.slice(0, 2).map((t) => (
-                              <span key={t} className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">{t}</span>
+                              <TagChip key={t} tag={t} active={(ja.tags ?? []).includes(t)} />
                             ))}
                           </div>
                         )}
@@ -437,6 +465,12 @@ export default function ApplicantView() {
                 <ScorePill label="Test" score={app.assignment_score} />
               </div>
             </div>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-1.5">
+            <span className="text-xs font-medium text-muted-foreground">Tags:</span>
+            {TAG_OPTIONS.map((t) => (
+              <TagChip key={t} tag={t} active={(app.tags ?? []).includes(t)} onClick={() => toggleTag(t)} />
+            ))}
           </div>
             <div className="mt-5 border-t border-border pt-5"><StageTracker status={app.status} onStage={(s) => { if (s.to) setStatus(s.to); setTab(s.tab) }} /></div>
         </CardBody>
@@ -849,15 +883,8 @@ export default function ApplicantView() {
 							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tags</p>
 							<div className="flex flex-wrap gap-1">
 								{(app.tags?.length ?? 0) > 0 ? app.tags!.map((t) => (
-									<button key={t} type="button" onClick={() => toggleTag(t)} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/20">
-										{t} <XCircle className="h-3 w-3" />
-									</button>
+									<TagChip key={t} tag={t} active={(app.tags ?? []).includes(t)} />
 								)) : <span className="text-xs text-muted-foreground">None yet</span>}
-							</div>
-							<div className="flex flex-wrap gap-1">
-								{TAG_OPTIONS.filter((t) => !(app.tags ?? []).includes(t)).map((t) => (
-									<button key={t} type="button" onClick={() => toggleTag(t)} className="rounded-full border border-border px-2 py-0.5 text-[11px] hover:bg-muted">{t}</button>
-								))}
 							</div>
 						</CardBody>
 					</Card>
