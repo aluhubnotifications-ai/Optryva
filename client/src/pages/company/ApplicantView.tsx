@@ -28,7 +28,7 @@ import {
   RefreshCw,
   type LucideIcon,
 } from 'lucide-react'
-import { applicationsApi, jobsApi, messagesApi } from '@/lib/api'
+import { applicationsApi, jobsApi, messagesApi, type SmartShortlistCandidate } from '@/lib/api'
 import { useCompanyData } from '@/lib/companyData'
 import { useCurrentUser } from '@/lib/store'
 import type { Application, ApplicationStatus, JobListing, Message } from '@/types'
@@ -254,6 +254,9 @@ export default function ApplicantView() {
   // Other applicants for the SAME job, shown in a sidebar so a reviewer can jump
   // straight to any of them (instead of stepping with Prev/Next).
   const [jobApplicants, setJobApplicants] = useState<Application[] | null>(null)
+  // This candidate's Smart Shortlist verdict/decision note, pulled from the job's
+  // shortlist so the employer sees the shortlist's read alongside the assessment.
+  const [shortlistCand, setShortlistCand] = useState<SmartShortlistCandidate | null>(null)
 
   async function load() {
     if (!id) return
@@ -263,6 +266,10 @@ export default function ApplicantView() {
     setApp(a); setJob(j); setDecisionNote(a.decision_reason ?? ''); setLoading(false)
     applicationsApi.byJob(a.job_id).then((list) => setJobApplicants(list ?? [])).catch(() => setJobApplicants([]))
     messagesApi.thread(a.id).then(setThreadMsgs).catch(() => setThreadMsgs([]))
+    // Pull this candidate's Smart Shortlist entry so the shortlist verdict shows in
+    // the AI insights here (the assessment says "consider"; the shortlist may say
+    // "weak" — the employer needs both to decide).
+    jobsApi.shortlist(a.job_id).then((sl) => setShortlistCand((sl.candidates ?? []).find((c) => c.student_id === a.student_id) ?? null)).catch(() => setShortlistCand(null))
   }
   useEffect(() => { load() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -716,6 +723,31 @@ export default function ApplicantView() {
                 <Sparkles className="h-4 w-4 text-accent" /> {attempt?.score != null ? 'Re-run AI' : 'Run AI review'}
               </Button>
             </div>
+
+            {/* Smart Shortlist verdict — reconciles with the assessment above (e.g.
+                assessment "consider" vs shortlist "weak") so the employer sees both. */}
+            {shortlistCand && (
+              <div className="mt-3 rounded-xl border border-accent/30 bg-accent/5 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Sparkles className="h-4 w-4 shrink-0 text-accent" />
+                  <p className="text-sm font-medium text-foreground">Smart Shortlist verdict</p>
+                  {shortlistCand.verdict && (
+                    <Badge tone={shortlistCand.verdict === 'strong' ? 'success' : shortlistCand.verdict === 'weak' ? 'danger' : 'accent'} className="capitalize">{shortlistCand.verdict}</Badge>
+                  )}
+                  {shortlistCand.category && (
+                    <Badge tone={shortlistCand.category === 'not_qualified' ? 'danger' : shortlistCand.category === 'potential_fit' ? 'success' : 'accent'}>
+                      {shortlistCand.category === 'not_qualified' ? 'Not qualified' : shortlistCand.category === 'insufficient_evidence' ? 'Insufficient evidence' : 'Potential fit'}
+                    </Badge>
+                  )}
+                </div>
+                <div className="mt-1.5 text-xs text-muted-foreground">
+                  {shortlistCand.score_unavailable
+                    ? 'Match score not available — this is an AI estimate.'
+                    : <>Fit {Math.round(shortlistCand.fit_score ?? shortlistCand.score * 100)}</>}
+                </div>
+                {shortlistCand.decision_note && <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{shortlistCand.decision_note}</p>}
+              </div>
+            )}
 
             <SectionCard n={2} title="Scorecard" desc="Rate each criterion — the average becomes the final score">
               <div className="space-y-3">
