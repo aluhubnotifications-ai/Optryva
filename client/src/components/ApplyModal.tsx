@@ -22,9 +22,9 @@ import { ProctorMonitor, VIOLATION_LABEL } from '@/components/ProctorMonitor'
 
 const PROCTOR_RULES = [
   'Your camera, microphone, and screen are monitored live for the whole test. Nothing is recorded or sent anywhere.',
-  'You must share your entire screen. The proctor watches live for other windows, tabs, or apps.',
-  'If a second person appears, you leave the camera frame, there is loud noise, or excessive movement, the test is cancelled.',
-  'Switching tabs, minimizing, or leaving the test window cancels the test immediately.',
+  'When the test starts you will be asked to allow camera & microphone, then to share your screen — choose "Entire Screen" and click Share. The proctor watches live for other windows or apps.',
+  'If a second person appears, you leave the camera frame, you look down/away, there is loud noise, or excessive movement, the test is cancelled.',
+  'Switching tabs, minimizing, leaving the test window, or exiting fullscreen cancels the test immediately.',
   'Stopping the camera, microphone, or screen share also cancels the test immediately.',
   'You have a limited number of attempts, set by the employer. Breaking the rules uses one up.',
 ]

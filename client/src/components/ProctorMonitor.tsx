@@ -78,6 +78,7 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
 
     async function start() {
       try {
+        setStatus('Step 1 of 2 — allow camera & microphone, then click Allow')
         const camera = await navigator.mediaDevices.getUserMedia({
           video: { width: 320, height: 240 },
           audio: true,
@@ -94,6 +95,7 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
 
         // Screen share is required and watched live (never recorded). If the
         // candidate refuses, the test can't start.
+        setStatus('Step 2 of 2 — share your screen: pick "Entire Screen", then click Share')
         let screen: MediaStream | null = null
         try {
           screen = await navigator.mediaDevices.getDisplayMedia({ video: true })
@@ -295,9 +297,7 @@ export function ProctorMonitor({ active, onViolation }: { active: boolean; onVio
   }, [active])
 
   const ready = status === 'Proctoring active'
-  const message = !ready
-    ? 'Starting proctor… allow camera, mic & screen share'
-    : warning ?? 'Keep your head centered in the frame'
+  const message = !ready ? status : warning ?? 'Keep your head centered in the frame'
 
   if (!active) return null
   return (
