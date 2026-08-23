@@ -6,7 +6,7 @@ import type { Application, ApplicationStatus, JobListing } from '@/types'
 import { Avatar, Badge, Card, CardBody, Skeleton, Textarea } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { avatarRingStyle, TagDot } from '@/pages/company/ApplicantView'
+import { avatarRingStyle } from '@/pages/company/ApplicantView'
 import { cn, formatDate } from '@/lib/utils'
 
 export const statusTone = { draft: 'outline', pending: 'default', reviewed: 'primary', shortlisted: 'accent', hired: 'success', rejected: 'danger', cancelled: 'danger' } as const
@@ -194,13 +194,6 @@ export function ApplicantInbox({
                     <Avatar name={a.full_name} src={a.student_avatar_url} size={44} style={avatarRingStyle(a.tags)} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold">{a.full_name}</p>
-                      {(a.tags?.length ?? 0) > 0 && (
-                        <div className="mt-1 flex flex-wrap gap-1.5">
-                          {a.tags!.map((t) => (
-                            <TagDot key={t} tag={t} active={(a.tags ?? []).includes(t)} />
-                          ))}
-                        </div>
-                      )}
                       <p className="truncate text-sm text-muted-foreground">
                         {showListing && job ? (
                           <>
