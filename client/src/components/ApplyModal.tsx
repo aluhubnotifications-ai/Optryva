@@ -88,7 +88,6 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
   )
   const [submitting, setSubmitting] = useState(false)
   const [assignmentAnswers, setAssignmentAnswers] = useState<Record<string, string | string[]>>({})
-  const [assignmentFileNames, setAssignmentFileNames] = useState<Record<string, string>>({})
   const [interviewFirst, setInterviewFirst] = useState(false)
   const [alreadyApplied, setAlreadyApplied] = useState<Application | null>(null)
   const [savingDraft, setSavingDraft] = useState(false)
@@ -108,7 +107,6 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
     setConsentGiven(false)
     setConsentChecked(false)
     setAssignmentAnswers({})
-    setAssignmentFileNames({})
     setInterviewFirst(false)
     applicationsApi
       .byStudent(user.id)
@@ -142,7 +140,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
         setDocs(d)
         // The test (assessment) is intentionally NOT restored from a draft — it is
         // only ever completed and submitted, so a student can't pre-fill answers
-        // offline and resume them. assignmentAnswers / assignmentFileNames stay empty.
+        // offline and resume them. assignmentAnswers stays empty.
       })
       .catch(() => {})
     return () => {
@@ -200,13 +198,6 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
     setCoachLoading(false)
   }
 
-  async function setAssignmentFile(question: AiAssignmentQuestion, file?: File) {
-    if (!file) return
-    const url = await fileToDataUrl(file)
-    setAssignmentAnswers((current) => ({ ...current, [question.id]: url }))
-    setAssignmentFileNames((current) => ({ ...current, [question.id]: file.name }))
-  }
-
   async function submit() {
     if (!job || !valid) return
     const documents = Object.values(docs)
@@ -235,7 +226,6 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
             ? questions.map((question) => ({
                 question_id: question.id,
                 answer: assignmentAnswers[question.id] ?? '',
-                ...(question.type === 'file' || question.type === 'video' ? { file_name: assignmentFileNames[question.id] } : {}),
               }))
             : assignment.rubric.map((criterion) => ({ criterion_id: criterion.id, answer: assignmentAnswers[criterion.id] ?? '' }))
           : [],
@@ -469,7 +459,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
               </div>
               <div className="mt-4 space-y-3">
                 {(questions.length ? questions : assignment.rubric.map((criterion) => ({ id: criterion.id, type: 'essay' as const, prompt: criterion.label, required: true }))).map((question) => (
-                  <QuestionField key={question.id} question={question} value={assignmentAnswers[question.id]} onChange={(value) => setAssignmentAnswers((current) => ({ ...current, [question.id]: value }))} onFile={(file) => setAssignmentFile(question, file)} />
+                  <QuestionField key={question.id} question={question} value={assignmentAnswers[question.id]} onChange={(value) => setAssignmentAnswers((current) => ({ ...current, [question.id]: value }))} />
                 ))}
               </div>
             </div>
@@ -579,7 +569,7 @@ function countWords(s: string): number {
   return (s.trim().match(/\S+/g) ?? []).length
 }
 
-function QuestionField({ question, value, onChange, onFile }: { question: AiAssignmentQuestion; value?: string | string[]; onChange: (value: string | string[]) => void; onFile: (file: File) => void }) {
+function QuestionField({ question, value, onChange }: { question: AiAssignmentQuestion; value?: string | string[]; onChange: (value: string | string[]) => void }) {
   const selected = Array.isArray(value) ? value : []
   const choices = question.type === 'true_false' ? ['True', 'False'] : question.options ?? []
   const limitHint =
@@ -609,8 +599,6 @@ function QuestionField({ question, value, onChange, onFile }: { question: AiAssi
           )
         })()}
       </div>
-    ) : question.type === 'file' || question.type === 'video' ? (
-      <Input type="file" accept={question.type === 'video' ? 'video/*' : '.pdf,.doc,.docx,image/*'} onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
     ) : (
       <div className="space-y-2">
         {choices.map((choice) => (
@@ -627,7 +615,6 @@ function QuestionField({ question, value, onChange, onFile }: { question: AiAssi
         ))}
       </div>
     )}
-    {(question.type === 'file' || question.type === 'video') && typeof value === 'string' && value && <p className="mt-1 text-xs text-success">File attached</p>}
   </div>
 }
 

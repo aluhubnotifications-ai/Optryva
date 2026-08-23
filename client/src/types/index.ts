@@ -123,7 +123,7 @@ export interface AiAssignment {
   questions?: AiAssignmentQuestion[]
 }
 
-export type AiQuestionType = 'single_choice' | 'multiple_choice' | 'true_false' | 'essay' | 'file' | 'video'
+export type AiQuestionType = 'single_choice' | 'multiple_choice' | 'true_false' | 'essay'
 
 export interface AiAssignmentQuestion {
   id: string

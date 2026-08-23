@@ -573,8 +573,6 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
                         <option value="single_choice">Single choice</option>
                         <option value="multiple_choice">Multiple choice</option>
                         <option value="true_false">True / False</option>
-                        <option value="file">File upload</option>
-                        <option value="video">Video upload</option>
                       </Select>
                       <Button type="button" variant="ghost" size="icon" onClick={() => setAssignment({ ...assignment, questions: assignment.questions.filter((_, idx) => idx !== i) })} aria-label="Remove question"><Trash2 className="h-4 w-4" /></Button>
                     </div>

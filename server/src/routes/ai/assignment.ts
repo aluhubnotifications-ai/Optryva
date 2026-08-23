@@ -95,7 +95,7 @@ async function buildAssignmentContent(job: any, sources: any, instruction?: stri
       (instruction?.trim() ? `EMPLOYER INSTRUCTION: ${instruction.trim()}\n\n` : '') +
       'Design a STREAMLINED candidate assignment for this role based on the material above. ' +
       'Return ONLY the JSON requested. Use 3-5 questions, each prompt 1-2 clear sentences, and ' +
-      'ONLY these "type" values: essay, single_choice, multiple_choice, true_false, file, video ' +
+      'ONLY these "type" values: essay, single_choice, multiple_choice, true_false ' +
       '(choice questions must include 2-4 options). Rubric: 3-4 criteria whose points sum to 100.',
   })
   return content
@@ -127,7 +127,7 @@ async function buildMistralContent(job: any, docs: any[], instruction?: string, 
       (instruction?.trim() ? `EMPLOYER INSTRUCTION: ${instruction.trim()}\n\n` : '') +
       'Design a STREAMLINED candidate assignment for this role based on the material above. ' +
       'Return ONLY the JSON requested. Use 3-5 questions, each prompt 1-2 clear sentences, and ' +
-      'ONLY these "type" values: essay, single_choice, multiple_choice, true_false, file, video ' +
+      'ONLY these "type" values: essay, single_choice, multiple_choice, true_false ' +
       '(choice questions must include 2-4 options). Rubric: 3-4 criteria whose points sum to 100.',
   })
   return parts
@@ -204,13 +204,11 @@ const ASSIGNMENT_SYSTEM = `You are an expert hiring assessment designer for earl
 
 Rules:
 - Questions must be grounded in the uploaded material / role context. Avoid generic filler ("Tell us about yourself").
-- ALWAYS use exactly one of these question "type" values, and never any other word: "essay", "single_choice", "multiple_choice", "true_false", "file", "video".
+- ALWAYS use exactly one of these question "type" values, and never any other word: "essay", "single_choice", "multiple_choice", "true_false".
   • essay: a written answer (1-3 short paragraphs).
   • single_choice / multiple_choice: MUST include 2-4 "options" (strings). For single_choice pick one; for multiple_choice any number.
   • true_false: a statement the candidate marks true/false.
-  • file: candidate uploads a document (humans review).
-  • video: candidate uploads/records a short video (humans review).
-- Keep it STREAMLINED: 3-5 questions total, each prompt a single clear sentence or two (no numbered sub-lists inside a prompt). Mix types — typically 1-2 essay + 1-2 choice/true-false + at most one file or video submission.
+- Keep it STREAMLINED: 3-5 questions total, each prompt a single clear sentence or two (no numbered sub-lists inside a prompt). Mix types — typically 1-2 essay + 1-2 choice/true-false. Do NOT use file or video uploads; keep everything text-based so candidates answer inline.
 - Set "required" true for the most important questions; allow 1-2 optional.
 - The rubric must have 3-4 criteria; each "points" is an integer and the criteria sum to EXACTLY 100. Labels name what is judged (e.g. "Problem framing", "Technical approach").
 - Keep the assignment title short and the prompt a single clear paragraph.
@@ -229,7 +227,7 @@ const ASSIGNMENT_SCHEMA = {
       items: {
         type: 'object',
         properties: {
-          type: { type: 'string', enum: ['essay', 'single_choice', 'multiple_choice', 'true_false', 'file', 'video'] },
+          type: { type: 'string', enum: ['essay', 'single_choice', 'multiple_choice', 'true_false'] },
           prompt: { type: 'string' },
           required: { type: 'boolean' },
           options: { type: 'array', items: { type: 'string' }, description: 'Required only for single/multiple choice.' },
@@ -273,8 +271,9 @@ function coerceType(t: string): GeneratedAssignment['questions'][number]['type']
   if (s.includes('single') || s === 'mcq' || s === 'mc' || s === 'multiplechoicedropdown') return 'single_choice'
   if (s.includes('multi') || s === 'multiselect' || s === 'checkboxes' || s === 'checkbox') return 'multiple_choice'
   if (s.includes('true') || s === 'bool' || s === 'yesno' || s === 'yes/no' || s === 'tf') return 'true_false'
-  if (s.includes('video')) return 'video'
-  if (s.includes('file') || s.includes('upload') || s.includes('document')) return 'file'
+  // file/video/uploads have been removed from assessments (candidates answer
+  // inline). Coerce any model leak of those types to essay so nothing breaks.
+  if (s.includes('video') || s.includes('file') || s.includes('upload') || s.includes('document')) return 'essay'
   // short/long answer, paragraph, written, open → essay
   return 'essay'
 }
@@ -384,7 +383,7 @@ export async function scoreAssignmentWithAI(
   const answerText = answers
     .map((a) => {
       const q = questions.find((x: any) => x.id === (a.question_id ?? a.criterion_id))
-      const ans = Array.isArray(a.answer) ? a.answer.join(', ') : String(a.answer ?? '').startsWith('data:') ? 'File/video submitted' : a.answer
+      const ans = Array.isArray(a.answer) ? a.answer.join(', ') : String(a.answer ?? '')
       return `Q: ${q?.prompt ?? a.question_id ?? a.criterion_id}\nA: ${ans ?? '(no answer)'}`
     })
     .join('\n\n')

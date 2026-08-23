@@ -54,8 +54,6 @@ export function AssignmentView({ assignment }: { assignment: AiAssignment }) {
     single_choice: 'Single choice',
     multiple_choice: 'Multiple choice',
     true_false: 'True / False',
-    file: 'File upload',
-    video: 'Video upload',
   }
   const questions = assignment.questions ?? []
   const rubric = assignment.rubric ?? []
