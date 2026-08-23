@@ -132,7 +132,7 @@ export function rowToApplication(r: any) {
     decided_at: r.decided_at ?? undefined,
     attempts: r.attempts ?? 0,
     assignment_attempts: r.assignment_attempts ? j.parse(r.assignment_attempts, []) : undefined,
-    tags: (() => { const t = arr<string>(r.tags ?? []); console.log('[serialize] application raw tags=', JSON.stringify(r.tags), '->', JSON.stringify(t)); return t })(),
+    tags: (() => { const t = arr<string>(r.tags ?? []); console.info('[serialize] application raw tags=', JSON.stringify(r.tags), '->', JSON.stringify(t)); return t })(),
     timeline: arr<any>(r.timeline),
     created_at: r.created_at,
   }
