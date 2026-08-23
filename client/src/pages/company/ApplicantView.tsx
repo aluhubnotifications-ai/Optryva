@@ -71,6 +71,28 @@ function TagChip({ tag, active, onClick }: { tag: string; active: boolean; onCli
   return <span className={cls}>{tag}</span>
 }
 
+const TAG_RING: Record<string, string> = {
+  'Strong fit': 'ring-success',
+  'Consider': 'ring-accent',
+  'Referral': 'ring-primary',
+  'Needs follow-up': 'ring-warning',
+  'Watch': 'ring-secondary',
+  'Do not advance': 'ring-danger',
+}
+
+/** First tag (in canonical order) applied to a candidate — used to colour the
+ * ring around their picture so the tag is visible everywhere they appear. */
+function primaryTag(tags?: string[]): string | undefined {
+  const list = tags ?? []
+  return TAG_OPTIONS.find((t) => list.includes(t))
+}
+
+/** Coloured ring (matching the candidate's primary tag) drawn around the avatar. */
+function avatarRing(tags?: string[]): string {
+  const t = primaryTag(tags)
+  return t ? `ring-2 ring-offset-2 ring-offset-card ${TAG_RING[t]}` : ''
+}
+
 /* Greenhouse-style clickable hiring stages. Each stage jumps to the matching tab
  * and advances the candidate's status when clicked. */
 const STAGES: { label: string; tab: string; to: ApplicationStatus | null }[] = [
@@ -393,7 +415,7 @@ export default function ApplicantView() {
                       onClick={() => navigate(`/app/applicants/${ja.id}`)}
                       className={cn('flex w-full items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition-colors', activeA ? 'border-primary/40 bg-primary/10' : 'border-transparent hover:bg-muted/50')}
                     >
-                      <Avatar name={ja.full_name} src={ja.student_avatar_url || monogramAvatar(ja.full_name)} size={32} />
+                      <Avatar name={ja.full_name} src={ja.student_avatar_url || monogramAvatar(ja.full_name)} size={32} className={avatarRing(ja.tags)} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{ja.full_name}</p>
                         <p className="truncate text-xs text-muted-foreground">{ja.school}{ja.year ? ` · Y${ja.year}` : ''}</p>
@@ -445,7 +467,7 @@ export default function ApplicantView() {
         <CardBody>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex gap-3">
-              <Avatar name={app.full_name} src={app.student_avatar_url || monogramAvatar(app.full_name)} size={52} />
+              <Avatar name={app.full_name} src={app.student_avatar_url || monogramAvatar(app.full_name)} size={52} className={avatarRing(app.tags)} />
               <div>
                 <h1 className="text-xl font-bold tracking-tight">{app.full_name}</h1>
                 <p className="text-sm text-muted-foreground">
@@ -813,7 +835,7 @@ export default function ApplicantView() {
 					<Card>
 						<CardBody className="space-y-3">
 							<div className="flex flex-col items-center gap-2 text-center">
-								<Avatar name={app.full_name} src={app.student_avatar_url || monogramAvatar(app.full_name)} size={64} className="rounded-2xl" />
+								<Avatar name={app.full_name} src={app.student_avatar_url || monogramAvatar(app.full_name)} size={64} className={cn('rounded-2xl', avatarRing(app.tags))} />
 								<div className="min-w-0">
 									<p className="text-sm font-semibold">{app.full_name}</p>
 									<p className="text-xs text-muted-foreground">
