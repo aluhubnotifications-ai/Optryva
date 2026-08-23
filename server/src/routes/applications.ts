@@ -235,7 +235,7 @@ applications.patch('/:id/status', async (req, res) => {
 // Human override of the AI assessment score + an optional decision note. The final
 // number is the employer's; we only store it (and who set it, when).
 applications.patch('/:id/review', async (req, res) => {
-  const { assignment_score, decision_reason } = req.body ?? {}
+  const { assignment_score, decision_reason, tags } = req.body ?? {}
   const r = must(await sb.from('applications').select('*').eq('id', req.params.id).maybeSingle()) as any
   if (!r) return res.status(404).json({ error: 'not_found' })
   const job = must(await sb.from('job_listings').select('company_id').eq('id', r.job_id).maybeSingle()) as any
@@ -243,6 +243,7 @@ applications.patch('/:id/review', async (req, res) => {
   const patch: any = { decision_by: req.user!.id, decided_at: now() }
   if (typeof assignment_score === 'number') patch.assignment_score = Math.max(0, Math.min(100, Math.round(assignment_score)))
   if (decision_reason !== undefined) patch.decision_reason = decision_reason || null
+  if (Array.isArray(tags)) patch.tags = tags as string[]
   must(await sb.from('applications').update(patch).eq('id', r.id))
   const updated = must(await sb.from('applications').select('*').eq('id', r.id).maybeSingle())
   res.json(rowToApplication(updated))

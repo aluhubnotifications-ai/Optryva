@@ -338,7 +338,7 @@ export const applicationsApi = {
     invalidateCache()
     return (await apiFetch(`/applications/${id}/status`, { method: 'PATCH', body: JSON.stringify(reason !== undefined ? { status, reason } : { status }) })) as Application
   },
-  async review(id: string, body: { assignment_score?: number; decision_reason?: string }): Promise<Application | null> {
+  async review(id: string, body: { assignment_score?: number; decision_reason?: string; tags?: string[] }): Promise<Application | null> {
     invalidateCache()
     return (await apiFetch(`/applications/${id}/review`, { method: 'PATCH', body: JSON.stringify(body) })) as Application
   },

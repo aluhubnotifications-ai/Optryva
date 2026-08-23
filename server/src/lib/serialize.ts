@@ -120,6 +120,7 @@ export function rowToApplication(r: any) {
     decision_reason: r.decision_reason ?? undefined,
     decided_at: r.decided_at ?? undefined,
     attempts: r.attempts ?? 0,
+    tags: arr<string>(r.tags ?? []),
     timeline: arr<any>(r.timeline),
     created_at: r.created_at,
   }

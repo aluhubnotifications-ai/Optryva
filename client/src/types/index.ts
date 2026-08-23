@@ -183,6 +183,7 @@ export interface Application {
   decision_reason?: string
   decided_at?: string
   attempts?: number
+  tags?: string[]
   created_at: string
   timeline: { status: ApplicationStatus | 'applied' | 'test_return' | 'test_submitted' | 'test_unlocked'; at: string; reason?: string; late?: boolean; note?: string; by?: string }[]
 }
