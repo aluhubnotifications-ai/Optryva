@@ -12,6 +12,7 @@ import {
   Star,
   CheckCircle2,
   XCircle,
+  Clock,
   ClipboardCheck,
   ShieldCheck,
   Sparkles,
@@ -165,7 +166,7 @@ export default function ApplicantView() {
   const listingDeadline = job ? daysUntil(job.deadline) : null
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[1400px]">
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
@@ -185,7 +186,7 @@ export default function ApplicantView() {
         )}
       </div>
 
-      <div className="mt-4 grid gap-5 lg:grid-cols-[260px_1fr]">
+      <div className="mt-4 grid gap-5 lg:grid-cols-[240px_minmax(0,1fr)_320px]">
         {/* Sidebar: other applicants for this job — jump straight to any of them */}
         <aside className="lg:sticky lg:top-[7.5rem] lg:h-[calc(100vh-9rem)]">
           <Card className="h-full">
@@ -252,7 +253,6 @@ export default function ApplicantView() {
         <CardBody>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex gap-3">
-              <Avatar name={app.full_name} src={app.student_avatar_url} size={56} />
               <div>
                 <h1 className="text-xl font-bold tracking-tight">{app.full_name}</h1>
                 <p className="text-sm text-muted-foreground">
@@ -492,6 +492,110 @@ export default function ApplicantView() {
         </SectionCard>
       </div>
       </div>
+
+				<aside className="space-y-4 lg:sticky lg:top-[7.5rem] lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto">
+					<Card>
+						<CardBody className="space-y-3">
+							<div className="flex items-center gap-3">
+								<Avatar name={app.full_name} src={app.student_avatar_url} size={40} className="rounded-xl" />
+								<div className="min-w-0">
+									<p className="truncate text-sm font-semibold">{app.full_name}</p>
+									<p className="truncate text-xs text-muted-foreground">
+										{app.school ?? ''}{app.year ? ` · Y${app.year}` : ''}
+									</p>
+								</div>
+							</div>
+							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+								Application
+							</p>
+							<dl className="divide-y divide-border">
+								<div className="flex items-center justify-between gap-3 py-2">
+									<dt className="text-xs text-muted-foreground">Applied</dt>
+									<dd className="text-sm font-medium">{formatDate(app.created_at)}</dd>
+								</div>
+								<div className="flex items-center justify-between gap-3 py-2">
+									<dt className="text-xs text-muted-foreground">Status</dt>
+									<dd><Badge tone={statusTone[app.status]} className="capitalize">{app.status === 'hired' ? 'Hired' : app.status}</Badge></dd>
+								</div>
+								<div className="flex items-center justify-between gap-3 py-2">
+									<dt className="text-xs text-muted-foreground">Assessment</dt>
+									<dd className="text-sm font-medium">{app.assignment_status === 'submitted' ? 'Submitted' : app.assignment_status === 'pending' ? 'Pending' : 'Not required'}</dd>
+								</div>
+								<div className="flex items-center justify-between gap-3 py-2">
+									<dt className="text-xs text-muted-foreground">Attempts</dt>
+									<dd className="text-sm font-medium">{app.attempts ?? 0} / {job?.assignment?.max_attempts ?? 10}</dd>
+								</div>
+								<div className="flex items-center justify-between gap-3 py-2">
+									<dt className="text-xs text-muted-foreground">Test submitted</dt>
+									<dd className="text-sm font-medium text-right">
+										{app.assignment_submitted_at ? (
+											<span className="flex items-center justify-end gap-1.5">
+												{formatDate(app.assignment_submitted_at)}
+												{app.assignment_late && <Badge tone="danger" className="px-1.5 py-0.5 text-[10px]">Late</Badge>}
+											</span>
+										) : '—'}
+									</dd>
+								</div>
+							</dl>
+						</CardBody>
+					</Card>
+
+					<Card>
+						<CardBody className="space-y-3">
+							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Process</p>
+							<div className="mt-1"><AppProgressSteps status={app.status} /></div>
+						</CardBody>
+					</Card>
+
+					<Card>
+						<CardBody className="space-y-3">
+							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">What's next</p>
+							<div className="mt-1">
+								{app.assignment_status === 'submitted' && app.assignment_score == null ? (
+									<div className="rounded-xl border border-primary/30 bg-primary/5 p-3">
+										<div className="flex items-start gap-2.5">
+											<ClipboardCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+											<div className="min-w-0">
+												<p className="text-sm font-semibold leading-tight">Review the assessment</p>
+												<p className="mt-1 text-xs leading-relaxed text-muted-foreground">The candidate submitted the test. Review answers, then run AI scoring.</p>
+											</div>
+										</div>
+									</div>
+								) : app.status === 'shortlisted' || app.status === 'reviewed' ? (
+									<div className="rounded-xl border border-primary/30 bg-primary/5 p-3">
+										<div className="flex items-start gap-2.5">
+											<UserCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+											<div className="min-w-0">
+												<p className="text-sm font-semibold leading-tight">Make a decision</p>
+												<p className="mt-1 text-xs leading-relaxed text-muted-foreground">You have enough signal to advance, reject, or hold this candidate.</p>
+											</div>
+										</div>
+									</div>
+								) : app.status === 'pending' ? (
+									<div className="rounded-xl border border-border bg-muted/30 p-3">
+										<div className="flex items-start gap-2.5">
+											<Clock className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+											<div className="min-w-0">
+												<p className="text-sm font-semibold leading-tight">Awaiting review</p>
+												<p className="mt-1 text-xs leading-relaxed text-muted-foreground">This application is new. Check the candidate profile and assessment.</p>
+											</div>
+										</div>
+									</div>
+								) : (
+									<div className="rounded-xl border border-success/30 bg-success/5 p-3">
+										<div className="flex items-start gap-2.5">
+											<CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" />
+											<div className="min-w-0">
+												<p className="text-sm font-semibold leading-tight">Status: {app.status}</p>
+												<p className="mt-1 text-xs leading-relaxed text-muted-foreground">No immediate action required.</p>
+											</div>
+										</div>
+									</div>
+								)}
+							</div>
+						</CardBody>
+					</Card>
+				</aside>
     </div>
     </div>
   )

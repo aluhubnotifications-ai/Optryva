@@ -529,6 +529,22 @@ export default function ApplicationDetail() {
 				<aside className="space-y-4 lg:sticky lg:top-[7.5rem] lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto">
 					<Card>
 						<CardBody className="space-y-3">
+							<div className="flex items-center gap-3">
+								<Avatar
+									name={app.full_name || user?.full_name || "You"}
+									src={app.student_avatar_url || user?.avatar_url}
+									size={40}
+									className="rounded-xl"
+								/>
+								<div className="min-w-0">
+									<p className="truncate text-sm font-semibold">
+										{app.full_name || user?.full_name || "You"}
+									</p>
+									<p className="truncate text-xs text-muted-foreground">
+										{job.title} · {job.location}
+									</p>
+								</div>
+							</div>
 							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 								Application
 							</p>
