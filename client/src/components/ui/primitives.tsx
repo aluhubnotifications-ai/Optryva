@@ -113,11 +113,13 @@ export function Avatar({
   name,
   size = 40,
   className,
+  style,
 }: {
   src?: string
   name?: string
   size?: number
   className?: string
+  style?: React.CSSProperties
 }) {
   const [failed, setFailed] = useState(false)
   const showImg = src && !failed
@@ -127,7 +129,7 @@ export function Avatar({
         'relative flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-primary/30 to-accent/30 font-semibold text-foreground',
         className,
       )}
-      style={{ width: size, height: size, fontSize: size * 0.38 }}
+      style={{ width: size, height: size, fontSize: size * 0.38, ...style }}
     >
       {showImg ? (
         <img
