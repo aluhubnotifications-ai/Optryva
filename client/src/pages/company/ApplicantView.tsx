@@ -18,7 +18,6 @@ import {
   Sparkles,
   UserCheck,
   Check,
-  Users,
   RotateCcw,
   Tag,
   Send,
@@ -294,15 +293,6 @@ export default function ApplicantView() {
         >
           <ArrowLeft className="h-4 w-4" /> Back to listing
         </button>
-        {job && (
-          <button
-            type="button"
-            onClick={() => navigate('/app/listings')}
-            className="text-sm text-muted-foreground hover:text-foreground"
-          >
-            All listings
-          </button>
-        )}
       </div>
 
       <div className="mt-4 grid gap-5 lg:grid-cols-[240px_minmax(0,1fr)_320px]">
@@ -366,10 +356,7 @@ export default function ApplicantView() {
                   </Badge>
                 )}
               </div>
-            </div>
-            <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={() => navigate(`/app/listings/${job.id}`)}>
-              <Users className="h-4 w-4" /> View all applicants
-            </Button>
+              </div>
           </CardBody>
         </Card>
       )}
@@ -699,7 +686,7 @@ export default function ApplicantView() {
           <span className="text-sm text-muted-foreground">Current stage:</span>
           <Badge tone={statusTone[app.status]} className="capitalize">{app.status === 'hired' ? 'Hired' : app.status === 'rejected' ? 'Rejected' : app.status}</Badge>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={advance}>
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={advance} disabled={!NEXT_STATUS[app.status]}>
               <ChevronRight className="h-4 w-4" /> Advance
             </Button>
             {actions.map((a) => (
