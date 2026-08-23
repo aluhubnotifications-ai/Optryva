@@ -353,16 +353,23 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
   return (
     <>
       <HumanAuthorityBanner />
-      {/* Cache status only. Scoring happens once on open (then cached); no manual
-          re-score / refresh in the UI. */}
+      {/* Cache status + explicit employer re-score. The shortlist is served from
+          cache on every normal open; it only re-scores when a NEW application lands
+          or the employer clicks Rescore. */}
       <Card>
         <CardBody className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm font-medium">Smart Shortlist</p>
-          {data.cached && (
-            <Badge tone="outline">
-              Cached{data.computed_at ? ` · ${formatDate(data.computed_at)}` : ''}
-            </Badge>
-          )}
+          <div className="flex items-center gap-2">
+            {data.cached && (
+              <Badge tone="outline">
+                Cached{data.computed_at ? ` · ${formatDate(data.computed_at)}` : ''}
+              </Badge>
+            )}
+            {data.rescored && <Badge tone="success">Re-scored</Badge>}
+            <Button size="sm" variant="outline" onClick={async () => { setBusyId('rescore'); try { setData(await jobsApi.rescoreShortlist(jobId)) } finally { setBusyId(null) } }} disabled={busyId === 'rescore'}>
+              <RefreshCw className="h-3.5 w-3.5" /> Rescore
+            </Button>
+          </div>
         </CardBody>
       </Card>
       {data.mistral && data.summary && (
