@@ -71,6 +71,24 @@ function TagChip({ tag, active, onClick }: { tag: string; active: boolean; onCli
   return <span className={cls}>{tag}</span>
 }
 
+/** Colour-only tag indicator — a filled dot in the tag's colour (no text).
+ * Clickable (toggle) when `onClick` is supplied; the tag name is exposed as a
+ * tooltip/aria-label so it stays identifiable without taking layout space. */
+function TagDot({ tag, active, onClick }: { tag: string; active: boolean; onClick?: () => void }) {
+  const on = TAG_STYLES[tag]?.on ?? 'border-border bg-muted'
+  const off = TAG_STYLES[tag]?.off ?? 'border-border bg-muted'
+  const cls = cn(
+    'inline-block h-4 w-4 rounded-full border transition',
+    active ? on : off,
+    active ? 'ring-2 ring-offset-1 ring-foreground/20' : 'opacity-50 hover:opacity-80',
+  )
+  return onClick ? (
+    <button type="button" title={tag} aria-label={tag} onClick={onClick} className={cls} />
+  ) : (
+    <span title={tag} aria-label={tag} className={cls} />
+  )
+}
+
 const TAG_VAR: Record<string, string> = {
   'Strong fit': '--success',
   'Consider': '--accent',
@@ -360,10 +378,7 @@ export default function ApplicantView() {
     const cur = app!.tags ?? []
     const adding = !cur.includes(tag)
     const next = adding ? [...cur, tag] : cur.filter((t) => t !== tag)
-    console.log('[toggleTag] current=', JSON.stringify(cur), 'sending=', JSON.stringify(next))
     const updated = await applicationsApi.review(app!.id, { tags: next })
-    console.log('[toggleTag] server returned tags=', JSON.stringify(updated?.tags))
-    if ((updated as any)?._debug) console.log('[toggleTag] SERVER TRACE:\n' + (updated as any)._debug.join('\n'))
     if (updated) { setApp({ ...app!, ...updated }); markStale() }
     toast({ title: adding ? `Tagged “${tag}”` : `Removed “${tag}”`, tone: 'success' })
     setTagMenu(false)
@@ -854,9 +869,9 @@ export default function ApplicantView() {
 							</div>
 							<div>
 								<p className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tags</p>
-								<div className="mt-1.5 flex flex-wrap justify-center gap-1">
+								<div className="mt-1.5 flex flex-wrap justify-center gap-1.5">
 									{TAG_OPTIONS.map((t) => (
-										<TagChip key={t} tag={t} active={(app.tags ?? []).includes(t)} onClick={() => toggleTag(t)} />
+										<TagDot key={t} tag={t} active={(app.tags ?? []).includes(t)} onClick={() => toggleTag(t)} />
 									))}
 								</div>
 							</div>

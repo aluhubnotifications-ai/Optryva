@@ -99,7 +99,7 @@ export function rowToJob(r: any) {
   }
 }
 
-export function rowToApplication(r: any, debug?: string[]) {
+export function rowToApplication(r: any) {
   if (!r) return null
   return {
     id: r.id,
@@ -132,7 +132,7 @@ export function rowToApplication(r: any, debug?: string[]) {
     decided_at: r.decided_at ?? undefined,
     attempts: r.attempts ?? 0,
     assignment_attempts: r.assignment_attempts ? j.parse(r.assignment_attempts, []) : undefined,
-    tags: (() => { const t = arr<string>(r.tags ?? []); const line = `[serialize] application raw tags=${JSON.stringify(r.tags)} -> ${JSON.stringify(t)}`; console.info(line); debug?.push(line); return t })(),
+    tags: arr<string>(r.tags ?? []),
     timeline: arr<any>(r.timeline),
     created_at: r.created_at,
   }
