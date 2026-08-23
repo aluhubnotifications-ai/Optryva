@@ -8,6 +8,25 @@ import { storeDocument, validateDocuments } from '@/lib/documents'
 import { scoreAssignmentWithAI } from '@/routes/ai/assignment'
 import { getMatch, rowToMatchJob, hasClaude } from '@/routes/ai/helpers'
 
+// Resolve a candidate's match fit for a job, used to connect the assessment review
+// AI to the (résumé) match even when the application's own snapshot is empty — e.g.
+// the applied job was never in the student's top-40 discovery set, so no match was
+// captured at apply time. Reads the cached score first, scoring on the fly only if
+// missing, then returns the prior the review AI reasons from.
+async function resolveMatchContext(studentId: string, job: any): Promise<{ score: number; rationale: string | null; matchedSkills: string[] } | null> {
+  try {
+    const cached = (await sb.from('ai_match_cache').select('payload').eq('student_id', studentId).eq('job_id', job.id).maybeSingle()).data as any
+    let p: any = cached?.payload ? j.parse(cached.payload, null) : null
+    if (!p) p = await getMatch(studentId, rowToMatchJob(job), { cache: true })
+    if (!p) return null
+    const reasons: string[] = Array.isArray(p.reasons) ? p.reasons : []
+    const skills: string[] = Array.isArray(p.matched_skills) ? p.matched_skills : []
+    return { score: p.score ?? 0, rationale: reasons.length ? reasons.join(' ') : null, matchedSkills: skills }
+  } catch {
+    return null
+  }
+}
+
 export const applications = Router()
 applications.use(requireAuth)
 
@@ -330,12 +349,14 @@ applications.post('/:id/score-assignment', async (req, res) => {
   if (!job.assignment) return res.status(400).json({ error: 'no_assignment' })
   const answers = j.parse<any[]>(r.assignment_answers ?? '[]', [])
   if (!answers.length) return res.status(400).json({ error: 'no_answers' })
-  // Feed the candidate's already-computed match fit (résumé + role) into the
-  // review AI as a prior, so the employer's scoring reasons from it instead of
-  // re-deriving fit from scratch.
-  const matchContext = r.match_score != null
-    ? { score: r.match_score, rationale: r.match_rationale ?? null }
-    : null
+  // Connect the review AI to the candidate's match fit (résumé + role), even when
+  // the application's own snapshot is empty: resolve the real match from the cache
+  // (or score on the fly) and feed it as a prior. Also backfill the application's
+  // match_score so the review page shows it ("student match is empty" fix).
+  const matchContext = await resolveMatchContext(r.student_id, job)
+  if (matchContext && r.match_score == null) {
+    try { await sb.from('applications').update({ match_score: matchContext.score, match_rationale: matchContext.rationale }).eq('id', r.id) } catch { /* best-effort */ }
+  }
   const result = await scoreAssignmentWithAI(job.assignment, answers, { title: job.title, type: job.type, description: job.description }, matchContext)
   must(
     await sb
@@ -384,7 +405,13 @@ applications.patch('/:id/assignment', async (req, res) => {
   let result: any = null
   try {
     const answers = assignment_answers ?? []
-    const matchContext = r.match_score != null ? { score: r.match_score, rationale: r.match_rationale ?? null } : null
+    // Connect the assessment AI to the candidate's match fit (résumé + role),
+    // resolving it from the cache / on the fly when the application snapshot is
+    // empty, and backfill the application so the review shows the match.
+    const matchContext = await resolveMatchContext(r.student_id, job)
+    if (matchContext && r.match_score == null) {
+      try { await sb.from('applications').update({ match_score: matchContext.score, match_rationale: matchContext.rationale }).eq('id', r.id) } catch { /* best-effort */ }
+    }
     result = await scoreAssignmentWithAI(job.assignment, answers, { title: job.title, type: job.type, description: job.description }, matchContext)
   } catch { /* leave unscored */ }
   // Archive this attempt (kept across retakes) so every submission stays

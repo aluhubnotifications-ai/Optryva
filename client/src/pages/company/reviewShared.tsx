@@ -275,31 +275,39 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
   const [data, setData] = useState<SmartShortlistResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [progress, setProgress] = useState(0)
 
-  const load = useCallback(() => {
+  // Scores once on open; an animated percentage is shown while the request runs so
+  // the employer sees loading progress before the candidate cards appear.
+  const fetchShortlist = useCallback(() => {
+    let alive = true
     setLoading(true)
+    setProgress(0)
+    const tick = setInterval(() => setProgress((p) => (p < 92 ? Math.min(92, p + Math.random() * 9 + 3) : p)), 180)
     jobsApi
       .shortlist(jobId)
-      .then((d) => setData(d))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false))
-  }, [jobId])
-
-  useEffect(() => {
-    let alive = true
-    const run = () => jobsApi.shortlist(jobId).then((d) => alive && setData(d)).catch(() => alive && setData(null)).finally(() => alive && setLoading(false))
-    setLoading(true)
-    run()
+      .then((d) => alive && setData(d))
+      .catch(() => alive && setData(null))
+      .finally(() => {
+        if (alive) {
+          clearInterval(tick)
+          setProgress(100)
+          setLoading(false)
+        }
+      })
     return () => {
       alive = false
+      clearInterval(tick)
     }
   }, [jobId])
+
+  useEffect(() => fetchShortlist(), [fetchShortlist])
 
   async function act(applicationId: string, status: string) {
     setBusyId(applicationId)
     try {
       await applicationsApi.setStatus(applicationId, status as any)
-      load()
+      fetchShortlist()
     } finally {
       setBusyId(null)
     }
@@ -308,11 +316,14 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
   if (loading) {
     return (
       <div className="space-y-3">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <RefreshCw className="h-4 w-4 animate-spin" /> Scoring candidates against this role…
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <span className="flex items-center gap-2">
+            <RefreshCw className="h-4 w-4 animate-spin" /> Scoring candidates against this role…
+          </span>
+          <span className="font-medium tabular-nums text-foreground">{Math.round(progress)}%</span>
         </div>
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div className="h-full w-1/3 animate-pulse rounded-full bg-primary" />
+          <div className="h-full rounded-full bg-primary transition-all duration-200" style={{ width: `${progress}%` }} />
         </div>
         {Array.from({ length: 3 }).map((_, i) => (
           <Card key={i}>

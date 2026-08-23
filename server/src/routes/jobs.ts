@@ -198,6 +198,17 @@ async function buildShortlist(job: any, force: boolean): Promise<any> {
       // flag it so the UI never shows a fabricated fit number as if it were real.
       const scoreUnavailable = !m
       if (!m) m = { score: 0, matched_skills: [], reasons: [], mismatch_flags: [], breakdown: null }
+      // Backfill the application's match_score so the review page shows the real
+      // fit (fixes "student match is empty" when the applied job was outside the
+      // student's top-40 and no match was snapshotted at apply time).
+      if (m && !scoreUnavailable) {
+        const app = appByStudent.get(sid)
+        if (app && app.match_score == null) {
+          const reasons: string[] = Array.isArray(m.reasons) ? m.reasons : []
+          const rationale = reasons.length ? reasons.join(' ') : null
+          try { await sb.from('applications').update({ match_score: m.score ?? null, match_rationale: rationale }).eq('id', app.id) } catch { /* best-effort */ }
+        }
+      }
       return { student_id: sid, m, scoreUnavailable }
     }),
   )
