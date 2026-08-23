@@ -305,10 +305,32 @@ applications.patch('/:id/assignment', async (req, res) => {
     late = new Date(ts).getTime() > due.getTime()
   }
   const timeline = j.parse<any[]>(r.timeline ?? '[]', [])
-  timeline.push({ status: 'test_submitted', at: ts, late })
+  const isRetake = timeline.some((t) => t.status === 'test_unlocked')
+  timeline.push({ status: 'test_submitted', at: ts, late, is_retake: isRetake })
   // An attempt is counted once the test is actually submitted. Cancellations
   // along the way already incremented `attempts`; a clean first submit is #1.
   const attempts = r.attempts ? r.attempts : 1
+  // Best-effort AI scoring so the employer sees a suggestion immediately.
+  let result: any = null
+  try {
+    const answers = assignment_answers ?? []
+    const matchContext = r.match_score != null ? { score: r.match_score, rationale: r.match_rationale ?? null } : null
+    result = await scoreAssignmentWithAI(job.assignment, answers, { title: job.title, type: job.type, description: job.description }, matchContext)
+  } catch { /* leave unscored */ }
+  // Archive this attempt (kept across retakes) so every submission stays
+  // reviewable, then update the current/latest fields the employer sees.
+  const history = j.parse<any[]>(r.assignment_attempts ?? '[]', [])
+  history.push({
+    index: history.length + 1,
+    is_retake: isRetake,
+    submitted_at: ts,
+    late,
+    duration_seconds: duration_seconds ?? null,
+    answers: assignment_answers ?? [],
+    score: result?.score ?? null,
+    ai_feedback: result ? result.feedback : null,
+    recommendation: result?.recommendation ?? null,
+  })
   must(
     await sb.from('applications').update({
       assignment_answers: j.stringify(assignment_answers ?? []),
@@ -318,23 +340,18 @@ applications.patch('/:id/assignment', async (req, res) => {
       test_eligible_at: r.test_eligible_at ?? ts,
       attempts,
       timeline: j.stringify(timeline),
+      assignment_attempts: j.stringify(history),
+      ...(result
+        ? {
+            assignment_score: result.score,
+            assignment_ai_feedback: j.stringify(result.feedback),
+            ai_recommendation: result.recommendation,
+            decision_by: req.user!.id,
+            decided_at: ts,
+          }
+        : {}),
     }).eq('id', r.id),
   )
-  // Best-effort AI scoring so the employer sees a suggestion immediately.
-  try {
-    const answers = assignment_answers ?? []
-    const matchContext = r.match_score != null ? { score: r.match_score, rationale: r.match_rationale ?? null } : null
-    const result = await scoreAssignmentWithAI(job.assignment, answers, { title: job.title, type: job.type, description: job.description }, matchContext)
-    must(
-      await sb.from('applications').update({
-        assignment_score: result.score,
-        assignment_ai_feedback: j.stringify(result.feedback),
-        ai_recommendation: result.recommendation,
-        decision_by: req.user!.id,
-        decided_at: ts,
-      }).eq('id', r.id),
-    )
-  } catch { /* leave unscored */ }
   const updated = must(await sb.from('applications').select('*').eq('id', r.id).maybeSingle())
   res.json(rowToApplication(updated))
 })
@@ -353,6 +370,22 @@ applications.post('/:id/unlock-test', async (req, res) => {
   const ts = now()
   const timeline = j.parse<any[]>(r.timeline ?? '[]', [])
   timeline.push({ status: 'test_unlocked', at: ts, by: 'employer', retake: true })
+  // Preserve any pre-existing submission in the archive before we clear the
+  // current fields, so a first attempt from before this feature still survives.
+  const archive = j.parse<any[]>(r.assignment_attempts ?? '[]', [])
+  if (!archive.length && r.assignment_status === 'submitted' && r.assignment_answers) {
+    archive.push({
+      index: 1,
+      is_retake: false,
+      submitted_at: r.assignment_submitted_at ?? null,
+      late: r.assignment_late ?? false,
+      duration_seconds: null,
+      answers: j.parse(r.assignment_answers, []),
+      score: r.assignment_score ?? null,
+      ai_feedback: r.assignment_ai_feedback ? j.parse(r.assignment_ai_feedback, null) : null,
+      recommendation: r.ai_recommendation ?? null,
+    })
+  }
   must(
     await sb.from('applications').update({
       assignment_status: 'pending',
@@ -365,6 +398,7 @@ applications.post('/:id/unlock-test', async (req, res) => {
       ai_recommendation: null,
       test_eligible_at: ts,
       timeline: j.stringify(timeline),
+      assignment_attempts: j.stringify(archive),
     }).eq('id', r.id),
   )
   await notify(r.student_id, 'test_unlocked', 'Assessment re-opened', `The employer re-opened your assessment for ${job.title}. You can take it again.`, r.id)

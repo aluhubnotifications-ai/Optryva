@@ -190,6 +190,8 @@ export default function ApplicantView() {
   const [busyMsg, setBusyMsg] = useState(false)
   const [tagMenu, setTagMenu] = useState(false)
   const [ratings, setRatings] = useState<Record<string, number>>({})
+  // Which archived assessment attempt is being reviewed (null = latest).
+  const [attemptIdx, setAttemptIdx] = useState<number | null>(null)
   // Other applicants for the SAME job, shown in a sidebar so a reviewer can jump
   // straight to any of them (instead of stepping with Prev/Next).
   const [jobApplicants, setJobApplicants] = useState<Application[] | null>(null)
@@ -208,7 +210,39 @@ export default function ApplicantView() {
   if (loading) return <p className="py-20 text-center text-sm text-muted-foreground">Loading…</p>
   if (!app) return <div className="py-20 text-center"><p className="font-medium">Applicant not found.</p></div>
 
-  const hasAssignment = !!job?.assignment && (app.assignment_answers?.length ?? 0) > 0
+  const hasAssignment = !!job?.assignment && ((app.assignment_answers?.length ?? 0) > 0 || (app.assignment_attempts?.length ?? 0) > 0)
+
+  // Every submitted attempt is archived (assignment_attempts) so the first
+  // attempt stays reviewable even after the employer grants a retake. Older
+  // applications without an archive are synthesised from the current fields.
+  const archivedAttempts = (app.assignment_attempts ?? []) as any[]
+  const attempts = archivedAttempts.length
+    ? archivedAttempts
+    : (app.assignment_status === 'submitted'
+        ? [{
+            index: 1, is_retake: false, submitted_at: app.assignment_submitted_at, late: app.assignment_late,
+            duration_seconds: null, answers: app.assignment_answers ?? [], score: app.assignment_score ?? null,
+            ai_feedback: app.assignment_ai_feedback ?? null, recommendation: app.ai_recommendation ?? null,
+          }]
+        : [])
+  const activeAttemptIdx = attemptIdx != null && attemptIdx < attempts.length ? attemptIdx : attempts.length - 1
+  const attempt = attempts[activeAttemptIdx]
+
+  const AttemptSwitcher = attempts.length > 1 ? (
+    <div className="mb-3 flex flex-wrap items-center gap-2">
+      <span className="text-xs font-medium text-muted-foreground">Attempt:</span>
+      {attempts.map((a: any, i: number) => (
+        <button
+          key={i}
+          type="button"
+          onClick={() => setAttemptIdx(i)}
+          className={cn('rounded-full border px-3 py-1 text-xs font-medium transition', i === activeAttemptIdx ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-muted hover:border-accent')}
+        >
+          Attempt {a.index}{a.is_retake ? ' (retake)' : ''}
+        </button>
+      ))}
+    </div>
+  ) : null
 
   // After changing an applicant, mark the company's cached listings/applications
   // stale so returning to "Listings & applications" silently revalidates.
@@ -289,11 +323,11 @@ export default function ApplicantView() {
   ]
 
   const decidedByMe = app.decision_by === user.id
-  const answerMap = new Map((app.assignment_answers ?? []).map((a) => [a.question_id ?? a.criterion_id, a.answer]))
+  const answerMap = new Map(((attempt?.answers ?? []) as any[]).map((a) => [a.question_id ?? a.criterion_id, a.answer]))
   const questions = job?.assignment?.questions?.length
     ? job.assignment.questions.map((q) => ({ id: q.id, prompt: q.prompt, required: q.required }))
     : job?.assignment?.rubric.map((cr) => ({ id: cr.id, prompt: cr.label, required: true })) ?? []
-  const feedbackMap = new Map((app.assignment_ai_feedback?.perQuestion ?? []).map((p) => [p.id, p.feedback]))
+  const feedbackMap = new Map(((attempt?.ai_feedback?.perQuestion ?? []) as any[]).map((p) => [p.id, p.feedback]))
 
   const listingDeadline = job ? daysUntil(job.deadline) : null
 
@@ -527,16 +561,19 @@ export default function ApplicantView() {
         {hasAssignment && (
           <TabsContent value="assessment" className="space-y-5">
             <SectionCard n={1} title="Assessment" desc="The candidate's submitted answers">
+              {AttemptSwitcher}
               <div className="mb-3 flex items-center gap-2">
                 <ClipboardCheck className="h-4 w-4 text-accent" />
                 <p className="font-medium">{job?.assignment?.title}</p>
                 <Badge tone={app.assignment_status === 'submitted' ? 'success' : 'default'} className="capitalize">{app.assignment_status === 'submitted' ? 'Submitted' : 'Pending'}</Badge>
+                {attempt?.is_retake && <Badge tone="outline" className="text-[10px]">Retake</Badge>}
+                {attempt?.late && <Badge tone="outline" className="text-[10px]">Late</Badge>}
               </div>
               {job?.assignment?.prompt && <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{job.assignment.prompt}</p>}
               <div className="space-y-4">
                 {questions.map((q) => {
                   const answer = answerMap.get(q.id)
-                  const text = Array.isArray(answer) ? answer.join(', ') : answer?.startsWith('data:') ? (app.assignment_answers?.find((a) => (a.question_id ?? a.criterion_id) === q.id)?.file_name ?? 'File attached') : answer
+                  const text = Array.isArray(answer) ? answer.join(', ') : answer?.startsWith('data:') ? ((attempt?.answers ?? []) as any[]).find((a) => (a.question_id ?? a.criterion_id) === q.id)?.file_name ?? 'File attached' : answer
                   const fb = feedbackMap.get(q.id)
                   return (
                     <div key={q.id} className="rounded-xl border border-border p-4">
@@ -562,6 +599,7 @@ export default function ApplicantView() {
         {/* AI scoring */}
         {hasAssignment && (
           <TabsContent value="scoring" className="space-y-5">
+            {AttemptSwitcher}
             <div className="flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm">
               <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <p className="text-muted-foreground"><span className="font-medium text-foreground">You decide — AI only suggests.</span> Scores below are decision aids, not the final call.</p>
@@ -569,7 +607,7 @@ export default function ApplicantView() {
 
             <div className="mt-4 flex flex-wrap items-center gap-6">
               <ScoreRing score={app.match_score} label="AI match fit" hint="From the student's matching" />
-              {hasAssignment && <ScoreRing score={app.assignment_score} label="AI assessment" hint="Run the review below" />}
+              {hasAssignment && <ScoreRing score={attempt?.score ?? null} label="AI assessment" hint="Run the review below" />}
             </div>
 
             {app.match_rationale && (
@@ -580,9 +618,9 @@ export default function ApplicantView() {
             )}
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              {app.ai_recommendation && <Badge tone={app.ai_recommendation === 'advance' ? 'success' : app.ai_recommendation === 'consider' ? 'accent' : 'danger'}>AI suggests: {app.ai_recommendation}</Badge>}
+              {attempt?.recommendation && <Badge tone={attempt.recommendation === 'advance' ? 'success' : attempt.recommendation === 'consider' ? 'accent' : 'danger'}>AI suggests: {attempt.recommendation}</Badge>}
               <Button size="sm" variant="outline" className="gap-1.5" onClick={runAiScore} loading={scoreBusy}>
-                <Sparkles className="h-4 w-4 text-accent" /> {app.assignment_score != null ? 'Re-run AI' : 'Run AI review'}
+                <Sparkles className="h-4 w-4 text-accent" /> {attempt?.score != null ? 'Re-run AI' : 'Run AI review'}
               </Button>
             </div>
 
@@ -617,13 +655,13 @@ export default function ApplicantView() {
               </Button>
             </SectionCard>
 
-            {app.assignment_score != null && (
+            {attempt?.score != null && (
               <>
-                <p className="mt-4 text-sm leading-relaxed text-muted-foreground">{app.assignment_ai_feedback?.overall}</p>
+                <p className="mt-4 text-sm leading-relaxed text-muted-foreground">{attempt.ai_feedback?.overall}</p>
                 <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-border pt-3">
                   <div>
                     <Label className="text-xs">Human score override (0–100)</Label>
-                    <Input className="mt-1 w-28" inputMode="numeric" placeholder={String(app.assignment_score)} value={overrideScore} onChange={(e) => setOverrideScore(e.target.value)} />
+                    <Input className="mt-1 w-28" inputMode="numeric" placeholder={String(attempt.score)} value={overrideScore} onChange={(e) => setOverrideScore(e.target.value)} />
                   </div>
                   <Button size="sm" variant="default" onClick={saveOverride} disabled={!overrideScore}>Save override</Button>
                   <p className="ml-auto max-w-xs text-xs text-muted-foreground">Override the AI number with your judgement. Stored as the final score.</p>
@@ -631,11 +669,11 @@ export default function ApplicantView() {
               </>
             )}
 
-            {app.assignment_ai_feedback?.perQuestion?.length ? (
+            {attempt?.ai_feedback?.perQuestion?.length ? (
               <details className="mt-3 text-sm">
                 <summary className="cursor-pointer font-medium text-muted-foreground">Per-question AI feedback</summary>
                 <ul className="mt-2 space-y-1.5">
-                  {app.assignment_ai_feedback.perQuestion.map((pq) => (
+                  {attempt.ai_feedback.perQuestion.map((pq: any) => (
                     <li key={pq.id} className="rounded-lg border border-border p-2 text-muted-foreground">{pq.feedback}</li>
                   ))}
                 </ul>
