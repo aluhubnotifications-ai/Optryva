@@ -336,6 +336,39 @@ applications.patch('/:id/assignment', async (req, res) => {
   res.json(rowToApplication(updated))
 })
 
+// Employer override: re-open / grant another attempt at the proctored test for a
+// candidate who failed or exhausted their attempts. This is the human backstop —
+// e.g. the candidate messaged explaining a tech issue — so the company always
+// retains the power to let someone retake it. Resets attempts and clears the
+// previous result, and notifies the candidate.
+applications.post('/:id/unlock-test', async (req, res) => {
+  const r = must(await sb.from('applications').select('*').eq('id', req.params.id).maybeSingle()) as any
+  if (!r) return res.status(404).json({ error: 'not_found' })
+  const job = must(await sb.from('job_listings').select('id, title, company_id').eq('id', r.job_id).maybeSingle()) as any
+  if (!job || (job.company_id !== req.user!.id && !isAdminEmail(req.user!.email))) return res.status(403).json({ error: 'forbidden' })
+  if (!job.assignment) return res.status(400).json({ error: 'no_assignment' })
+  const ts = now()
+  const timeline = j.parse<any[]>(r.timeline ?? '[]', [])
+  timeline.push({ status: 'test_unlocked', at: ts, by: 'employer' })
+  must(
+    await sb.from('applications').update({
+      assignment_status: 'pending',
+      attempts: 0,
+      assignment_submitted_at: null,
+      assignment_late: false,
+      assignment_answers: j.stringify([]),
+      assignment_score: null,
+      assignment_ai_feedback: null,
+      ai_recommendation: null,
+      test_eligible_at: ts,
+      timeline: j.stringify(timeline),
+    }).eq('id', r.id),
+  )
+  await notify(r.student_id, 'test_unlocked', 'Assessment re-opened', `The employer re-opened your assessment for ${job.title}. You can take it again.`, r.id)
+  const updated = must(await sb.from('applications').select('*').eq('id', r.id).maybeSingle())
+  res.json(rowToApplication(updated))
+})
+
 // Records a proctor integrity violation during the test (camera/mic denied, a
 // second person detected, the candidate left frame, looked down, sustained loud
 // noise, excessive movement, or left the tab/fullscreen). Each violation consumes

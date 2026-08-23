@@ -184,7 +184,7 @@ export interface Application {
   decided_at?: string
   attempts?: number
   created_at: string
-  timeline: { status: ApplicationStatus | 'applied' | 'test_return' | 'test_submitted'; at: string; reason?: string; late?: boolean; note?: string }[]
+  timeline: { status: ApplicationStatus | 'applied' | 'test_return' | 'test_submitted' | 'test_unlocked'; at: string; reason?: string; late?: boolean; note?: string; by?: string }[]
 }
 
 export interface MatchBreakdown {

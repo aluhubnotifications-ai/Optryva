@@ -348,6 +348,27 @@ export default function ApplicantView() {
               </ul>
             )
           })()}
+          {job?.assignment && (
+            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const updated = await applicationsApi.unlockTest(app.id)
+                    setApp(updated)
+                    markStale()
+                    toast({ title: 'Test re-opened', description: 'The candidate can now retake the assessment.', tone: 'success' })
+                  } catch (e) {
+                    toast({ title: 'Could not re-open test', description: e instanceof Error ? e.message : undefined, tone: 'error' })
+                  }
+                }}
+              >
+                <RotateCcw className="h-4 w-4" /> Re-open test (grant another attempt)
+              </Button>
+              <p className="text-xs text-muted-foreground">Use this if they messaged you or failed — it resets attempts and notifies them.</p>
+            </div>
+          )}
         </SectionCard>
       </div>
 

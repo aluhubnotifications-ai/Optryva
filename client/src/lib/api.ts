@@ -362,6 +362,12 @@ export const applicationsApi = {
     invalidateCache()
     return (await apiFetch(`/applications/${id}/assignment`, { method: 'PATCH', body: JSON.stringify(payload) })) as Application
   },
+  // Employer override: re-open the test for a candidate who failed / exhausted
+  // attempts, so they can take it again. Returns the updated application.
+  async unlockTest(id: string): Promise<Application> {
+    invalidateCache()
+    return (await apiFetch(`/applications/${id}/unlock-test`, { method: 'POST' })) as Application
+  },
 }
 
 /* ----------------------------- Messaging ----------------------------- */
