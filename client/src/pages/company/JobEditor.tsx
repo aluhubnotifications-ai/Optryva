@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Building2, Check, ClipboardCheck, Eye, ImagePlus, Lock, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Building2, Check, ClipboardCheck, Clock, Eye, ImagePlus, Lock, Plus, Settings2, Sparkles, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { fileToDataUrl, imageFileToDataUrl, cn } from '@/lib/utils'
 import { useCurrentUser } from '@/lib/store'
@@ -574,55 +574,66 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
           )}
 
           {assignment ? (
-            <div className="space-y-3">
-              <Input value={assignment.title} onChange={(e) => setAssignment({ ...assignment, title: e.target.value })} placeholder="Assignment title" />
-              <Textarea value={assignment.prompt} onChange={(e) => setAssignment({ ...assignment, prompt: e.target.value })} className="min-h-[90px]" placeholder="What should the candidate solve or submit?" />
-              <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={assignment.dueBeforeInterview} onChange={(e) => setAssignment({ ...assignment, dueBeforeInterview: e.target.checked })} className="h-4 w-4 accent-primary" /> Candidate must submit before interview review</label>
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span>Allowed attempts (tries):</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={assignment.maxAttempts}
-                  onChange={(e) => setAssignment({ ...assignment, maxAttempts: Math.max(1, Math.min(50, Number(e.target.value) || 10)) })}
-                  className="w-20 rounded-md border border-border bg-background px-2 py-1 text-foreground"
-                />
-                <span className="text-muted-foreground/70">default 10</span>
-              </label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                  <span>When is the test required?</span>
-                  <Select value={assignment.requiredWhen} onChange={(e) => setAssignment({ ...assignment, requiredWhen: e.target.value as any })}>
-                    <option value="after_application">After the candidate applies</option>
-                    <option value="after_shortlist">Only after I shortlist them</option>
-                  </Select>
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                  <span>Days to complete the test (window)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={60}
-                    value={assignment.windowDays ?? ''}
-                    onChange={(e) => setAssignment({ ...assignment, windowDays: e.target.value ? Number(e.target.value) : null })}
-                    placeholder="none"
-                    className="rounded-md border border-border bg-background px-2 py-1 text-foreground"
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                  <span>Test time limit (minutes)</span>
-                  <input
-                    type="number"
-                    min={5}
-                    max={240}
-                    value={assignment.durationMinutes ?? ''}
-                    onChange={(e) => setAssignment({ ...assignment, durationMinutes: e.target.value ? Number(e.target.value) : null })}
-                    placeholder="30"
-                    className="rounded-md border border-border bg-background px-2 py-1 text-foreground"
-                  />
-                </label>
+            <div className="space-y-4">
+              <div className="space-y-3 rounded-xl border border-border p-4">
+                <Input value={assignment.title} onChange={(e) => setAssignment({ ...assignment, title: e.target.value })} placeholder="Assignment title" />
+                <Textarea value={assignment.prompt} onChange={(e) => setAssignment({ ...assignment, prompt: e.target.value })} className="min-h-[90px]" placeholder="What should the candidate solve or submit?" />
+                <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={assignment.dueBeforeInterview} onChange={(e) => setAssignment({ ...assignment, dueBeforeInterview: e.target.checked })} className="h-4 w-4 accent-primary" /> Candidate must submit before interview review</label>
               </div>
+
+              <div className="space-y-3 rounded-xl border border-accent/40 bg-accent/5 p-4">
+                <div className="flex items-center gap-2">
+                  <Settings2 className="h-4 w-4 text-accent" />
+                  <h3 className="text-sm font-semibold text-accent">Assignment settings</h3>
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">How the test behaves</span>
+                </div>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>Allowed attempts (tries):</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={assignment.maxAttempts}
+                    onChange={(e) => setAssignment({ ...assignment, maxAttempts: Math.max(1, Math.min(50, Number(e.target.value) || 10)) })}
+                    className="w-20 rounded-md border border-border bg-background px-2 py-1 text-foreground"
+                  />
+                  <span className="text-muted-foreground/70">default 10</span>
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                    <span>When is the test required?</span>
+                    <Select value={assignment.requiredWhen} onChange={(e) => setAssignment({ ...assignment, requiredWhen: e.target.value as any })}>
+                      <option value="after_application">After the candidate applies</option>
+                      <option value="after_shortlist">Only after I shortlist them</option>
+                    </Select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                    <span>Days to complete the test (window)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={60}
+                      value={assignment.windowDays ?? ''}
+                      onChange={(e) => setAssignment({ ...assignment, windowDays: e.target.value ? Number(e.target.value) : null })}
+                      placeholder="none"
+                      className="rounded-md border border-border bg-background px-2 py-1 text-foreground"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                    <span>Test time limit (minutes)</span>
+                    <input
+                      type="number"
+                      min={5}
+                      max={240}
+                      value={assignment.durationMinutes ?? ''}
+                      onChange={(e) => setAssignment({ ...assignment, durationMinutes: e.target.value ? Number(e.target.value) : null })}
+                      placeholder="30"
+                      className="rounded-md border border-border bg-background px-2 py-1 text-foreground"
+                    />
+                  </label>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <p className="text-sm font-medium">Rubric</p>
                 {assignment.rubric.map((criterion, i) => (
