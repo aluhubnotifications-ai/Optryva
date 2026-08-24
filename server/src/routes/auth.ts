@@ -120,3 +120,60 @@ auth.post('/delete-account', requireAuth, async (req, res) => {
   res.clearCookie(REFRESH_COOKIE, { path: '/' })
   res.json({ ok: true })
 })
+
+// Complete onboarding after role selection (called from RoleSelection page)
+const completeOnboardingSchema = z.object({
+  user_type: z.enum(['student', 'company', 'school']),
+  returnTo: z.string().optional(),
+})
+
+auth.post('/complete-onboarding', requireAuth, async (req, res) => {
+  const parsed = completeOnboardingSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: 'invalid', details: parsed.error.flatten() })
+  const { user_type } = parsed.data
+  
+  const id = req.user!.id
+  const ts = now()
+  
+  // Update profile with selected role
+  const updateData: any = { user_type }
+  if (user_type === 'company') updateData.company_name = updateData.company_name ?? 'Your Company'
+  if (user_type === 'school') updateData.posted_by_role = 'school'
+  
+  must(await sb.from('profiles').update(updateData).eq('id', id))
+  
+  // Update onboarding progress
+  must(await sb.from('onboarding_progress').upsert({
+    account_id: id,
+    role: user_type,
+    current_step: 1,
+    completed_steps: 0,
+    skipped_steps: '[]',
+    updated_at: ts,
+  }, { onConflict: 'account_id' }))
+  
+  // If student, create first resume profile
+  if (user_type === 'student') {
+    const existing = await sb.from('resume_profiles').select('id').eq('student_id', id).maybeSingle()
+    if (!existing.data?.length) {
+      await sb.from('resume_profiles').insert({
+        id: uid('rp'),
+        student_id: id,
+        name: 'Primary',
+        target_roles: '[]',
+        preferred_industries: '[]',
+        pref_countries: '[]',
+        pref_listing_types: '[]',
+        skills: '[]',
+        work_type: 'any',
+        active: 1,
+        created_at: ts,
+        updated_at: ts,
+      })
+    }
+  }
+  
+  const profile = await fullProfile(id)
+  const user = await authUserFromRow(profile)
+  res.json({ accessToken: signAccess(user), user: rowToProfile(profile, true) })
+})

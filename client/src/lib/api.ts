@@ -76,6 +76,19 @@ export const authApi = {
       return null
     }
   },
+  /** Get Google OAuth authorization URL */
+  async googleAuthUrl(returnTo?: string): Promise<{ url: string }> {
+    const params = returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''
+    return postJson(`/oauth/google${params}`, {}) as Promise<{ url: string }>
+  },
+  /** Complete onboarding after role selection (called from RoleSelection page) */
+  async completeOnboarding(payload: { user_type: Profile['user_type']; returnTo?: string }): Promise<{ accessToken: string; user: Profile }> {
+    return postJson('/auth/complete-onboarding', payload) as Promise<{ accessToken: string; user: Profile }>
+  },
+  /** Handle pending Google account linking */
+  async linkGoogle(payload: { email: string; password: string }): Promise<{ accessToken: string; user: Profile }> {
+    return postJson('/auth/link-google', payload) as Promise<{ accessToken: string; user: Profile }>
+  },
 }
 
 // Access token for authenticated requests. Seeded from the persisted session so

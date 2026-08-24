@@ -311,3 +311,25 @@ evidence.post('/:id/request-verification', async (req, res) => {
   ) as EvidenceRow
   res.json(updated)
 })
+
+evidence.post('/:id/comments', async (req, res) => {
+  const b = req.body ?? {}
+  const content = String(b.content ?? '').trim()
+  if (!content) return res.status(400).json({ error: 'content_required' })
+  const comment = must(
+    await sb.from('evidence_comments').insert({
+      id: uid('cm'),
+      evidence_id: req.params.id,
+      user_id: req.user!.id,
+      content,
+    }).select('*').single(),
+  ) as EvidenceRow & { id: string; evidence_id: string; user_id: string; content: string; created_at: string; updated_at: string }
+  res.json(comment)
+})
+
+evidence.get('/:id/comments', async (req, res) => {
+  const comments = must(
+    await sb.from('evidence_comments').select('*').eq('evidence_id', req.params.id).order('created_at', { ascending: false }),
+  ) as Array<{ id: string; evidence_id: string; user_id: string; content: string; created_at: string; updated_at: string }>
+  res.json(comments)
+})

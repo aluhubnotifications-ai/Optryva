@@ -15,8 +15,11 @@
 create table if not exists app_users (
   id             text primary key,
   email          text unique not null,
-  password_hash  text not null,
+  password_hash  text,
   email_verified integer not null default 1,
+  auth_provider  text,                       -- 'google' | 'email' | null
+  provider_subject text,                     -- Google sub claim
+  provider_metadata text,                   -- JSON: access_token, refresh_token, etc.
   created_at     text not null
 );
 
@@ -74,7 +77,12 @@ create table if not exists resume_profiles (
   cv_storage_path text,
   active integer not null default 1,
   created_at text not null,
-  updated_at text not null
+  updated_at text not null,
+  -- Onboarding spec fields
+  selected_evidence_ids text not null default '[]',
+  preference_profile_id text references preference_profiles(id) on delete set null,
+  visibility text not null default 'private',     -- 'private' | 'discoverable' | 'public'
+  last_updated text
 );
 
 create table if not exists job_listings (
@@ -198,6 +206,59 @@ create index if not exists idx_apps_student on applications(student_id);
 create index if not exists idx_apps_job     on applications(job_id);
 create index if not exists idx_msgs_thread  on messages(thread_id);
 create index if not exists idx_notes_user   on notifications(user_id);
+
+-- Onboarding tables
+create table if not exists onboarding_progress (
+  account_id text primary key references app_users(id) on delete cascade,
+  role text not null,
+  current_step integer not null default 1,
+  completed_steps integer not null default 0,
+  skipped_steps text not null default '[]',
+  completed_at text,
+  updated_at text not null
+);
+
+create table if not exists preference_profiles (
+  id text primary key,
+  student_id text not null references profiles(id) on delete cascade,
+  resume_profile_id text references resume_profiles(id) on delete cascade,
+  target_roles text not null default '[]',
+  industries text not null default '[]',
+  locations text not null default '[]',
+  work_modes text not null default '[]',
+  opportunity_types text not null default '[]',
+  availability_start text,
+  availability_end text,
+  availability_hours text,
+  academic_schedule text,
+  compensation_paid_only integer not null default 1,
+  compensation_stipend_ok integer not null default 0,
+  compensation_unpaid_ok integer not null default 0,
+  compensation_min_amount text,
+  work_authorization text not null default '[]',
+  excluded_roles text not null default '[]',
+  excluded_countries text not null default '[]',
+  excluded_industries text not null default '[]',
+  excluded_schedules text not null default '[]',
+  created_at text not null,
+  updated_at text not null
+);
+
+create index if not exists idx_preference_profiles_student on preference_profiles(student_id);
+create index if not exists idx_preference_profiles_resume on preference_profiles(resume_profile_id);
+
+create table if not exists consents (
+  id text primary key,
+  account_id text not null references app_users(id) on delete cascade,
+  consent_type text not null,
+  version text not null default '1',
+  granted integer not null default 0,
+  granted_at text,
+  withdrawn_at text,
+  unique (account_id, consent_type, version)
+);
+
+create index if not exists idx_consents_account on consents(account_id);
 
 -- ---------- seed ------------------------------------------------------------
 -- bcrypt('Demo2026!', 12) — the same hash is inlined for every demo account.

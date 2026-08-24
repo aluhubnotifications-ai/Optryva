@@ -149,7 +149,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Main column */}
       <div className={cn(!isApplicantReview && 'lg:pl-64')}>
         <Topbar />
-        <main className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
+        <main className={cn(
+          'mx-auto w-full px-4 py-6 sm:px-6 lg:px-8',
+          // On the applicant review screen the left nav is hidden, so let the
+          // content stretch across the full canvas instead of capping at 1600px.
+          isApplicantReview ? 'max-w-none' : 'max-w-[1600px]',
+        )}>
           <Suspense fallback={<div className="py-24"><PageSpinner label="Loading…" /></div>}>
             {children}
           </Suspense>

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Sparkles, ExternalLink, ImageIcon, Loader2 } from 'lucide-react'
 import { evidenceApi } from '@/lib/api'
 import { Card, CardBody, Badge } from '@/components/ui/primitives'
+import { EvidenceComments } from '@/components/evidence/Comments'
 
 // Minimal Markdown renderer for the AI summary: handles **bold**, "- " bullets,
 // and short **Heading** lines. Avoids pulling in a full Markdown dependency for
@@ -72,24 +73,23 @@ function SummaryMarkdown({ text }: { text: string }) {
  * public profile, where the full evidence gallery lives.
  */
 export function EmployerEvidenceSummary({ studentId }: { studentId: string }) {
-  const [summary, setSummary] = useState<string | null>(null)
+const [summary, setSummary] = useState<string | null>(null)
   const [count, setCount] = useState<number | null>(null)
+  const [items, setItems] = useState<Array<{ id: string; title: string } | null>>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let active = true
     setLoading(true)
     Promise.all([evidenceApi.summary(studentId), evidenceApi.listForStudent(studentId)])
-      .then(([s, items]) => {
+      .then(([s, fetchedItems]) => {
         if (!active) return
         setSummary(s.summary)
-        setCount(items.length)
+        setCount(fetchedItems.length)
+        setItems(fetchedItems)
       })
       .catch(() => active && setSummary('Could not load the evidence summary.'))
       .finally(() => active && setLoading(false))
-    return () => {
-      active = false
-    }
   }, [studentId])
 
   return (
@@ -124,6 +124,13 @@ export function EmployerEvidenceSummary({ studentId }: { studentId: string }) {
         <p className="mt-3 text-xs text-muted-foreground">
           This summary is generated from the candidate's submitted evidence. Open the full gallery to review the original files, links, and verification status.
         </p>
+
+        {items && items.length > 0 ? (
+          <EvidenceComments
+            evidenceId={items[0].id}
+            token=""
+          />
+        ) : null}
 
         <div className="mt-3">
           <Link
