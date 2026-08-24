@@ -7,7 +7,7 @@ import { uid, now, notify } from '@/lib/util'
 import { embedJob } from '@/lib/enrich'
 import { jobVisibleTo, schoolGates } from '@/lib/visibility'
 import { cacheGet, cacheSet, cacheDeletePrefix } from '@/lib/cache'
-import { mistralJsonBlocks, hasMistral } from '@/lib/mistral'
+import { mistralJsonBlocks, hasMistral, mistralText } from '@/lib/mistral'
 import { getMatch, rowToMatchJob } from './ai/helpers'
 import { claudeText, hasClaude } from '@/lib/claude'
 
@@ -360,7 +360,7 @@ jobs.post('/:jobId/research', async (req, res) => {
   if (!job) return res.status(404).json({ error: 'not_found' })
   if (job.company_id !== req.user!.id && !isAdminEmail(req.user!.email)) return res.status(403).json({ error: 'forbidden' })
   if (!question || typeof question !== 'string' || !question.trim()) return res.status(400).json({ error: 'missing_question' })
-  if (!hasClaude()) return res.status(501).json({ error: 'ai_unavailable' })
+  if (!hasMistral() && !hasClaude()) return res.status(501).json({ error: 'ai_unavailable' })
 
   const appRows = (must(await sb.from('applications').select('*').eq('job_id', jobId).in('status', SHORTLIST_STATUS)) as any[]) ?? []
   const studentIds = candidateId ? [candidateId] : Array.from(new Set(appRows.map((a) => a.student_id)))
@@ -412,6 +412,20 @@ jobs.post('/:jobId/research', async (req, res) => {
     `Qualifications: ${j.parse(job.qualifications, []).join('; ')}`
 
   let answer: string | null = null
+  // Prefer Mistral for research (it already powers the shortlist aid); fall back to
+  // Claude if Mistral is unavailable or returns nothing, so the chat never dead-ends
+  // on a single provider being down. (Previously this was Claude-only, which failed
+  // with ai_failed whenever the Claude key/call was unavailable.)
+  async function askAI(system: string, user: string, maxTokens: number): Promise<string | null> {
+    if (hasMistral()) {
+      const a = await mistralText({ system, user, maxTokens })
+      if (a) return a
+    }
+    if (hasClaude()) {
+      try { return await claudeText({ system, user, maxTokens }) } catch { return null }
+    }
+    return null
+  }
   if (candidateId) {
     const ctx = buildCtx(candidateId)
     const system =
@@ -419,7 +433,7 @@ jobs.post('/:jobId/research', async (req, res) => {
       'Use ONLY the candidate data provided. Be concise, neutral, and evidence-based. ' +
       'Do not invent skills or experience. If something is missing, say so. Suggest next steps (interview, assessment, junior role) when useful.'
     const user = `${jobCtx}\n\nCANDIDATE DATA:\n${JSON.stringify(ctx, null, 2)}\n\nEMPLOYER QUESTION: ${question}\n\nAnswer in plain text, 2-5 short paragraphs.`
-    answer = await claudeText({ system, user, maxTokens: 900 })
+    answer = await askAI(system, user, 900)
   } else {
     const list = studentIds
       .map((sid) => {
@@ -432,7 +446,7 @@ jobs.post('/:jobId/research', async (req, res) => {
       'Use ONLY the provided candidate summaries. Be concise, neutral, evidence-based. ' +
       'Do not invent candidates. Highlight patterns, strengths, gaps, and suggest who to prioritize or what to probe next.'
     const user = `${jobCtx}\n\nPIPELINE (${studentIds.length} applicants):\n${list}\n\nEMPLOYER QUESTION: ${question}\n\nAnswer in plain text, 2-5 short paragraphs.`
-    answer = await claudeText({ system, user, maxTokens: 1000 })
+    answer = await askAI(system, user, 1000)
   }
 
   if (!answer) return res.status(502).json({ error: 'ai_failed' })

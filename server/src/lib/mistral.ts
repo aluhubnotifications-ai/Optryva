@@ -99,6 +99,41 @@ export async function mistralJsonBlocks<T>(opts: {
   return mistralJson<T>({ model: opts.model ?? MISTRAL_MODEL, system, content: opts.content, maxTokens: opts.maxTokens ?? 2000, temperature: opts.temperature })
 }
 
+/**
+ * Plain-text completion (no JSON coercion). Used for free-form employer research
+ * answers where we want prose, not structured output. Returns the trimmed text, or
+ * null on any failure (no key, network, empty response) so the caller can fall back
+ * to another provider.
+ */
+export async function mistralText(opts: { system: string; user: string; maxTokens?: number }): Promise<string | null> {
+  if (!hasMistral()) return null
+  try {
+    const res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.MISTRAL_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: MISTRAL_MODEL,
+        messages: [
+          { role: 'system', content: opts.system },
+          { role: 'user', content: opts.user },
+        ],
+        max_tokens: opts.maxTokens ?? 1000,
+      }),
+    })
+    if (!res.ok) return null
+    const data: any = await res.json()
+    const usage = data?.usage
+    if (usage) recordUsage(MISTRAL_MODEL, { input_tokens: usage.prompt_tokens ?? 0, output_tokens: usage.completion_tokens ?? 0 })
+    const text: string | undefined = data?.choices?.[0]?.message?.content
+    return text?.trim() || null
+  } catch {
+    return null
+  }
+}
+
 /** Extract plain text from a PDF stored as a base64 string (briefs are usually
  *  text-based). Returns null for scanned/image-only PDFs or on failure. */
 export async function extractPdfText(b64: string): Promise<string | null> {
