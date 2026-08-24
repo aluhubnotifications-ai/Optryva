@@ -1,0 +1,17 @@
+{
+  // Dedicated Extraction Worker. Owns all heavy AI/parsing compute so the main
+  // "optryva" API Worker stays lean. The API Worker calls this over HTTPS with a
+  // shared bearer token (EXTRACTION_WORKER_TOKEN). No database access here.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "optryva-extraction",
+  "main": "server/src/extraction.worker.ts",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Resolve the "@/..." path alias when esbuild bundles the Worker.
+  "alias": { "@": "./server/src" },
+
+  "vars": { "NODE_ENV": "production" },
+
+  "observability": { "enabled": true }
+}
