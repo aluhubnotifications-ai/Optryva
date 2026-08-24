@@ -436,6 +436,7 @@ jobs.post('/:jobId/research', async (req, res) => {
     answer = await askAI(system, user, 900)
   } else {
     const list = studentIds
+      .slice(0, 40)
       .map((sid) => {
         const c = buildCtx(sid)
         return `- ${c.name} | status ${c.application_status} | match ${c.match_score ?? 'n/a'} | assessment ${c.assessment_status}${c.assessment_score != null ? ` (${c.assessment_score})` : ''} | shortlist ${c.shortlist_verdict ?? 'n/a'}${c.shortlist_category ? ` (${c.shortlist_category})` : ''} | skills [${c.skills.join(', ')}]`
@@ -449,7 +450,10 @@ jobs.post('/:jobId/research', async (req, res) => {
     answer = await askAI(system, user, 1000)
   }
 
-  if (!answer) return res.status(502).json({ error: 'ai_failed' })
+  if (!answer) {
+    console.error('[research] ai_failed', { hasMistral: hasMistral(), hasClaude: hasClaude(), candidateId: !!candidateId })
+    return res.status(502).json({ error: 'ai_failed' })
+  }
   return res.json({ answer })
 })
 

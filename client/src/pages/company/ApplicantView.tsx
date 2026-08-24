@@ -332,7 +332,11 @@ export default function ApplicantView() {
     try {
       const updated = await applicationsApi.setStatus(app!.id, s, decisionNote.trim() || undefined)
       if (updated) {
-        setApp(updated); markStale()
+        setApp(updated)
+        // Reflect the new status in the applicant sidebar/list immediately so it
+        // doesn't look like nothing happened.
+        setJobApplicants((list) => (list ?? []).map((ja) => (ja.id === updated.id ? { ...ja, status: updated.status, tags: updated.tags ?? ja.tags } : ja)))
+        markStale()
         toast({
           title: s === 'shortlisted' ? 'Shortlisted' : s === 'rejected' ? 'Passed on candidate' : s === 'hired' ? 'Marked as hired' : `Marked ${s}`,
           tone: s === 'rejected' ? 'error' : 'success',
@@ -760,10 +764,10 @@ export default function ApplicantView() {
               </div>
               {/* Direct Smart Shortlist actions — the human decision the AI only aids. */}
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Button size="sm" variant="default" className="gap-1.5" onClick={() => setStatus('shortlisted')} disabled={app.status === 'shortlisted' || acting !== null} loading={acting === 'shortlisted'}>
+                <Button type="button" size="sm" variant="default" className="gap-1.5" onClick={() => setStatus('shortlisted')} disabled={app.status === 'shortlisted' || acting !== null} loading={acting === 'shortlisted'}>
                   <Star className="h-4 w-4" /> Shortlist
                 </Button>
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setStatus('rejected')} disabled={app.status === 'rejected' || acting !== null} loading={acting === 'rejected'}>
+                <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setStatus('rejected')} disabled={app.status === 'rejected' || acting !== null} loading={acting === 'rejected'}>
                   <XCircle className="h-4 w-4" /> Pass
                 </Button>
                 {app.status === 'shortlisted' && <span className="text-xs font-medium text-accent">Shortlisted — this candidate is advanced.</span>}
@@ -938,7 +942,7 @@ export default function ApplicantView() {
           <SectionCard n={1} title="Decision" desc="The final, human call">
             <div className="flex flex-wrap gap-2">
               {actions.map((a) => (
-                <Button key={a.status} variant={a.variant} className="gap-1.5" onClick={() => setStatus(a.status)} disabled={app.status === a.status || acting !== null} loading={acting === a.status}>
+                <Button key={a.status} type="button" variant={a.variant} className="gap-1.5" onClick={() => setStatus(a.status)} disabled={app.status === a.status || acting !== null} loading={acting === a.status}>
                   <a.icon className="h-4 w-4" /> {a.label}
                 </Button>
               ))}
