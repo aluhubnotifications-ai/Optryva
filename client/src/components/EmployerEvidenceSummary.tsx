@@ -126,10 +126,7 @@ export function EmployerEvidenceSummary({ studentId }: { studentId: string }) {
         </p>
 
                 {items != null && items.length > 0 ? (
-          <EvidenceComments
-            evidenceId={items[0].id}
-            token=""
-          />
+          <EvidenceComments evidenceId={items[0].id} />
         ) : null}
 
         <div className="mt-3">

@@ -1418,4 +1418,10 @@ export const evidenceApi = {
   async summary(studentId: string): Promise<{ summary: string }> {
     return (await apiFetch(`/evidence/student/${studentId}/summary`)) as { summary: string }
   },
+  async listComments(evidenceId: string): Promise<Array<{ id: string; user_id: string | null; content: string; created_at: string }>> {
+    return (await apiFetch(`/evidence/${evidenceId}/comments`)) as Array<{ id: string; user_id: string | null; content: string; created_at: string }>
+  },
+  async addComment(evidenceId: string, content: string): Promise<{ id: string }> {
+    return (await apiFetch(`/evidence/${evidenceId}/comments`, { method: 'POST', body: JSON.stringify({ content }) })) as { id: string }
+  },
 }
