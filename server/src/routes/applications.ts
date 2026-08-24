@@ -8,6 +8,13 @@ import { storeDocument, validateDocuments, DOCUMENT_BUCKET } from '@/lib/documen
 import { scoreAssignmentWithAI } from '@/routes/ai/assignment'
 import { getMatch, rowToMatchJob, hasClaude } from '@/routes/ai/helpers'
 
+// Detect a unique-constraint violation on (student_id, job_id). `must()` rethrows
+// Postgres errors as plain Error objects, so we match on the message text.
+function isDuplicateApplication(e: any): boolean {
+  const m: string = e?.message ?? ''
+  return m.includes('duplicate key value') || m.includes('applications_student_job_unique')
+}
+
 // Resolve a candidate's match fit for a job, used to connect the assessment review
 // AI to the (résumé) match even when the application's own snapshot is empty — e.g.
 // the applied job was never in the student's top-40 discovery set, so no match was
@@ -227,7 +234,7 @@ applications.post('/', async (req, res) => {
     id, student_id: req.user!.id, job_id: b.job_id, status: 'pending',
     cover_note: b.cover_note ?? null, documents: j.stringify(documents),
     full_name: b.full_name, email: b.email, phone: b.phone ?? null,
-    school: b.school ?? null, year: b.year ?? null, linkedin: b.linkedin ?? null,
+    school: b.school ?? null, year: b.year ?? null, graduated: b.graduated ?? null, linkedin: b.linkedin ?? null,
     assignment_answers: j.stringify(b.assignment_answers ?? []),
     assignment_status: job.assignment ? (b.assignment_answers?.length ? 'submitted' : 'pending') : 'not_required',
     test_eligible_at: testEligibleAt,
@@ -240,7 +247,21 @@ applications.post('/', async (req, res) => {
   if (dup) {
     must(await sb.from('applications').update(row).eq('id', id))
   } else {
-    must(await sb.from('applications').insert(row))
+    try {
+      must(await sb.from('applications').insert(row))
+    } catch (e: any) {
+      // Another concurrent submit already created the row (unique index
+      // applications_student_job_unique). Treat it as "already applied".
+      if (isDuplicateApplication(e)) {
+        const existing = must(await sb.from('applications').select('*').eq('student_id', req.user!.id).eq('job_id', b.job_id).maybeSingle()) as any
+        if (existing) {
+          await attachStudentProfiles([existing])
+          await attachResumeChanged([existing])
+          return res.status(409).json({ error: 'already_applied', application: rowToApplication(existing) })
+        }
+      }
+      throw e
+    }
   }
   // Snapshot the résumé used for matching once the column exists (migration 0035).
   // Best-effort: skipped safely if the migration hasn't been applied yet.
@@ -302,7 +323,7 @@ applications.put('/draft', async (req, res) => {
     id, student_id: req.user!.id, job_id: b.job_id, status: 'draft',
     cover_note: b.cover_note ?? null, documents: j.stringify(documents),
     full_name: b.full_name, email: b.email, phone: b.phone ?? null,
-    school: b.school ?? null, year: b.year ?? null, linkedin: b.linkedin ?? null,
+    school: b.school ?? null, year: b.year ?? null, graduated: b.graduated ?? null, linkedin: b.linkedin ?? null,
     assignment_answers: j.stringify(b.assignment_answers ?? []),
     assignment_status: job.assignment ? (b.assignment_answers?.length ? 'submitted' : 'pending') : 'not_required',
     attempts: existing?.attempts ?? 0,
@@ -313,7 +334,16 @@ applications.put('/draft', async (req, res) => {
   if (existing) {
     must(await sb.from('applications').update(row).eq('id', id))
   } else {
-    must(await sb.from('applications').insert(row))
+    try {
+      must(await sb.from('applications').insert(row))
+    } catch (e: any) {
+      // Concurrent draft save: a row already exists, just return it.
+      if (isDuplicateApplication(e)) {
+        const saved = must(await sb.from('applications').select('*').eq('student_id', req.user!.id).eq('job_id', b.job_id).maybeSingle())
+        return res.json(rowToApplication(saved))
+      }
+      throw e
+    }
   }
   const saved = must(await sb.from('applications').select('*').eq('id', id).maybeSingle())
   res.json(rowToApplication(saved))

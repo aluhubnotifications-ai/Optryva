@@ -56,6 +56,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
     phone: '',
     school: user.school ?? '',
     year: user.year ? String(user.year) : '',
+    graduated: user.graduated ?? false,
     linkedin: user.linkedin ?? '',
   })
   const [coverNote, setCoverNote] = useState('')
@@ -108,6 +109,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
           phone: draft.phone ?? '',
           school: draft.school ?? '',
           year: draft.year ? String(draft.year) : '',
+          graduated: draft.graduated ?? false,
           linkedin: draft.linkedin ?? '',
         })
         setCoverNote(draft.cover_note ?? '')
@@ -132,7 +134,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
   const hasAssignment = !!job?.assignment && !externalApply && !crossPosted
 
   const valid = useMemo(
-    () => form.full_name && /\S+@\S+\.\S+/.test(form.email) && form.school && form.year && docs.cv,
+    () => form.full_name && /\S+@\S+\.\S+/.test(form.email) && form.school && (form.year || form.graduated) && docs.cv,
     [form, docs],
   )
 
@@ -182,6 +184,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
         phone: form.phone || undefined,
         school: form.school,
         year: form.year ? Number(form.year) : undefined,
+        graduated: form.graduated || undefined,
         linkedin: form.linkedin || undefined,
         assignment_answers: [],
       })
@@ -189,7 +192,12 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
       onSubmitted?.(app)
       onClose?.()
     } catch (e) {
-      toast({ title: 'Could not submit application', description: e instanceof Error ? e.message : 'Please try again.', tone: 'error' })
+      const msg = e instanceof Error ? e.message : ''
+      if (msg === 'already_applied') {
+        toast({ title: 'Already applied', description: `You've already submitted an application for ${job.title}.`, tone: 'info' })
+      } else {
+        toast({ title: 'Could not submit application', description: msg || 'Please try again.', tone: 'error' })
+      }
     } finally {
       setSubmitting(false)
     }
@@ -211,6 +219,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
         phone: form.phone || undefined,
         school: form.school,
         year: form.year ? Number(form.year) : undefined,
+        graduated: form.graduated || undefined,
         linkedin: form.linkedin || undefined,
       })
       toast({ title: 'Draft saved', description: 'You can come back and finish later.', tone: 'success' })
@@ -229,7 +238,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
   const nextId = sectionIndex < sectionOrder.length - 1 ? sectionOrder[sectionIndex + 1] : null
 
   const sections: { id: Step; label: string; done: boolean; optional?: boolean }[] = [
-    { id: 'info', label: 'Your info', done: !!(form.full_name && form.email && form.school && form.year) },
+    { id: 'info', label: 'Your info', done: !!(form.full_name && form.email && form.school && (form.year || form.graduated)) },
     { id: 'resume', label: 'Résumé', done: !!docs.cv },
     { id: 'submission', label: 'Submit', done: false },
   ]
@@ -306,12 +315,17 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
           </div>
           <div>
             <Label>Year of study <span className="text-danger">*</span></Label>
-            <Select value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })}>
+            <Select value={form.graduated ? 'grad' : form.year} onChange={(e) => {
+              const v = e.target.value
+              if (v === 'grad') setForm({ ...form, graduated: true, year: '' })
+              else setForm({ ...form, graduated: false, year: v })
+            }}>
               <option value="">Select…</option>
               <option value="1">Year 1</option>
               <option value="2">Year 2</option>
               <option value="3">Year 3</option>
               <option value="4">Year 4</option>
+              <option value="grad">Graduate</option>
             </Select>
           </div>
           <div>
@@ -345,7 +359,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
             <ReviewRow label="Name" value={form.full_name} />
             <ReviewRow label="Email" value={form.email} />
             <ReviewRow label="School" value={form.school} />
-            <ReviewRow label="Year" value={form.year ? `Year ${form.year}` : '—'} />
+            <ReviewRow label="Year" value={form.graduated ? 'Graduate' : (form.year ? `Year ${form.year}` : '—')} />
             <ReviewRow label="Résumé" value={docs.cv?.name ?? 'Not attached'} />
             <ReviewRow label="Assessment" value={hasAssignment ? 'After you apply' : 'Not included'} />
           </div>
