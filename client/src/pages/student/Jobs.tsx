@@ -24,7 +24,7 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
-import { useGeo } from '@/lib/geo'
+import { useGeo, useCountryStats } from '@/lib/geo'
 import { jobsApi, profilesApi } from '@/lib/api'
 import type { AiMatch, JobListing, Profile } from '@/types'
 import { AIResearchPanel } from '@/components/AIResearchPanel'
@@ -205,6 +205,23 @@ export default function Jobs() {
       setSelectedId(filtered[0].id)
     }
   }, [filtered, selectedId])
+
+  // Publish per-country listing counts (total + internships) so the global
+  // country picker can highlight internship countries and show how many roles
+  // exist per country.
+  const countryStats = useMemo(() => {
+    const m: Record<string, { total: number; internships: number }> = {}
+    for (const j of jobs) {
+      if (!j.country) continue
+      if (!m[j.country]) m[j.country] = { total: 0, internships: 0 }
+      m[j.country].total++
+      if (j.listing_type === 'Internship') m[j.country].internships++
+    }
+    return m
+  }, [jobs])
+  useEffect(() => {
+    useCountryStats.getState().setStats(countryStats)
+  }, [countryStats])
 
   const selected = filtered.find((j) => j.id === selectedId) ?? filtered[0] ?? null
 

@@ -22,11 +22,11 @@ import {
   Gauge,
   ShieldCheck,
 } from 'lucide-react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Globe, Wifi } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/lib/theme'
 import { useSession, useCurrentUser } from '@/lib/store'
-import { useGeo, COUNTRIES } from '@/lib/geo'
+import { useGeo, COUNTRIES, useCountryStats, type Country } from '@/lib/geo'
 import { messagesApi, jobsApi, applicationsApi } from '@/lib/api'
 import { perf } from '@/lib/perf'
 import { Avatar, Input } from '@/components/ui/primitives'
@@ -196,8 +196,21 @@ function SidebarInner({ nav, badges }: { nav: NavItem[]; badges: NavBadges }) {
   )
 }
 
+function CountryFlag({ c }: { c: Country }) {
+  if (c.flagUrl) {
+    return <img src={c.flagUrl} alt="" className="h-3.5 w-5 rounded-sm object-cover shadow-sm" />
+  }
+  if (c.code === 'remote') return <Wifi className="h-4 w-4 text-muted-foreground" />
+  return <Globe className="h-4 w-4 text-muted-foreground" />
+}
+
 function CountrySelect() {
+  const user = useCurrentUser()
+  // Employers (companies + schools) don't browse by country — the picker is a
+  // student-only discovery control, so hide it for them.
+  if (user && (user.user_type === 'company' || user.user_type === 'school')) return null
   const { country, setCountry } = useGeo()
+  const stats = useCountryStats((s) => s.stats)
   const [open, setOpen] = useState(false)
   const current = COUNTRIES.find((c) => c.name === country) ?? COUNTRIES[0]
   return (
@@ -206,7 +219,7 @@ function CountrySelect() {
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1.5 text-sm font-medium hover:bg-muted"
       >
-        <span className="text-base leading-none">{current.flag}</span>
+        <CountryFlag c={current} />
         <span className="hidden max-w-[120px] truncate sm:inline">{current.name}</span>
         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
       </button>
@@ -218,34 +231,44 @@ function CountrySelect() {
               initial={{ opacity: 0, y: -6, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -6, scale: 0.97 }}
-              className="absolute right-0 z-20 mt-2 max-h-80 w-56 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-card"
+              className="absolute right-0 z-20 mt-2 max-h-80 w-60 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-card"
             >
-              {COUNTRIES.map((c) => (
-                <button
-                  key={c.code}
-                  disabled={c.disabled}
-                  onClick={() => {
-                    if (c.disabled) return
-                    setCountry(c.name)
-                    setOpen(false)
-                  }}
-                  className={cn(
-                    'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm',
-                    c.disabled
-                      ? 'cursor-not-allowed opacity-50'
-                      : 'hover:bg-muted',
-                    c.name === country && !c.disabled && 'bg-primary/10 text-primary',
-                  )}
-                >
-                  <span className="text-base">{c.flag}</span>
-                  <span className="flex-1 text-left">{c.name}</span>
-                  {c.disabled && (
-                    <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Soon
-                    </span>
-                  )}
-                </button>
-              ))}
+              <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Browse by country
+              </p>
+              {COUNTRIES.map((c) => {
+                const st = stats[c.name]
+                const hasIntern = (st?.internships ?? 0) > 0
+                const active = c.name === country
+                return (
+                  <button
+                    key={c.code}
+                    disabled={c.disabled}
+                    onClick={() => {
+                      if (c.disabled) return
+                      setCountry(c.name)
+                      setOpen(false)
+                    }}
+                    className={cn(
+                      'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm',
+                      c.disabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-muted',
+                      active && 'bg-primary/10 text-primary',
+                      hasIntern && !active && 'ring-1 ring-inset ring-accent/30',
+                    )}
+                  >
+                    <CountryFlag c={c} />
+                    <span className="flex-1 text-left">{c.name}</span>
+                    {hasIntern && (
+                      <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
+                        Intern
+                      </span>
+                    )}
+                    {st && st.total > 0 && (
+                      <span className="text-xs tabular-nums text-muted-foreground">{st.total}</span>
+                    )}
+                  </button>
+                )
+              })}
             </motion.div>
           </>
         )}
