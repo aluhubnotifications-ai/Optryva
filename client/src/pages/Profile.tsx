@@ -63,6 +63,21 @@ export default function Profile() {
     toast({ title: 'Profile picture updated', tone: 'success' })
   }
 
+  const coverRef = useRef<HTMLInputElement>(null)
+  async function changeCoverFile(file?: File | null) {
+    if (!file) return
+    let cover_url: string
+    try {
+      cover_url = await fileToDataUrl(file)
+    } catch (e) {
+      toast({ title: 'Could not upload that image', description: e instanceof Error ? e.message : undefined, tone: 'error' })
+      return
+    }
+    const updated = await profilesApi.update(user.id, { cover_url })
+    if (updated) useSession.getState().setProfile(updated)
+    toast({ title: 'Cover updated', tone: 'success' })
+  }
+
   // editable copy
   const [form, setForm] = useState({
     full_name: user.full_name,
@@ -199,23 +214,19 @@ export default function Profile() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <div className="mb-5 flex gap-1 rounded-lg bg-muted p-1 text-sm">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={cn('flex-1 rounded-md px-3 py-1.5 font-medium transition-colors', tab === t.id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
-          >
-            {t.label}
+      {/* Cover */}
+      <div className="relative h-40 w-full overflow-hidden rounded-xl bg-gradient-to-r from-primary/30 via-accent/20 to-primary/30">
+        {user.cover_url && <img src={user.cover_url} alt="Cover" className="h-full w-full object-cover" />}
+        {user.user_type === 'student' && (
+          <button onClick={() => coverRef.current?.click()} className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-lg bg-black/40 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-black/60">
+            <Camera className="h-4 w-4" /> {user.cover_url ? 'Change cover' : 'Add cover'}
           </button>
-        ))}
+        )}
+        <input ref={coverRef} type="file" accept="image/*" className="hidden" onChange={(e) => changeCoverFile(e.target.files?.[0])} />
       </div>
 
-      {tab === 'profile' && (
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="space-y-5">
       {/* Header */}
-      <Card>
+      <Card className="-mt-12 relative z-10">
         <CardBody className="flex flex-wrap items-center gap-4">
           <AvatarEditor name={user.full_name} src={user.avatar_url} size={72} onChange={changePicture} />
           <div className="min-w-0 flex-1">
@@ -230,6 +241,22 @@ export default function Profile() {
         </CardBody>
       </Card>
 
+      {/* Tabs */}
+      <div className="mb-5 mt-5 flex gap-1 rounded-lg bg-muted p-1 text-sm">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={cn('flex-1 rounded-md px-3 py-1.5 font-medium transition-colors', tab === t.id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'profile' && (
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="space-y-5">
       {/* About */}
       <Section icon={User} title="About">
         <div className="space-y-4">

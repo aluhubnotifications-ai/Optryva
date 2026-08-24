@@ -39,11 +39,16 @@ export default function UserProfile() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link to="/app/admin" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+      {p.cover_url && (
+        <div className="h-36 w-full overflow-hidden rounded-xl bg-gradient-to-r from-primary/30 to-accent/20">
+          <img src={p.cover_url} alt="Cover" className="h-full w-full object-cover" />
+        </div>
+      )}
+      <Link to="/app/admin" className="mb-4 mt-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4" /> Back to admin
       </Link>
 
-      <Card>
+      <Card className={p.cover_url ? '-mt-10 relative z-10' : ''}>
         <CardBody>
           <div className="flex items-start gap-4">
             <Avatar name={name} src={p.avatar_url} size={64} />
