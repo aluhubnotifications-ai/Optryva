@@ -16,6 +16,8 @@ type EvidenceRow = {
   url: string | null
   file_path: string | null
   file_name: string | null
+  links: string[]
+  files: { path: string; name: string }[]
   extracted_skills: string[]
   confirmed_skills: string[]
   status: 'self_reported' | 'student_approved' | 'verified'
@@ -104,17 +106,20 @@ evidence.post('/', async (req, res) => {
   const title = String(b.title ?? '').trim()
   if (!title) return res.status(400).json({ error: 'title_required' })
   const description = String(b.description ?? '').trim()
-  const url = b.url ? String(b.url).trim() : null
-
-  let file_path: string | null = null
-  let file_name: string | null = null
-  if (b.file && typeof b.file === 'string' && b.fileName) {
-    try {
-      const stored = await storeDocument(req.user!.id, 'evidence', String(b.fileName), b.file)
-      file_path = stored.url
-      file_name = String(b.fileName)
-    } catch {
-      return res.status(400).json({ error: 'file_upload_failed' })
+  const links: string[] = Array.isArray(b.links)
+    ? b.links.map((x: unknown) => String(x).trim()).filter(Boolean).slice(0, 20)
+    : []
+  const files: { path: string; name: string }[] = []
+  if (Array.isArray(b.files)) {
+    for (const f of b.files as { data?: string; name?: string }[]) {
+      if (f && typeof f.data === 'string' && f.name) {
+        try {
+          const stored = await storeDocument(req.user!.id, 'evidence', String(f.name), f.data)
+          files.push({ path: stored.url, name: String(f.name) })
+        } catch {
+          /* skip a file that fails to store */
+        }
+      }
     }
   }
 
@@ -124,9 +129,11 @@ evidence.post('/', async (req, res) => {
       student_id: req.user!.id,
       title,
       description,
-      url,
-      file_path,
-      file_name,
+      url: links[0] ?? null,
+      file_path: files[0]?.path ?? null,
+      file_name: files[0]?.name ?? null,
+      links,
+      files,
       status: 'self_reported',
     }).select('*').single(),
   ) as EvidenceRow
@@ -138,7 +145,7 @@ evidence.post('/:id/extract', async (req, res) => {
     | EvidenceRow
     | null
   if (!row) return res.status(404).json({ error: 'not_found' })
-  const text = [row.title, row.description, row.url ? `Project URL: ${row.url}` : ''].filter(Boolean).join('\n')
+  const text = [row.title, row.description, (row.links ?? []).join('\n')].filter(Boolean).join('\n')
   const skills = await extractEvidenceSkills(text)
   const updated = must(
     await sb.from('evidence_items').update({ extracted_skills: skills }).eq('id', row.id).select('*').single(),

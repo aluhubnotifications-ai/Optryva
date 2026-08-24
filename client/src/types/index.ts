@@ -264,6 +264,8 @@ export interface EvidenceItem {
   url: string | null
   file_path: string | null
   file_name: string | null
+  links: string[]
+  files: { path: string; name: string }[]
   extracted_skills: string[]
   confirmed_skills: string[]
   status: EvidenceStatus

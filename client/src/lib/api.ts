@@ -1357,7 +1357,7 @@ export const evidenceApi = {
   async listForStudent(studentId: string): Promise<EvidenceItem[]> {
     return (await apiFetch(`/evidence/student/${studentId}`)) as EvidenceItem[]
   },
-  async create(payload: { title: string; description?: string; url?: string; file?: string; fileName?: string }): Promise<EvidenceItem> {
+  async create(payload: { title: string; description?: string; links?: string[]; files?: { data: string; name: string }[] }): Promise<EvidenceItem> {
     return (await apiFetch('/evidence', { method: 'POST', body: JSON.stringify(payload) })) as EvidenceItem
   },
   async extract(id: string): Promise<EvidenceItem> {
