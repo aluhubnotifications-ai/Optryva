@@ -55,8 +55,7 @@ async function analyzeEvidence(text: string): Promise<{ skills: string[]; summar
   const skills = Array.isArray(out.skills)
     ? out.skills.filter((x) => typeof x === 'string').map((x) => x.trim()).filter(Boolean).slice(0, 30)
     : []
-  let summary = typeof out.summary === 'string' ? out.summary.trim() || null : null
-  if (!summary) summary = 'RAWOUT:' + JSON.stringify(out).slice(0, 600)
+  const summary = typeof out.summary === 'string' ? out.summary.trim() || null : null
   return { skills, summary }
 }
 
