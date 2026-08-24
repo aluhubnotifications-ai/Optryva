@@ -29,35 +29,34 @@ type EvidenceRow = {
   created_at: string
 }
 
-// Ask the model for a clean JSON array of skill strings inferred from the work.
-async function extractEvidenceSkills(text: string): Promise<string[]> {
-  if (!hasMistral()) return []
+// One combined Mistral pass that returns both the inferred skills and a short
+// first-person "what the student did" summary. Keeping skills + summary in a
+// single call avoids firing multiple sequential model requests (which can be
+// dropped by rate limits) and keeps extraction cheap.
+async function analyzeEvidence(text: string): Promise<{ skills: string[]; summary: string | null }> {
+  if (!hasMistral()) return { skills: [], summary: null }
   const sys =
     'You are a skills extractor for a student portfolio. Given a description of ' +
-    'work and/or text pulled from linked web pages (project pages, portfolios, ' +
-    'GitHub repos, articles), return ONLY a JSON array of short, concrete skill or ' +
-    'competency strings (e.g. "Python", "Data cleaning", "Stakeholder communication"). ' +
-    'Base skills on the actual content provided, not the URLs themselves. No ' +
-    'explanations, no objects — just a JSON array of strings. If nothing concrete ' +
-    'is present, return [].'
-  const out = await mistralText({ system: sys, user: text, maxTokens: 400 })
-  if (!out) return []
-  try {
-    const parsed = JSON.parse(out)
-    if (Array.isArray(parsed)) return parsed.filter((x) => typeof x === 'string').map((x) => x.trim()).filter(Boolean).slice(0, 30)
-  } catch {
-    // Tolerate models that wrap the array in prose: grab the first [ ... ] block.
-    const m = out.match(/\[[^\]]*\]/s)
-    if (m) {
-      try {
-        const parsed = JSON.parse(m[0])
-        if (Array.isArray(parsed)) return parsed.filter((x) => typeof x === 'string').map((x) => x.trim()).filter(Boolean).slice(0, 30)
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-  return []
+    'work and/or text pulled from linked web pages, documents, or images, return ' +
+    'ONLY a JSON object with two fields: "skills" (an array of short, concrete ' +
+    'skill or competency strings, e.g. "Python", "Data cleaning", "Stakeholder ' +
+    'communication") and "summary" (a 2-3 sentence first-person description of ' +
+    'what the student did and produced, mentioning concrete actions and ' +
+    'deliverables). Base everything on the actual content provided, not the URLs ' +
+    'themselves. If nothing concrete is present, return {"skills":[],"summary":""}.'
+  const schema = { skills: ['string'], summary: 'string' }
+  const out = await mistralJsonBlocks<{ skills?: string[]; summary?: string }>({
+    system: sys,
+    content: [{ type: 'text', text }],
+    schema,
+    maxTokens: 900,
+  })
+  if (!out) return { skills: [], summary: null }
+  const skills = Array.isArray(out.skills)
+    ? out.skills.filter((x) => typeof x === 'string').map((x) => x.trim()).filter(Boolean).slice(0, 30)
+    : []
+  const summary = typeof out.summary === 'string' ? out.summary.trim() || null : null
+  return { skills, summary }
 }
 
 // Lightweight in-process page fetcher — the Crawl4AI-equivalent step for our
@@ -315,8 +314,7 @@ evidence.post('/:id/extract', async (req, res) => {
     ...sources,
   ].filter(Boolean).join('\n\n')
 
-  const skills = await extractEvidenceSkills(text || links.join('\n'))
-  const summary = text ? await summarizeEvidence(row.title, text) : null
+  const { skills, summary } = await analyzeEvidence(text || links.join('\n'))
   // Mark the item as AI-analyzed so the gallery can show that step in the flow.
   const status = row.status === 'self_reported' ? 'ai_analyzed' : row.status
   const updated = must(
