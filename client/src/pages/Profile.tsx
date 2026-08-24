@@ -20,6 +20,7 @@ import {
   Compass,
   CheckCircle2,
   Circle,
+  ShieldCheck,
 } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useCurrentUser, useSession } from '@/lib/store'
@@ -33,6 +34,7 @@ import { AvatarEditor } from '@/components/AvatarEditor'
 import { useToast } from '@/components/ui/toast'
 import { formatDate, cn, fileToDataUrl } from '@/lib/utils'
 import { ResumeWorkspace } from '@/components/ResumeWorkspace'
+import { EvidenceLibrary } from '@/components/EvidenceLibrary'
 
 const ROLES = ['Software Engineering', 'Data Science', 'Product Management', 'Marketing', 'Operations', 'Finance', 'Design', 'Consulting']
 const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Agriculture', 'Education', 'E-commerce', 'Consulting', 'Nonprofit']
@@ -280,6 +282,12 @@ export default function Profile() {
         <p className="mt-2.5 flex items-center gap-1.5 text-xs text-muted-foreground"><Sparkles className="h-3.5 w-3.5 text-primary" /> Your CV is the #1 signal our AI uses to find your best-fit roles.</p>
       </Section>}
       {user.user_type === 'student' && <ResumeWorkspace />}
+
+      {user.user_type === 'student' && (
+        <Section icon={ShieldCheck} title="Evidence Library" hint="Upload work → AI suggests skills → you confirm → a reviewer verifies it">
+          <EvidenceLibrary studentId={user.id} mode="owner" />
+        </Section>
+      )}
 
       {/* Legacy profile preferences are replaced by per-résumé preferences above. */}
       {false && <Section icon={Briefcase} title="Career preferences" hint="Feeds the AI matching engine">

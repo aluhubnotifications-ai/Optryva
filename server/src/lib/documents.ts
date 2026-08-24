@@ -117,6 +117,9 @@ async function audit(path: string, viewerId: string) {
 
 export async function canReadDocument(path: string, viewer: { id: string; email: string }): Promise<boolean> {
   if (isAdminEmail(viewer.email)) return true
+  // A student can read any document stored under their own upload prefix
+  // (résumés, evidence files, etc.).
+  if (path.startsWith(`${viewer.id}/`)) return true
   const profile = must(await sb.from('profiles').select('id').eq('id', viewer.id).eq('cv_storage_path', path).maybeSingle())
   if (profile) return true
   const resume = must(await sb.from('resume_profiles').select('id').eq('student_id', viewer.id).eq('cv_storage_path', path).maybeSingle())

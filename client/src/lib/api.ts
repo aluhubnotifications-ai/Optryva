@@ -21,6 +21,7 @@ import { startLoad, endLoad } from '@/lib/loadingBar'
   Resource,
   SkillBooking,
   StudentSkill,
+  EvidenceItem,
 } from '@/types'
 
 // ----------------------------------------------------------------------------
@@ -1345,5 +1346,30 @@ export const adminApi = {
   },
   async clearUsage(userId: string): Promise<void> {
     await apiFetch(`/admin/users/${userId}/clear-usage`, { method: 'POST' })
+  },
+}
+
+/* ----------------------------- Evidence ----------------------------- */
+export const evidenceApi = {
+  async list(): Promise<EvidenceItem[]> {
+    return (await apiFetch('/evidence')) as EvidenceItem[]
+  },
+  async listForStudent(studentId: string): Promise<EvidenceItem[]> {
+    return (await apiFetch(`/evidence/student/${studentId}`)) as EvidenceItem[]
+  },
+  async create(payload: { title: string; description?: string; url?: string; file?: string; fileName?: string }): Promise<EvidenceItem> {
+    return (await apiFetch('/evidence', { method: 'POST', body: JSON.stringify(payload) })) as EvidenceItem
+  },
+  async extract(id: string): Promise<EvidenceItem> {
+    return (await apiFetch(`/evidence/${id}/extract`, { method: 'POST' })) as EvidenceItem
+  },
+  async confirm(id: string, confirmed: string[]): Promise<EvidenceItem> {
+    return (await apiFetch(`/evidence/${id}/confirm`, { method: 'POST', body: JSON.stringify({ confirmed }) })) as EvidenceItem
+  },
+  async verify(id: string, verified = true): Promise<EvidenceItem> {
+    return (await apiFetch(`/evidence/${id}/verify`, { method: 'POST', body: JSON.stringify({ verified }) })) as EvidenceItem
+  },
+  async requestVerification(id: string): Promise<EvidenceItem> {
+    return (await apiFetch(`/evidence/${id}/request-verification`, { method: 'POST' })) as EvidenceItem
   },
 }

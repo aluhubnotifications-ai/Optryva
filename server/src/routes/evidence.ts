@@ -1,0 +1,197 @@
+import { Router } from '@/lib/http'
+import { sb, must } from '@/db'
+import { uid, now } from '@/lib/util'
+import { requireAuth } from '@/lib/auth'
+import { storeDocument } from '@/lib/documents'
+import { mistralText, hasMistral } from '@/lib/mistral'
+
+export const evidence = Router()
+evidence.use(requireAuth)
+
+type EvidenceRow = {
+  id: string
+  student_id: string
+  title: string
+  description: string
+  url: string | null
+  file_path: string | null
+  file_name: string | null
+  extracted_skills: string[]
+  confirmed_skills: string[]
+  status: 'self_reported' | 'student_approved' | 'verified'
+  verified_by: string | null
+  verified_at: string | null
+  verification_requested: boolean
+  created_at: string
+}
+
+// Ask the model for a clean JSON array of skill strings inferred from the work.
+async function extractEvidenceSkills(text: string): Promise<string[]> {
+  if (!hasMistral()) return []
+  const sys =
+    'You are a skills extractor for a student portfolio. Given a description of ' +
+    'work (and optionally a project/GitHub URL), return ONLY a JSON array of short, ' +
+    'concrete skill or competency strings (e.g. "Python", "Data cleaning", ' +
+    '"Stakeholder communication"). No explanations, no objects — just a JSON array ' +
+    'of strings. If nothing concrete is present, return [].'
+  const out = await mistralText({ system: sys, user: text, maxTokens: 400 })
+  if (!out) return []
+  try {
+    const parsed = JSON.parse(out)
+    if (Array.isArray(parsed)) return parsed.filter((x) => typeof x === 'string').map((x) => x.trim()).filter(Boolean).slice(0, 30)
+  } catch {
+    // Tolerate models that wrap the array in prose: grab the first [ ... ] block.
+    const m = out.match(/\[[^\]]*\]/s)
+    if (m) {
+      try {
+        const parsed = JSON.parse(m[0])
+        if (Array.isArray(parsed)) return parsed.filter((x) => typeof x === 'string').map((x) => x.trim()).filter(Boolean).slice(0, 30)
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return []
+}
+
+// Keep the student's real `student_skills` in sync with confirmed evidence so
+// approved evidence actually supports résumé matching. Verified evidence marks
+// the skill verified; otherwise it's a normal student skill.
+async function syncSkills(studentId: string, skills: string[], verified: boolean) {
+  for (const raw of skills) {
+    const skill = raw.trim()
+    if (!skill) continue
+    const existing = (await sb.from('student_skills').select('id,verified').eq('owner_id', studentId).ilike('skill', skill).maybeSingle()).data as
+      | { id: string; verified: boolean }
+      | null
+    if (existing) {
+      // Never downgrade an already-verified skill just because one evidence item changed.
+      const nextVerified = verified || existing.verified
+      await sb.from('student_skills').update({ verified: nextVerified, updated_at: now() }).eq('id', existing.id)
+    } else {
+      await sb.from('student_skills').insert({
+        id: uid('sk'),
+        owner_id: studentId,
+        skill,
+        level: 'intermediate',
+        years: 0,
+        sessions: 0,
+        rating: 0,
+        rating_count: 0,
+        verified,
+        portfolio_url: null,
+      })
+    }
+  }
+}
+
+evidence.get('/', async (req, res) => {
+  const rows = must(
+    await sb.from('evidence_items').select('*').eq('student_id', req.user!.id).order('created_at', { ascending: false }),
+  ) as EvidenceRow[]
+  res.json(rows)
+})
+
+evidence.get('/student/:studentId', async (req, res) => {
+  const rows = must(
+    await sb.from('evidence_items').select('*').eq('student_id', req.params.studentId).order('created_at', { ascending: false }),
+  ) as EvidenceRow[]
+  res.json(rows)
+})
+
+evidence.post('/', async (req, res) => {
+  const b = req.body ?? {}
+  const title = String(b.title ?? '').trim()
+  if (!title) return res.status(400).json({ error: 'title_required' })
+  const description = String(b.description ?? '').trim()
+  const url = b.url ? String(b.url).trim() : null
+
+  let file_path: string | null = null
+  let file_name: string | null = null
+  if (b.file && typeof b.file === 'string' && b.fileName) {
+    try {
+      const stored = await storeDocument(req.user!.id, 'evidence', String(b.fileName), b.file)
+      file_path = stored.url
+      file_name = String(b.fileName)
+    } catch {
+      return res.status(400).json({ error: 'file_upload_failed' })
+    }
+  }
+
+  const row = must(
+    await sb.from('evidence_items').insert({
+      id: uid('ev'),
+      student_id: req.user!.id,
+      title,
+      description,
+      url,
+      file_path,
+      file_name,
+      status: 'self_reported',
+    }).select('*').single(),
+  ) as EvidenceRow
+  res.json(row)
+})
+
+evidence.post('/:id/extract', async (req, res) => {
+  const row = (await sb.from('evidence_items').select('*').eq('id', req.params.id).eq('student_id', req.user!.id).maybeSingle()).data as
+    | EvidenceRow
+    | null
+  if (!row) return res.status(404).json({ error: 'not_found' })
+  const text = [row.title, row.description, row.url ? `Project URL: ${row.url}` : ''].filter(Boolean).join('\n')
+  const skills = await extractEvidenceSkills(text)
+  const updated = must(
+    await sb.from('evidence_items').update({ extracted_skills: skills }).eq('id', row.id).select('*').single(),
+  ) as EvidenceRow
+  res.json(updated)
+})
+
+evidence.post('/:id/confirm', async (req, res) => {
+  const b = req.body ?? {}
+  const confirmed: string[] = Array.isArray(b.confirmed) ? b.confirmed.map((x: unknown) => String(x)).filter(Boolean) : []
+  const row = (await sb.from('evidence_items').select('*').eq('id', req.params.id).eq('student_id', req.user!.id).maybeSingle()).data as
+    | EvidenceRow
+    | null
+  if (!row) return res.status(404).json({ error: 'not_found' })
+  const updated = must(
+    await sb.from('evidence_items')
+      .update({ confirmed_skills: confirmed, status: 'student_approved', verification_requested: false })
+      .eq('id', row.id)
+      .select('*')
+      .single(),
+  ) as EvidenceRow
+  await syncSkills(row.student_id, confirmed, updated.status === 'verified')
+  res.json(updated)
+})
+
+evidence.post('/:id/verify', async (req, res) => {
+  const b = req.body ?? {}
+  const verified = b.verified !== false
+  const row = (await sb.from('evidence_items').select('*').eq('id', req.params.id).maybeSingle()).data as EvidenceRow | null
+  if (!row) return res.status(404).json({ error: 'not_found' })
+  const updated = must(
+    await sb
+      .from('evidence_items')
+      .update({
+        status: verified ? 'verified' : row.verified_by ? 'student_approved' : 'self_reported',
+        verified_by: verified ? req.user!.id : null,
+        verified_at: verified ? now() : null,
+      })
+      .eq('id', row.id)
+      .select('*')
+      .single(),
+  ) as EvidenceRow
+  await syncSkills(row.student_id, updated.confirmed_skills, updated.status === 'verified')
+  res.json(updated)
+})
+
+evidence.post('/:id/request-verification', async (req, res) => {
+  const row = (await sb.from('evidence_items').select('*').eq('id', req.params.id).eq('student_id', req.user!.id).maybeSingle()).data as
+    | EvidenceRow
+    | null
+  if (!row) return res.status(404).json({ error: 'not_found' })
+  const updated = must(
+    await sb.from('evidence_items').update({ verification_requested: true }).eq('id', row.id).select('*').single(),
+  ) as EvidenceRow
+  res.json(updated)
+})

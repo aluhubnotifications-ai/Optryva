@@ -254,6 +254,25 @@ export interface StudentSkill {
   blurb?: string
 }
 
+export type EvidenceStatus = 'self_reported' | 'student_approved' | 'verified'
+
+export interface EvidenceItem {
+  id: string
+  student_id: string
+  title: string
+  description: string
+  url: string | null
+  file_path: string | null
+  file_name: string | null
+  extracted_skills: string[]
+  confirmed_skills: string[]
+  status: EvidenceStatus
+  verified_by: string | null
+  verified_at: string | null
+  verification_requested: boolean
+  created_at: string
+}
+
 export interface SkillBooking {
   id: string
   skill_id: string

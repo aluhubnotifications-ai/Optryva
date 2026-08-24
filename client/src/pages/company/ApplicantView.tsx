@@ -45,6 +45,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs'
 import { Modal } from '@/components/ui/Modal'
 import { JobPostingView } from '@/components/JobPostingView'
 import { ShowYourWork } from '@/components/ShowYourWork'
+import { EvidenceLibrary } from '@/components/EvidenceLibrary'
 import { useToast } from '@/components/ui/toast'
 import { cn, daysUntil, formatDate } from '@/lib/utils'
 
@@ -564,6 +565,7 @@ export default function ApplicantView() {
         <TabsList className="flex flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
+          <TabsTrigger value="evidence">Evidence</TabsTrigger>
           {hasAssignment && <TabsTrigger value="assessment">Assessment</TabsTrigger>}
           {hasAssignment && <TabsTrigger value="scoring">AI scoring</TabsTrigger>}
           <TabsTrigger value="activity">Activity</TabsTrigger>
@@ -668,12 +670,19 @@ export default function ApplicantView() {
           </SectionCard>
         </TabsContent>
 
-        {/* Documents */}
-        <TabsContent value="documents" className="space-y-5">
-          <SectionCard n={1} title="Documents" desc="Everything the candidate attached">
-            <DocumentList documents={app.documents} />
-          </SectionCard>
-        </TabsContent>
+         {/* Documents */}
+         <TabsContent value="documents" className="space-y-5">
+           <SectionCard n={1} title="Documents" desc="Everything the candidate attached">
+             <DocumentList documents={app.documents} />
+           </SectionCard>
+         </TabsContent>
+
+         {/* Evidence — reviewer verifies the candidate's proof */}
+         <TabsContent value="evidence" className="space-y-5">
+           <SectionCard n={1} title="Candidate evidence" desc="Proof of work the candidate uploaded — verify it to label the evidence">
+             <EvidenceLibrary studentId={app.student_id} mode="viewer" />
+           </SectionCard>
+         </TabsContent>
 
         {/* Assessment */}
         {hasAssignment && (
