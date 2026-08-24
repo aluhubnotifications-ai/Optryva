@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Check, CheckSquare, ExternalLink, Eye, RefreshCw, ShieldCheck, Sparkles, Square, X } from 'lucide-react'
+import { ArrowRight, Check, CheckSquare, ExternalLink, Eye, RefreshCw, ShieldCheck, Sparkles, Square, Trash2, Undo2, Archive, X } from 'lucide-react'
 import { applicationsApi, jobsApi } from '@/lib/api'
 import type { SmartShortlistResponse } from '@/lib/api'
 import type { Application, ApplicationStatus, JobListing } from '@/types'
@@ -60,10 +60,46 @@ export function ApplicantInbox({
   const [rejectIds, setRejectIds] = useState<string[] | null>(null)
   const [rejectReason, setRejectReason] = useState('')
 
+  // Active vs Archived (employer trash). Archived rows are kept with their
+  // documents and can be restored or permanently deleted.
+  const [view, setView] = useState<'active' | 'archived'>('active')
+  const [activeApps, setActiveApps] = useState<Application[]>(apps)
+  const [archivedApps, setArchivedApps] = useState<Application[] | null>(null)
+  const [busyArch, setBusyArch] = useState<string | null>(null)
+  useEffect(() => { setActiveApps(apps) }, [apps])
+  const jobId = apps[0]?.job_id ?? jobs[0]?.id
+  useEffect(() => {
+    if (view === 'archived' && archivedApps === null && jobId) {
+      applicationsApi.byJob(jobId, true).then(setArchivedApps).catch(() => setArchivedApps([]))
+    }
+  }, [view, archivedApps, jobId])
+
+  async function refreshLists() {
+    if (!jobId) return
+    try {
+      const [a, ar] = await Promise.all([applicationsApi.byJob(jobId), applicationsApi.byJob(jobId, true)])
+      setActiveApps(a)
+      setArchivedApps(ar)
+    } catch { /* ignore */ }
+  }
+  async function doArchive(id: string) {
+    setBusyArch(id)
+    try { await applicationsApi.archive(id); await refreshLists() } finally { setBusyArch(null) }
+  }
+  async function doRestore(id: string) {
+    setBusyArch(id)
+    try { await applicationsApi.restore(id); await refreshLists() } finally { setBusyArch(null) }
+  }
+  async function doDelete(id: string) {
+    setBusyArch(id)
+    try { await applicationsApi.remove(id); await refreshLists() } finally { setBusyArch(null) }
+  }
+
   const jobMap = useMemo(() => new Map(jobs.map((j) => [j.id, j])), [jobs])
+  const sourceApps = view === 'archived' ? (archivedApps ?? []) : activeApps
   const filtered = useMemo(
-    () => (filter === 'all' ? apps : apps.filter((a) => a.status === filter)),
-    [apps, filter],
+    () => (filter === 'all' ? sourceApps : sourceApps.filter((a) => a.status === filter)),
+    [sourceApps, filter],
   )
 
   function toggle(id: string) {
@@ -138,32 +174,42 @@ export function ApplicantInbox({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" onClick={() => setSelected(new Set(filtered.map((a) => a.id)))}>
-          Select all ({filtered.length})
-        </Button>
-        {selected.size > 0 && (
-          <>
-            <span className="text-sm text-muted-foreground">{selected.size} selected</span>
-            <Button size="sm" variant="success" className="gap-1.5" onClick={() => bulkAccept([...selected])} loading={busy}>
-              <Check className="h-4 w-4" /> Shortlist selected
-            </Button>
-            <Button size="sm" variant="danger" className="gap-1.5" onClick={() => setRejectIds([...selected])} loading={busy}>
-              <X className="h-4 w-4" /> Reject selected
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
-              Clear
-            </Button>
-          </>
-        )}
-        <div className="ml-auto flex gap-2">
-          <Button size="sm" variant="default" className="gap-1.5" onClick={() => bulkAccept(filtered.map((a) => a.id))} loading={busy} disabled={filtered.length === 0}>
-            <CheckSquare className="h-4 w-4" /> Shortlist all
-          </Button>
-          <Button size="sm" variant="danger" className="gap-1.5" onClick={() => setRejectIds(filtered.map((a) => a.id))} loading={busy} disabled={filtered.length === 0}>
-            <X className="h-4 w-4" /> Reject all
-          </Button>
+        <div className="inline-flex rounded-lg border border-border p-0.5">
+          <button type="button" onClick={() => setView('active')} className={cn('rounded-md px-3 py-1 text-sm', view === 'active' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}>Active</button>
+          <button type="button" onClick={() => setView('archived')} className={cn('rounded-md px-3 py-1 text-sm', view === 'archived' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}>Archived{archivedApps ? ` (${archivedApps.length})` : ''}</button>
         </div>
+        {view === 'archived' && <span className="text-sm text-muted-foreground">Archived applications keep their documents. Restore them or delete permanently.</span>}
       </div>
+
+      {view === 'active' && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setSelected(new Set(filtered.map((a) => a.id)))}>
+            Select all ({filtered.length})
+          </Button>
+          {selected.size > 0 && (
+            <>
+              <span className="text-sm text-muted-foreground">{selected.size} selected</span>
+              <Button size="sm" variant="success" className="gap-1.5" onClick={() => bulkAccept([...selected])} loading={busy}>
+                <Check className="h-4 w-4" /> Shortlist selected
+              </Button>
+              <Button size="sm" variant="danger" className="gap-1.5" onClick={() => setRejectIds([...selected])} loading={busy}>
+                <X className="h-4 w-4" /> Reject selected
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+                Clear
+              </Button>
+            </>
+          )}
+          <div className="ml-auto flex gap-2">
+            <Button size="sm" variant="default" className="gap-1.5" onClick={() => bulkAccept(filtered.map((a) => a.id))} loading={busy} disabled={filtered.length === 0}>
+              <CheckSquare className="h-4 w-4" /> Shortlist all
+            </Button>
+            <Button size="sm" variant="danger" className="gap-1.5" onClick={() => setRejectIds(filtered.map((a) => a.id))} loading={busy} disabled={filtered.length === 0}>
+              <X className="h-4 w-4" /> Reject all
+            </Button>
+          </div>
+        </div>
+      )}
 
       {filtered.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
@@ -182,17 +228,19 @@ export function ApplicantInbox({
               >
                 <Card className="transition-shadow hover:shadow-card">
                   <CardBody className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        toggle(a.id)
-                      }}
-                      className="shrink-0 rounded-md p-1 text-muted-foreground hover:text-primary"
-                      aria-label="Select applicant"
-                    >
-                      {selected.has(a.id) ? <CheckSquare className="h-5 w-5 text-primary" /> : <Square className="h-5 w-5" />}
-                    </button>
+                    {view === 'active' && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          toggle(a.id)
+                        }}
+                        className="shrink-0 rounded-md p-1 text-muted-foreground hover:text-primary"
+                        aria-label="Select applicant"
+                      >
+                        {selected.has(a.id) ? <CheckSquare className="h-5 w-5 text-primary" /> : <Square className="h-5 w-5" />}
+                      </button>
+                    )}
                     <Avatar name={a.full_name} src={a.student_avatar_url} size={44} style={avatarRingStyle(a.tags)} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold">{a.full_name}</p>
@@ -216,6 +264,27 @@ export function ApplicantInbox({
                         {a.status === 'hired' ? 'Hired' : a.status}
                       </Badge>
                     </div>
+                    {view === 'active' ? (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); doArchive(a.id) }}
+                        disabled={busyArch === a.id}
+                        className="shrink-0 rounded-md p-1 text-muted-foreground hover:text-primary"
+                        aria-label="Archive application"
+                        title="Archive (keep documents)"
+                      >
+                        <Archive className="h-4 w-4" />
+                      </button>
+                    ) : (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button size="sm" variant="outline" className="gap-1" onClick={(e) => { e.preventDefault(); doRestore(a.id) }} disabled={busyArch === a.id}>
+                          <Undo2 className="h-4 w-4" /> Restore
+                        </Button>
+                        <Button size="sm" variant="danger" className="gap-1" onClick={(e) => { e.preventDefault(); doDelete(a.id) }} disabled={busyArch === a.id}>
+                          <Trash2 className="h-4 w-4" /> Delete
+                        </Button>
+                      </div>
+                    )}
                     <ArrowRight className="hidden h-4 w-4 text-muted-foreground sm:block" />
                   </CardBody>
                 </Card>

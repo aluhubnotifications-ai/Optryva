@@ -26,6 +26,9 @@ import {
   Pencil,
   UserPlus,
   RefreshCw,
+  Archive,
+  Undo2,
+  Trash2,
   type LucideIcon,
 } from 'lucide-react'
 import { applicationsApi, jobsApi, messagesApi, type SmartShortlistCandidate } from '@/lib/api'
@@ -915,6 +918,23 @@ export default function ApplicantView() {
               <Button size="sm" variant="outline" onClick={saveNote}>Save note</Button>
               {app.decided_at && (
                 <p className="text-xs text-muted-foreground">Last updated {formatDate(app.decided_at)} · {decidedByMe ? 'by you' : 'by a reviewer'}{app.decision_reason ? ' · reason on file' : ''}</p>
+              )}
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4">
+              {app.archived_at ? (
+                <>
+                  <Button size="sm" variant="outline" className="gap-1.5" onClick={async () => { const u = await applicationsApi.restore(app.id); if (u) { setApp(u); markStale(); toast({ title: 'Restored from archive', tone: 'success' }) } }}>
+                    <Undo2 className="h-4 w-4" /> Restore from archive
+                  </Button>
+                  <Button size="sm" variant="danger" className="gap-1.5" onClick={async () => { if (!confirm('Permanently delete this application and its documents? This cannot be undone.')) return; await applicationsApi.remove(app.id); markStale(); toast({ title: 'Application deleted', tone: 'success' }); navigate('/app/listings') }}>
+                    <Trash2 className="h-4 w-4" /> Delete permanently
+                  </Button>
+                </>
+              ) : (
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={async () => { const u = await applicationsApi.archive(app.id); if (u) { setApp(u); markStale(); toast({ title: 'Archived (documents kept)', tone: 'success' }) } }}>
+                  <Archive className="h-4 w-4" /> Archive (keep documents)
+                </Button>
               )}
             </div>
            </SectionCard>

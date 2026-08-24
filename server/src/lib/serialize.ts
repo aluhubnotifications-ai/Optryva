@@ -133,6 +133,7 @@ export function rowToApplication(r: any) {
     decision_by: r.decision_by ?? undefined,
     decision_reason: r.decision_reason ?? undefined,
     decided_at: r.decided_at ?? undefined,
+    archived_at: r.archived_at ?? undefined,
     attempts: r.attempts ?? 0,
     assignment_attempts: r.assignment_attempts ? j.parse(r.assignment_attempts, []) : undefined,
     tags: arr<string>(r.tags ?? []),

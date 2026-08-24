@@ -370,8 +370,17 @@ export const applicationsApi = {
   async byStudent(_studentId: string): Promise<Application[]> {
     return cached(`apps:student:${_studentId}`, () => apiFetch('/applications/mine') as Promise<Application[]>)
   },
-  async byJob(jobId: string): Promise<Application[]> {
-    return cached(`apps:job:${jobId}`, () => apiFetch(`/applications/job/${jobId}`) as Promise<Application[]>, 60_000)
+  async byJob(jobId: string, archived = false): Promise<Application[]> {
+    const key = archived ? `apps:job:${jobId}:archived` : `apps:job:${jobId}`
+    return cached(key, () => apiFetch(`/applications/job/${jobId}${archived ? '?archived=1' : ''}`) as Promise<Application[]>, 60_000)
+  },
+  async archive(id: string): Promise<Application | null> {
+    invalidateCache()
+    return (await apiFetch(`/applications/${id}/archive`, { method: 'PATCH' })) as Application
+  },
+  async restore(id: string): Promise<Application | null> {
+    invalidateCache()
+    return (await apiFetch(`/applications/${id}/restore`, { method: 'PATCH' })) as Application
   },
   async byCompany(_companyId: string): Promise<Application[]> {
     return cached('apps:company', () => apiFetch('/applications/company') as Promise<Application[]>, 60_000)

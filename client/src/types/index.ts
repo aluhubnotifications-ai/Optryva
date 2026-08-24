@@ -185,6 +185,7 @@ export interface Application {
   decision_by?: string
   decision_reason?: string
   decided_at?: string
+  archived_at?: string | null
   attempts?: number
   assignment_attempts?: any[]
   tags?: string[]
