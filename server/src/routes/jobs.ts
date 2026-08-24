@@ -429,11 +429,12 @@ jobs.post('/:jobId/research', async (req, res) => {
   if (candidateId) {
     const ctx = buildCtx(candidateId)
     const system =
-      'You are an AI analyst helping an EMPLOYER evaluate a specific candidate for a role. ' +
-      'Use ONLY the candidate data provided. Be concise, neutral, and evidence-based. ' +
-      'Do not invent skills or experience. If something is missing, say so. Suggest next steps (interview, assessment, junior role) when useful.'
-    const user = `${jobCtx}\n\nCANDIDATE DATA:\n${JSON.stringify(ctx, null, 2)}\n\nEMPLOYER QUESTION: ${question}\n\nAnswer in plain text, 2-5 short paragraphs.`
-    answer = await askAI(system, user, 900)
+      'You are a concise hiring analyst evaluating ONE candidate for a role. ' +
+      'Use ONLY the candidate data provided — do not invent skills or experience. ' +
+      'Reply in PLAIN TEXT as 3-5 short bullet points (one line each), no preamble: ' +
+      '1) fit verdict, 2) key strengths (with evidence), 3) key gaps, 4) one suggested next step.'
+    const user = `${jobCtx}\n\nCANDIDATE DATA:\n${JSON.stringify(ctx, null, 2)}\n\nEMPLOYER QUESTION: ${question}\n\nBe terse. Bullets only — no intro or closing sentence.`
+    answer = await askAI(system, user, 500)
   } else {
     const list = studentIds
       .slice(0, 40)
@@ -443,11 +444,13 @@ jobs.post('/:jobId/research', async (req, res) => {
       })
       .join('\n')
     const system =
-      'You are an AI analyst helping an EMPLOYER understand their applicant pipeline for a role. ' +
-      'Use ONLY the provided candidate summaries. Be concise, neutral, evidence-based. ' +
-      'Do not invent candidates. Highlight patterns, strengths, gaps, and suggest who to prioritize or what to probe next.'
-    const user = `${jobCtx}\n\nPIPELINE (${studentIds.length} applicants):\n${list}\n\nEMPLOYER QUESTION: ${question}\n\nAnswer in plain text, 2-5 short paragraphs.`
-    answer = await askAI(system, user, 1000)
+      'You are a concise hiring analyst for an EMPLOYER reviewing an applicant pipeline. ' +
+      'Use ONLY the provided candidate summaries — never invent candidates. ' +
+      'Reply in PLAIN TEXT as 3-6 short bullet points (one line each), no preamble: ' +
+      '1) strongest candidate(s) and why, 2) biggest gap in the pipeline, ' +
+      '3) who to prioritize or probe next, 4) one concrete sourcing recommendation.'
+    const user = `${jobCtx}\n\nPIPELINE (${studentIds.length} applicants):\n${list}\n\nEMPLOYER QUESTION: ${question}\n\nBe terse. Bullets only — no intro or closing sentence.`
+    answer = await askAI(system, user, 700)
   }
 
   if (!answer) {
