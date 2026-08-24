@@ -11,6 +11,7 @@ import Register from '@/pages/auth/Register'
 import VerifyEmail from '@/pages/auth/VerifyEmail'
 import ForgotPassword from '@/pages/auth/ForgotPassword'
 import Onboarding from '@/pages/Onboarding'
+import RoleSelection from '@/pages/auth/RoleSelection'
 
 const Dashboard = lazy(() => import('@/pages/Dashboard'))
 const Research = lazy(() => import('@/pages/Research'))
@@ -113,6 +114,7 @@ export const router = createBrowserRouter([
   { path: '/register', element: <Register /> },
   { path: '/verify-email', element: <VerifyEmail /> },
   { path: '/forgot-password', element: <ForgotPassword /> },
+  { path: '/role-selection', element: <RoleSelection /> },
   { path: '/onboarding', element: <Onboarding /> },
   {
     path: '/app',

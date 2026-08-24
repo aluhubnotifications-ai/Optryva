@@ -91,6 +91,33 @@ export const authApi = {
   },
 }
 
+export const onboardingApi = {
+  async getProgress(): Promise<any> {
+    return apiFetch('/onboarding/progress')
+  },
+  async saveProgress(data: { current_step?: number; completed_steps?: number; skipped_steps?: string; step_data?: any }): Promise<{ ok: boolean }> {
+    return apiFetch('/onboarding/progress', { method: 'PATCH', body: JSON.stringify(data) })
+  },
+  async saveCareerDirection(direction: string, customDirection?: string): Promise<{ ok: boolean }> {
+    return apiFetch('/onboarding/step/career-direction', { method: 'POST', body: JSON.stringify({ direction, custom_direction: customDirection }) })
+  },
+  async saveResume(cv_text?: string, cv_url?: string, cv_filename?: string): Promise<{ ok: boolean }> {
+    return apiFetch('/onboarding/step/resume', { method: 'POST', body: JSON.stringify({ cv_text, cv_url, cv_filename }) })
+  },
+  async saveEvidence(evidence_ids: string[]): Promise<{ ok: boolean }> {
+    return apiFetch('/onboarding/step/evidence', { method: 'POST', body: JSON.stringify({ evidence_ids }) })
+  },
+  async savePreferences(prefs: any): Promise<{ ok: boolean }> {
+    return apiFetch('/onboarding/step/preferences', { method: 'POST', body: JSON.stringify(prefs) })
+  },
+  async savePrivacy(consents: any): Promise<{ ok: boolean; complete?: boolean }> {
+    return apiFetch('/onboarding/step/privacy', { method: 'POST', body: JSON.stringify(consents) })
+  },
+  async skipStep(step: number): Promise<{ ok: boolean }> {
+    return apiFetch('/onboarding/skip-step', { method: 'POST', body: JSON.stringify({ step }) })
+  },
+}
+
 // Access token for authenticated requests. Seeded from the persisted session so
 // it survives a page refresh; the session store keeps it in sync on login/logout.
 let authToken: string | null = null

@@ -14,25 +14,24 @@ type Props = {
   token?: string
 }
 
+// Fetch comments from the API (shared by effect and submit handler).
+async function fetchCommentsApi(evidenceId: string, token: string | undefined) {
+  if (!token) return []
+  const r = await fetch(`/api/evidence/${evidenceId}/comments`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const data = await r.json()
+  return data
+}
+
 export function EvidenceComments({ evidenceId, token }: Props) {
   const [comments, setComments] = useState<Comment[]>([])
   const [newContent, setNewContent] = useState('')
 
   useEffect(() => {
-    async function load() {
-      if (token) {
-        const r = await fetch(`/api/evidence/${evidenceId}/comments`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        const data = await r.json()
-        setComments(data)
-      } else {
-        // No token: show a static placeholder (or fetch public comments if you make the
-        // endpoint publicly readable). Here we just show a message.
-        setComments([])
-      }
-    }
-    load()
+    ;(async () => {
+      setComments(await fetchCommentsApi(evidenceId, token))
+    })()
   }, [evidenceId, token])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -47,7 +46,9 @@ export function EvidenceComments({ evidenceId, token }: Props) {
       body: JSON.stringify({ content: newContent }),
     })
     setNewContent('')
-    load()
+    ;(async () => {
+      setComments(await fetchCommentsApi(evidenceId, token))
+    })()
   }
 
   return (

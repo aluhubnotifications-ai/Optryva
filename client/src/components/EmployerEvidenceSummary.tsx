@@ -73,9 +73,9 @@ function SummaryMarkdown({ text }: { text: string }) {
  * public profile, where the full evidence gallery lives.
  */
 export function EmployerEvidenceSummary({ studentId }: { studentId: string }) {
-const [summary, setSummary] = useState<string | null>(null)
+  const [summary, setSummary] = useState<string | null>(null)
   const [count, setCount] = useState<number | null>(null)
-  const [items, setItems] = useState<Array<{ id: string; title: string } | null>>(null)
+  const [items, setItems] = useState<Array<{ id: string; title: string }> | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -125,7 +125,7 @@ const [summary, setSummary] = useState<string | null>(null)
           This summary is generated from the candidate's submitted evidence. Open the full gallery to review the original files, links, and verification status.
         </p>
 
-        {items && items.length > 0 ? (
+                {items != null && items.length > 0 ? (
           <EvidenceComments
             evidenceId={items[0].id}
             token=""

@@ -10,6 +10,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { auth } from '@/routes/auth'
 import { oauth } from '@/routes/oauth'
+import { onboarding } from '@/routes/onboarding'
 import { profiles } from '@/routes/profiles'
 import { jobs } from '@/routes/jobs'
 import { applications } from '@/routes/applications'
@@ -40,6 +41,7 @@ app.use('/api/*', cors({
 app.get('/api/health', (c) => c.json({ ok: true, claude: hasClaude() }))
 app.route('/api/auth', auth.hono)
 app.route('/api/oauth', oauth.hono)
+app.route('/api/onboarding', onboarding.hono)
 app.route('/api/profiles', profiles.hono)
 app.route('/api/jobs', jobs.hono)
 app.route('/api/applications', applications.hono)

@@ -33,7 +33,7 @@ export default function RoleSelection() {
   const [searchParams] = useSearchParams()
   const returnTo = searchParams.get('returnTo') ?? '/app'
   const login = useSession((s) => s.login)
-  const [selected, setSelected] = useState<ROLES[number]['value']>('student')
+  const [selected, setSelected] = useState<'student' | 'company' | 'school'>('student')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
