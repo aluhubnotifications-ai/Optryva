@@ -2,8 +2,9 @@ import { Router } from '@/lib/http'
 import { sb, must } from '@/db'
 import { uid, now } from '@/lib/util'
 import { requireAuth } from '@/lib/auth'
-import { storeDocument } from '@/lib/documents'
-import { mistralText, hasMistral } from '@/lib/mistral'
+import { storeDocument, DOCUMENT_BUCKET } from '@/lib/documents'
+import { mistralText, mistralJsonBlocks, MISTRAL_VISION_MODEL, hasMistral, extractPdfText } from '@/lib/mistral'
+import { extractViaService, hasExtractionService } from '@/lib/extractService'
 
 export const evidence = Router()
 evidence.use(requireAuth)
@@ -99,6 +100,74 @@ async function fetchLinkText(url: string): Promise<string | null> {
   }
 }
 
+const MIME_BY_EXT: Record<string, string> = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
+  pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  odt: 'application/vnd.oasis.opendocument.text', rtf: 'application/rtf', txt: 'text/plain',
+  ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', ogg: 'audio/ogg', aac: 'audio/aac', flac: 'audio/flac',
+  mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', avi: 'video/x-msvideo',
+}
+
+function mimeForName(name: string): string {
+  const ext = name.split('.').pop()?.toLowerCase() ?? ''
+  return MIME_BY_EXT[ext] ?? 'application/octet-stream'
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let bin = ''
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  }
+  return btoa(bin)
+}
+
+// Pull the raw bytes of a stored evidence file back out of Supabase Storage so
+// we can run AI over its actual content (not just its filename).
+async function downloadEvidenceFile(path: string): Promise<Uint8Array | null> {
+  try {
+    const { data, error } = await sb.storage.from(DOCUMENT_BUCKET).download(path)
+    if (error || !data) return null
+    return new Uint8Array(await data.arrayBuffer())
+  } catch {
+    return null
+  }
+}
+
+// Vision pass: describe what an image actually shows so skills can be inferred
+// from it. Runs natively on Mistral's multimodal model (no extra service).
+async function describeImage(dataUrl: string): Promise<string | null> {
+  if (!hasMistral()) return null
+  const out = await mistralJsonBlocks<{ description?: string }>({
+    model: MISTRAL_VISION_MODEL,
+    system:
+      'You are analyzing an image that is a student\'s evidence of work (a ' +
+      'certificate, a project screenshot, a photo of an event they ran, a design, ' +
+      'a poster, a prototype). Write a concise, factual description of what the ' +
+      'image shows and the skills or activities it demonstrates. Be specific and ' +
+      'neutral. Return ONLY JSON: {"description": "..."}.',
+    content: [{ type: 'image_url', image_url: { url: dataUrl } }],
+    maxTokens: 400,
+  })
+  return out?.description?.trim() || null
+}
+
+// Plain-language "what the student did" summary, shown to reviewers so they
+// understand the contribution at a glance.
+async function summarizeEvidence(title: string, content: string): Promise<string | null> {
+  if (!hasMistral()) return null
+  const sys =
+    'You write a short "what I did" summary for a student\'s evidence of work, ' +
+    'used so reviewers understand the contribution. From the provided title and ' +
+    'extracted content, write 2-3 sentences in the first person as if the ' +
+    'student is describing what they actually did and produced. Mention concrete ' +
+    'actions, deliverables, and context. No headers, no bullet points.'
+  const user = `Title: ${title}\n\nContent:\n${content.slice(0, 6000)}`
+  return mistralText({ system: sys, user, maxTokens: 300 })
+}
+
 // Keep the student's real `student_skills` in sync with confirmed evidence so
 // approved evidence actually supports résumé matching. Verified evidence marks
 // the skill verified; otherwise it's a normal student skill.
@@ -189,22 +258,69 @@ evidence.post('/:id/extract', async (req, res) => {
     | EvidenceRow
     | null
   if (!row) return res.status(404).json({ error: 'not_found' })
+
+  const sources: string[] = []
+
+  // 1) Linked pages — fetch directly, fall back to the extraction service for
+  //    JavaScript-heavy sites it can render with a headless browser.
   const links = row.links ?? []
-  const linkBlocks: string[] = []
   for (const link of links.slice(0, 4)) {
-    const content = await fetchLinkText(link)
-    if (content) linkBlocks.push(`Linked page (${link}):\n${content}`)
+    let content = await fetchLinkText(link)
+    if (!content && hasExtractionService()) {
+      const svc = await extractViaService({ kind: 'url', url: link })
+      content = svc?.text ?? null
+    }
+    if (content) sources.push(`Linked page (${link}):\n${content}`)
   }
+
+  // 2) Uploaded files — process each by type.
+  const fileEntries = [
+    ...(row.file_path ? [{ path: row.file_path, name: row.file_name ?? 'file' }] : []),
+    ...(row.files ?? []),
+  ]
+  for (const entry of fileEntries.slice(0, 8)) {
+    const ext = (entry.name.split('.').pop() ?? '').toLowerCase()
+    const mime = mimeForName(entry.name)
+    const isImage = mime.startsWith('image/')
+    const isPdf = ext === 'pdf'
+    const isAudio = mime.startsWith('audio/')
+    const isVideo = mime.startsWith('video/')
+    const delegatesToService = ext === 'docx' || ext === 'doc' || ext === 'odt' || ext === 'rtf' || ext === 'pptx' || ext === 'ppt' || ext === 'xlsx' || ext === 'xls' || isAudio || isVideo
+
+    const bytes = await downloadEvidenceFile(entry.path)
+    if (!bytes) continue
+    const base64 = bytesToBase64(bytes)
+    const dataUrl = `data:${mime};base64,${base64}`
+
+    if (isImage) {
+      const desc = await describeImage(dataUrl)
+      if (desc) sources.push(`Image (${entry.name}):\n${desc}`)
+      continue
+    }
+    if (isPdf) {
+      const txt = await extractPdfText(base64)
+      if (txt) sources.push(`PDF (${entry.name}):\n${txt.slice(0, 6000)}`)
+      continue
+    }
+    // Everything Node can't process natively goes to the extraction service.
+    if (delegatesToService && hasExtractionService()) {
+      const svc = await extractViaService({ kind: 'file', filename: entry.name, data_base64: base64, mime })
+      if (svc?.text) sources.push(`File (${entry.name}):\n${svc.text.slice(0, 6000)}`)
+    }
+  }
+
   const text = [
     row.title ? `Title: ${row.title}` : '',
     row.description ? `Description: ${row.description}` : '',
-    ...linkBlocks,
+    ...sources,
   ].filter(Boolean).join('\n\n')
+
   const skills = await extractEvidenceSkills(text || links.join('\n'))
+  const summary = text ? await summarizeEvidence(row.title, text) : null
   // Mark the item as AI-analyzed so the gallery can show that step in the flow.
   const status = row.status === 'self_reported' ? 'ai_analyzed' : row.status
   const updated = must(
-    await sb.from('evidence_items').update({ extracted_skills: skills, status }).eq('id', row.id).select('*').single(),
+    await sb.from('evidence_items').update({ extracted_skills: skills, ai_summary: summary, status }).eq('id', row.id).select('*').single(),
   ) as EvidenceRow
   res.json(updated)
 })

@@ -341,6 +341,13 @@ function EvidenceDetail({
         </div>
         {item.description && <p className="text-sm text-muted-foreground">{item.description}</p>}
 
+        {item.ai_summary && (
+          <div className="rounded-lg border border-border bg-muted/40 p-3">
+            <p className="mb-1 text-xs font-semibold text-muted-foreground">WHAT THIS SHOWS</p>
+            <p className="text-sm">{item.ai_summary}</p>
+          </div>
+        )}
+
         {item.links?.length > 0 && (
           <div>
             <p className="mb-1 text-xs font-semibold text-muted-foreground">LINKS</p>

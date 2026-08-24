@@ -275,6 +275,7 @@ export interface EvidenceItem {
   used_in: string[]
   extracted_skills: string[]
   confirmed_skills: string[]
+  ai_summary: string | null
   status: EvidenceStatus
   verified_by: string | null
   verified_at: string | null

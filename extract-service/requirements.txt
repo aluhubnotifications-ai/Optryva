@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+crawl4ai
+playwright
+unstructured
+python-docx
+python-pptx
+pdfplumber
+faster-whisper
+requests
+Pillow
