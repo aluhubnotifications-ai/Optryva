@@ -257,6 +257,7 @@ export default function ApplicantView() {
   // This candidate's Smart Shortlist verdict/decision note, pulled from the job's
   // shortlist so the employer sees the shortlist's read alongside the assessment.
   const [shortlistCand, setShortlistCand] = useState<SmartShortlistCandidate | null>(null)
+  const [rescoring, setRescoring] = useState(false)
 
   async function load() {
     if (!id) return
@@ -331,6 +332,20 @@ export default function ApplicantView() {
     } catch (e) {
       toast({ title: 'Could not score assignment', description: e instanceof Error ? e.message : undefined, tone: 'error' })
     } finally { setScoreBusy(false) }
+  }
+
+  // Re-run the job's Smart Shortlist (e.g. after a test is completed) and refresh
+  // this candidate's verdict without leaving the applicant view.
+  async function rescoreShortlist() {
+    setRescoring(true)
+    try {
+      const sl = await jobsApi.rescoreShortlist(app!.job_id)
+      setShortlistCand((sl.candidates ?? []).find((c) => c.student_id === app!.student_id) ?? null)
+      markStale()
+      toast({ title: 'Shortlist re-scored', tone: 'success' })
+    } catch (e) {
+      toast({ title: 'Could not rescore shortlist', description: e instanceof Error ? e.message : undefined, tone: 'error' })
+    } finally { setRescoring(false) }
   }
 
   async function saveOverride() {
@@ -692,6 +707,9 @@ export default function ApplicantView() {
                     {shortlistCand.category === 'not_qualified' ? 'Not qualified' : shortlistCand.category === 'insufficient_evidence' ? 'Insufficient evidence' : 'Potential fit'}
                   </Badge>
                 )}
+                <Button size="sm" variant="outline" className="ml-auto gap-1.5" onClick={rescoreShortlist} loading={rescoring}>
+                  <RefreshCw className="h-3.5 w-3.5" /> Rescore
+                </Button>
               </div>
               {shortlistCand?.decision_note && <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{shortlistCand.decision_note}</p>}
               <p className="mt-1 text-xs text-muted-foreground">
@@ -701,7 +719,13 @@ export default function ApplicantView() {
               </p>
               <div className="mt-3 flex flex-wrap gap-2 text-xs">
                 <span className="rounded-md bg-muted px-2 py-1 text-muted-foreground">Match fit: <b className="text-foreground">{app.match_score ?? '—'}</b> <span className="opacity-70">(student matching)</span></span>
-                <span className="rounded-md bg-muted px-2 py-1 text-muted-foreground">Assessment: <b className="text-foreground">{attempt?.score != null ? `${attempt.score}/100` : 'not run'}</b></span>
+                <span className="rounded-md bg-muted px-2 py-1 text-muted-foreground">
+                  {app.assignment_status === 'submitted'
+                    ? <>Assessment: <b className="text-foreground">{app.assignment_score ?? '—'}/100</b></>
+                    : app.assignment_status === 'pending'
+                      ? 'Assessment: pending (assigned, not completed)'
+                      : 'Assessment: not required for this role'}
+                </span>
               </div>
             </div>
 

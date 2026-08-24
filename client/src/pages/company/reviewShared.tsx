@@ -432,14 +432,17 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
                     )}
                   </div>
 
-                  {/* Assessment status */}
+                  {/* Assessment status — only 'submitted' means a score was actually
+                      factored; 'pending' is assigned-but-not-done, 'not_required' means
+                      the role has no test at all. */}
                   {c.assessment_status && (
                     <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-                      <Badge tone={c.assessment_status === 'completed' ? 'success' : c.assessment_status === 'started' ? 'accent' : 'outline'}>
-                        Assessment: {c.assessment_status}
+                      <Badge tone={c.assessment_status === 'submitted' ? 'success' : c.assessment_status === 'pending' ? 'accent' : 'outline'}>
+                        {c.assessment_status === 'submitted' ? 'Assessment submitted' : c.assessment_status === 'pending' ? 'Assessment pending' : 'No assessment'}
                       </Badge>
-                      {c.assessment_score != null && <span className="font-medium text-foreground">Score {c.assessment_score}</span>}
-                      {c.assessment_status !== 'completed' && <span className="text-muted-foreground">· Request assessment before deciding</span>}
+                      {c.assessment_status === 'submitted' && c.assessment_score != null && <span className="font-medium text-foreground">Score {c.assessment_score}</span>}
+                      {c.assessment_status === 'pending' && <span className="text-muted-foreground">· assigned but not completed — not yet factored</span>}
+                      {c.assessment_status === 'not_required' && <span className="text-muted-foreground">· this role has no test</span>}
                     </div>
                   )}
 

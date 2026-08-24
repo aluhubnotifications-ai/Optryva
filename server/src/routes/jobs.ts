@@ -356,7 +356,12 @@ async function mistralShortlistAid(job: any, candidates: any[]): Promise<{ summa
     'You are an impartial hiring decision assistant for an EMPLOYER reviewing a shortlist of students who applied to a role. ' +
     'For each candidate give an employer-focused FIT VERDICT and a concise, NEUTRAL, evidence-based DECISION NOTE that helps the employer decide. ' +
     'Use careful, non-punitive language: distinguish "not qualified on available evidence", "insufficient evidence", and "potential fit after assessment or training". ' +
-    'Do NOT treat missing résumé evidence as proof the person lacks the skill, and do not label people harshly. Output STRICT JSON only.'
+    'Do NOT treat missing résumé evidence as proof the person lacks the skill, and do not label people harshly. ' +
+    'ASSESSMENT STATUS is provided per candidate as one of: ' +
+    'assessment=none (this role has NO test — do NOT invent or assume any test result; base the read on résumé/match only and say the assessment is not included), ' +
+    'assessment=pending (a test is assigned but the candidate has NOT completed it — do NOT factor any test score; note it is pending and the read may change once submitted), ' +
+    'assessment=submitted score=X (use score X as real evidence). ' +
+    'Only ever use an assessment score when status is submitted; never infer one otherwise. Output STRICT JSON only.'
   const schema = {
     summary: 'string — 1-2 sentence overview of shortlist quality for this role',
     candidates: [
@@ -371,12 +376,18 @@ async function mistralShortlistAid(job: any, candidates: any[]): Promise<{ summa
       },
     ],
   }
+  const assessmentDesc = (c: any) => {
+    const s = c.assessment_status
+    if (s === 'submitted') return `assessment=submitted score=${c.assessment_score ?? 'n/a'}`
+    if (s === 'pending') return 'assessment=pending (assigned but NOT completed — do not factor a test score)'
+    return 'assessment=none (no test required for this role — not included)'
+  }
   const cands = top
     .map(
       (c, i) =>
         `${i + 1}. id=${c.student_id} name=${c.name} major=${c.major ?? ''} location=${c.location ?? ''} ` +
         `skills=[${c.skills.join(', ')}] baseScore=${c.score} matchedSkills=[${c.matched_skills.join(', ')}] ` +
-        `reasons=[${c.reasons.join(' | ')}] gaps=[${c.mismatch_flags.join(', ')}]`,
+        `reasons=[${c.reasons.join(' | ')}] gaps=[${c.mismatch_flags.join(', ')}] ${assessmentDesc(c)}`,
     )
     .join('\n')
   const content: any[] = [
