@@ -120,10 +120,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // full-screen experience — no sidebar, top bar, mobile drawer, or AI panel.
   const isFocusMode = /^\/app\/applications\/[^/]+\/assessment$/.test(location.pathname)
 
-  // Employer reviewing an individual application (ApplicantView) gets the full
-  // canvas — hide the left nav sidebar and let the content fill the space.
-  const isApplicantReview = isCompany && /^\/app\/applicants\/[^/]+$/.test(location.pathname)
-
   if (isFocusMode) {
     return (
       <div className="min-h-screen bg-background">
@@ -138,22 +134,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
       <GlobalProgress />
-      {/* Sidebar (desktop) — hidden on the employer's applicant review screen
-          so the application gets the full width. */}
-      {!isApplicantReview && (
-        <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-border bg-card/40 lg:flex">
-          <SidebarInner nav={nav} badges={badges} />
-        </aside>
-      )}
+      {/* Sidebar (desktop) */}
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-border bg-card/40 lg:flex">
+        <SidebarInner nav={nav} badges={badges} />
+      </aside>
 
       {/* Main column */}
-      <div className={cn(!isApplicantReview && 'lg:pl-64')}>
+      <div className={cn('lg:pl-64')}>
         <Topbar />
         <main className={cn(
           'mx-auto w-full px-4 py-6 sm:px-6 lg:px-8',
-          // On the applicant review screen the left nav is hidden, so let the
-          // content stretch across the full canvas instead of capping at 1600px.
-          isApplicantReview ? 'max-w-none' : 'max-w-[1600px]',
+          'max-w-[1600px]',
         )}>
           <Suspense fallback={<div className="py-24"><PageSpinner label="Loading…" /></div>}>
             {children}

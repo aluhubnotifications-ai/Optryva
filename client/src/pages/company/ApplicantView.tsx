@@ -51,6 +51,14 @@ import { cn, daysUntil, formatDate } from '@/lib/utils'
 
 const TAG_OPTIONS = ['Strong fit', 'Consider', 'Needs follow-up', 'Referral', 'Watch', 'Do not advance'] as const
 
+// Tags grouped by disposition so the reviewer reads them as a decision, not a
+// flat list. Mirrors the StageTracker (advance → hold → decline) language.
+const TAG_GROUPS: { label: string; hint: string; tags: readonly string[] }[] = [
+  { label: 'Advance', hint: 'Strong signals — move forward', tags: ['Strong fit', 'Consider', 'Referral'] },
+  { label: 'Hold', hint: 'Worth a second look', tags: ['Needs follow-up', 'Watch'] },
+  { label: 'Decline', hint: 'Not progressing', tags: ['Do not advance'] },
+]
+
 // Each tag gets a distinct colour so they read at a glance in the profile and
 // the applicant list.
 const TAG_STYLES: Record<string, { on: string; off: string }> = {
@@ -288,6 +296,10 @@ export default function ApplicantView() {
   if (!app) return <div className="py-20 text-center"><p className="font-medium">Applicant not found.</p></div>
 
   const hasAssignment = !!job?.assignment && ((app.assignment_answers?.length ?? 0) > 0 || (app.assignment_attempts?.length ?? 0) > 0)
+
+  // Tags are single-select, so there is at most one. Used to highlight the
+  // candidate's current disposition in the right sidebar.
+  const currentTag = (app.tags ?? [])[0]
 
   // Every submitted attempt is archived (assignment_attempts) so the first
   // attempt stays reviewable even after the employer grants a retake. Older
@@ -1042,14 +1054,32 @@ export default function ApplicantView() {
 									</p>
 								</div>
 							</div>
-							<div>
-								<p className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tags</p>
-								<div className="mt-1.5 flex flex-wrap justify-center gap-1">
-									{TAG_OPTIONS.map((t) => (
-										<TagChip key={t} tag={t} active={(app.tags ?? []).includes(t)} onClick={() => toggleTag(t)} />
-									))}
-								</div>
+						<div>
+							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tags</p>
+							<div className="mt-2">
+								{currentTag ? (
+									<div className={cn('flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold', (TAG_STYLES[currentTag] ?? TAG_STYLES['Consider']).on)}>
+										{currentTag}
+									</div>
+								) : (
+									<p className="rounded-lg border border-dashed border-border px-3 py-2 text-center text-sm text-muted-foreground">No tag yet</p>
+								)}
 							</div>
+							<div className="mt-3 space-y-3">
+								{TAG_GROUPS.map((g) => (
+									<div key={g.label}>
+										<p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{g.label}</p>
+										<p className="mb-1.5 text-[11px] text-muted-foreground">{g.hint}</p>
+										<div className="flex flex-wrap gap-1.5">
+											{g.tags.map((t) => (
+												<TagChip key={t} tag={t} active={(app.tags ?? []).includes(t)} onClick={() => toggleTag(t)} />
+											))}
+										</div>
+									</div>
+								))}
+							</div>
+							<p className="mt-3 text-[11px] text-muted-foreground">One tag at a time — click the active tag to clear it.</p>
+						</div>
 							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 								Application
 							</p>

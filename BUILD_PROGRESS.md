@@ -87,8 +87,12 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` pending
 19. [x] Company Applicant View (profile/contact/docs + status pipeline controls + message)
 20. [x] Company Analytics (KPIs, hiring funnel, 6-week trend, per-listing — Recharts)
 21. [x] Company Profile (cover/logo, industry/size, links, plan badge, school variant)
-22. [~] Landing + Auth + Onboarding — functional (auth screens + landing done; onboarding is a
-        working stub). Billing intentionally skipped per user.
+22. [x] Landing + Auth + Onboarding — auth (Google primary + email/password) + role selection
+         done; **student onboarding rebuilt as a spec-compliant 5-step wizard**
+         (Career direction → Résumé → Evidence → Preferences → Privacy & AI) with
+         autosave, resume/progress, Skip-for-now, and a first-matches hand-off to
+         `/app`. Driven by the existing `onboardingApi` + server `/onboarding/*`
+         routes. Employer/University onboarding still server-stubbed (out of this pass).
     - New: `company/ListingApplicants`, `company/ApplicantView`, `company/Analytics`,
       `company/Listings`, `company/CompanyProfile`.
 
