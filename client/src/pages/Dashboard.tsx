@@ -647,7 +647,7 @@ function profileGaps(u: Profile): { label: string; to: string; icon: typeof File
   if (!u.desired_roles?.length) gaps.push({ label: 'Add desired roles', to: '/app/profile', icon: Briefcase })
   if (!u.bio) gaps.push({ label: 'Write a short bio', to: '/app/profile', icon: FileText })
   if (!u.major) gaps.push({ label: 'Add your major', to: '/app/profile', icon: GraduationCap })
-  if (!u.year) gaps.push({ label: 'Add your study year', to: '/app/profile', icon: GraduationCap })
+  if (!u.year && !u.graduated) gaps.push({ label: 'Add your study year', to: '/app/profile', icon: GraduationCap })
   if (!u.linkedin) gaps.push({ label: 'Link your LinkedIn', to: '/app/profile', icon: Users })
   return gaps
 }

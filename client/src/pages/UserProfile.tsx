@@ -67,7 +67,7 @@ export default function UserProfile() {
               {(p.school || p.major || p.year) && (
                 <div>
                   <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><GraduationCap className="h-3.5 w-3.5" /> Education</p>
-                  <p className="text-sm">{[p.school, p.major].filter(Boolean).join(' · ') || '—'}{p.year ? ` · Year ${p.year}` : ''}</p>
+                  <p className="text-sm">{[p.school, p.major].filter(Boolean).join(' · ') || '—'}{p.year ? ` · Year ${p.year}` : p.graduated ? ' · Graduate' : ''}</p>
                 </div>
               )}
               {p.desired_roles && p.desired_roles.length > 0 && (

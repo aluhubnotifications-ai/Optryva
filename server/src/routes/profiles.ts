@@ -16,7 +16,7 @@ profiles.use(requireAuth)
 // keeps the payload small and the parse fast. Full rows are still served by the
 // single-profile PATCH/GET-by-id paths.
 const LIST_COLUMNS =
-  'id,user_type,full_name,email,avatar_url,cover_url,bio,school,major,year,location,country,linkedin,github,twitter,website,desired_roles,preferred_industries,work_type,location_pref,open_to_internship,open_to_fulltime,pref_listing_types,pref_countries,monitoring_consent,skills,company_name,industry,company_size,student_domains,is_private,posted_by_role,plan,plan_activated_at,created_at'
+  'id,user_type,full_name,email,avatar_url,cover_url,bio,school,major,year,graduated,location,country,linkedin,github,twitter,website,desired_roles,preferred_industries,work_type,location_pref,open_to_internship,open_to_fulltime,pref_listing_types,pref_countries,monitoring_consent,skills,company_name,industry,company_size,student_domains,is_private,posted_by_role,plan,plan_activated_at,created_at'
 
 profiles.get('/', async (req, res) => {
   const type = req.query.type as string | undefined
@@ -59,7 +59,7 @@ profiles.get('/:id', async (req, res) => {
 })
 
 const EDITABLE = [
-  'full_name', 'avatar_url', 'cover_url', 'bio', 'school', 'major', 'year', 'location', 'country', 'gpa',
+  'full_name', 'avatar_url', 'cover_url', 'bio', 'school', 'major', 'year', 'graduated', 'location', 'country', 'gpa',
   'linkedin', 'github', 'twitter', 'website', 'cv_filename', 'cv_uploaded_at', 'cv_text', 'cv_url',
   'work_type', 'location_pref', 'company_name', 'industry', 'company_size',
 ] as const
@@ -103,6 +103,16 @@ async function consentColExists(): Promise<boolean> {
   const { error } = await sb.from('profiles').select('monitoring_consent').limit(1)
   hasConsentCol = !error
   return hasConsentCol
+}
+
+// graduated arrives with migration 0038 (students who already finished their degree
+// and are still eligible for internships / early-career roles).
+let hasGraduatedCol = false
+async function graduatedColExists(): Promise<boolean> {
+  if (hasGraduatedCol) return true
+  const { error } = await sb.from('profiles').select('graduated').limit(1)
+  hasGraduatedCol = !error
+  return hasGraduatedCol
 }
 
 profiles.patch('/:id', async (req, res) => {
@@ -160,6 +170,12 @@ profiles.patch('/:id', async (req, res) => {
   // Opt-in outcome monitoring (migration 0014). Default off; the student controls it.
   if ('monitoring_consent' in b && (await consentColExists())) {
     update.monitoring_consent = b.monitoring_consent ? 1 : 0
+  }
+
+  // Graduated flag (migration 0038) — a student who already finished their degree.
+  // Persisted as a boolean once the column exists.
+  if ('graduated' in b && (await graduatedColExists())) {
+    update.graduated = b.graduated ? 1 : 0
   }
 
   // School domain/privacy fields (migration 0011) — only persisted once present.

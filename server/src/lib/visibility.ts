@@ -77,15 +77,13 @@ export function jobVisibleTo(jobRow: any, viewer: any, gates: Map<string, School
     }
   }
 
-  // Existing student-facing gates (year + school-name) still apply.
+  // Existing student-facing gate (study year) still applies — but a graduated
+  // student has no study year, so they're eligible for every level (including
+  // internships) rather than being filtered out.
   if (viewer?.user_type !== 'student') return true
+  if (viewer.graduated) return true
   const years = j.parse<number[]>(jobRow.allowed_years, [])
   if (years.length && viewer.year && !years.includes(viewer.year)) return false
-  const schools = j.parse<string[]>(jobRow.allowed_schools, [])
-  if (schools.length) {
-    const mine = (viewer.school ?? '').toLowerCase().trim()
-    if (!schools.some((s) => s.toLowerCase().trim() === mine)) return false
-  }
   return true
 }
 

@@ -109,7 +109,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
     country: user.country || 'Remote', location: '', pay: '', duration: '', deadline: '', tags: '',
     responsibilities: [] as string[], benefits: [] as string[], qualifications: [] as string[],
     applyMode: 'in_app' as 'in_app' | 'external', apply_url: '', allowed_years: [] as number[],
-    allowed_schools: '', students_only: false,
+    students_only: false,
     fromOther: false, original_company_name: '', original_company_logo_url: '',
   })
 
@@ -125,7 +125,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
         deadline: editing.deadline ? editing.deadline.slice(0, 10) : '', tags: editing.tags.join(', '),
         responsibilities: editing.responsibilities ?? [], benefits: editing.benefits ?? [], qualifications: editing.qualifications ?? [],
         applyMode: editing.apply_url ? 'external' : 'in_app', apply_url: editing.apply_url ?? '', allowed_years: editing.allowed_years,
-        allowed_schools: (editing.allowed_schools ?? []).join(', '), students_only: editing.students_only ?? false,
+        students_only: editing.students_only ?? false,
         fromOther: !!editing.original_company_name, original_company_name: editing.original_company_name ?? '', original_company_logo_url: editing.original_company_logo_url ?? '',
       })
       if (editing.assignment) {
@@ -144,7 +144,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
         setAssignment(null)
       }
     } else {
-      setF((p) => ({ ...p, title: '', description: '', pay: '', duration: '', deadline: '', tags: '', responsibilities: [], benefits: [], qualifications: [], apply_url: '', allowed_years: [], allowed_schools: '', students_only: false, fromOther: false, original_company_name: '', country: user.country || 'Remote' }))
+      setF((p) => ({ ...p, title: '', description: '', pay: '', duration: '', deadline: '', tags: '', responsibilities: [], benefits: [], qualifications: [], apply_url: '', allowed_years: [], students_only: false, fromOther: false, original_company_name: '', country: user.country || 'Remote' }))
       setAssignment(null)
     }
   }, [editing])
@@ -318,7 +318,6 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
       status: 'active' as const,
       apply_url: f.applyMode === 'external' ? f.apply_url : null,
       allowed_years: f.allowed_years,
-      allowed_schools: f.allowed_schools.split(',').map((s) => s.trim()).filter(Boolean),
       students_only: isSchool ? f.students_only : false,
       posted_by_role: (isSchool ? 'school' : 'company') as 'school' | 'company',
       original_company_name: isSchool && f.fromOther ? f.original_company_name : undefined,
@@ -431,13 +430,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
                 <button key={y} type="button" onClick={() => toggleYear(y)} className={cn('rounded-lg border px-3 py-1.5 text-sm', f.allowed_years.includes(y) ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground')}>Year {y}</button>
               ))}
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">Leave empty to show to all years.</p>
-          </div>
-
-          <div>
-            <Label>Restrict to schools / universities (optional)</Label>
-            <Input value={f.allowed_schools} onChange={(e) => setF({ ...f, allowed_schools: e.target.value })} placeholder="e.g. University of Cape Town, National University of Singapore" />
-            <p className="mt-1 text-xs text-muted-foreground">Comma-separated. Only students from these schools will see this opportunity. Leave empty for everyone.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Leave empty to show to all years. Graduates are always eligible (they have no study year).</p>
           </div>
 
           {isSchool && (
@@ -706,8 +699,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
             <ReviewRow label="Deadline" value={f.deadline || '—'} />
             <ReviewRow label="Apply mode" value={f.applyMode === 'external' ? 'External URL' : 'In-app form'} />
             <ReviewRow label="Tags" value={f.tags || '—'} />
-            <ReviewRow label="Restrict years" value={f.allowed_years.length ? f.allowed_years.map((y) => `Year ${y}`).join(', ') : 'All'} />
-            <ReviewRow label="Schools" value={f.allowed_schools || 'All'} />
+            <ReviewRow label="Restrict years" value={f.allowed_years.length ? f.allowed_years.map((y) => `Year ${y}`).join(', ') : 'All (grads included)'} />
             {isSchool && <ReviewRow label="Audience" value={f.students_only ? 'Only my students' : (f.fromOther ? `Forwarded: ${f.original_company_name || '—'}` : 'School posting')} />}
             {assignmentAllowed && <ReviewRow label="Assessment" value={assignment?.prompt.trim() ? `${assignment.questions.length} question(s) · ${assignment.rubric.length} rubric` : 'None'} />}
           </div>
@@ -816,7 +808,6 @@ function PostingPreview({ open, onClose, f, assignment, user, isSchool }: { open
     status: 'active',
     apply_url: f.applyMode === 'external' ? f.apply_url : null,
     allowed_years: f.allowed_years,
-    allowed_schools: f.allowed_schools.split(',').map((s: string) => s.trim()).filter(Boolean),
     posted_by_role: isSchool ? 'school' : 'company',
     original_company_name: isSchool && f.fromOther ? f.original_company_name : undefined,
     original_company_logo_url: isSchool && f.fromOther ? f.original_company_logo_url : undefined,

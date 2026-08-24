@@ -252,7 +252,7 @@ export function ApplicantInbox({
                           </>
                         ) : null}
                         {a.school}
-                        {a.year ? ` · Year ${a.year}` : ''} · {formatDate(a.created_at)}
+                        {a.year ? ` · Year ${a.year}` : a.graduated ? ' · Graduate' : ''} · {formatDate(a.created_at)}
                       </p>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">

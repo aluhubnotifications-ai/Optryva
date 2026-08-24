@@ -59,6 +59,7 @@ export default function Profile() {
     school: user.school ?? '',
     major: user.major ?? '',
     year: user.year ? String(user.year) : '',
+    graduated: user.graduated ?? false,
     location: user.location ?? '',
     gpa: user.gpa ?? '',
     linkedin: user.linkedin ?? '',
@@ -86,6 +87,7 @@ export default function Profile() {
       school: form.school,
       major: form.major,
       year: form.year ? Number(form.year) : undefined,
+      graduated: form.graduated,
       location: form.location,
       gpa: form.gpa.trim() || undefined,
       linkedin: form.linkedin,
@@ -201,9 +203,14 @@ export default function Profile() {
             <div><Label>Major</Label><Input value={form.major} onChange={(e) => setForm({ ...form, major: e.target.value })} /></div>
             <div>
               <Label>Year of study</Label>
-              <Select value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })}>
+              <Select value={form.graduated ? 'grad' : form.year} onChange={(e) => {
+                const v = e.target.value
+                if (v === 'grad') setForm({ ...form, graduated: true, year: '' })
+                else setForm({ ...form, graduated: false, year: v })
+              }}>
                 <option value="">—</option>
                 {[1, 2, 3, 4].map((y) => <option key={y} value={y}>Year {y}</option>)}
+                <option value="grad">Graduate</option>
               </Select>
             </div>
             <div><Label>Location</Label><Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="City, Country" /></div>

@@ -18,6 +18,7 @@ export interface Profile {
   school?: string
   major?: string
   year?: number // 1..4 (study year), optional/global
+  graduated?: boolean // true when the student has already finished their degree (their "year" is Graduate)
   location?: string
   country?: string
   gpa?: string // free-text, any format the student likes (e.g. "3.8/4.0", "Second Class Upper")
@@ -165,6 +166,7 @@ export interface Application {
   phone?: string
   school?: string
   year?: number
+  graduated?: boolean
   linkedin?: string
   assignment_answers?: { criterion_id?: string; question_id?: string; answer: string | string[]; file_name?: string }[]
   assignment_status?: 'not_required' | 'pending' | 'submitted'

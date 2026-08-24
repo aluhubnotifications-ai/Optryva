@@ -458,7 +458,7 @@ export default function ApplicantView() {
                       <Avatar name={ja.full_name} src={ja.student_avatar_url || monogramAvatar(ja.full_name)} size={32} style={avatarRingStyle(ja.tags)} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{ja.full_name}</p>
-                        <p className="truncate text-xs text-muted-foreground">{ja.school}{ja.year ? ` · Y${ja.year}` : ''}</p>
+                        <p className="truncate text-xs text-muted-foreground">{ja.school}{ja.year ? ` · Y${ja.year}` : ja.graduated ? ' · Grad' : ''}</p>
                       </div>
                       <Badge tone={statusTone[ja.status]} className="shrink-0 capitalize text-[10px]">{ja.status === 'hired' ? 'Hired' : ja.status}</Badge>
                     </button>
@@ -504,7 +504,7 @@ export default function ApplicantView() {
               <div>
                 <h1 className="text-xl font-bold tracking-tight">{app.full_name}</h1>
                 <p className="text-sm text-muted-foreground">
-                  {app.school}{app.year ? ` · Year ${app.year}` : ''} · Submitted {formatDate(app.created_at)}
+                  {app.school}{app.year ? ` · Year ${app.year}` : app.graduated ? ' · Graduate' : ''} · Submitted {formatDate(app.created_at)}
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   {app.match_score != null && <Badge tone={band(app.match_score)} className="gap-1"><Sparkles className="h-3 w-3" /> {app.match_score} match</Badge>}
@@ -546,7 +546,7 @@ export default function ApplicantView() {
                 <h2 className="font-semibold">Contact</h2>
                 <Info icon={Mail} value={app.email} />
                 {app.phone && <Info icon={Phone} value={app.phone} />}
-                <Info icon={GraduationCap} value={`${app.school ?? '—'}${app.year ? ` · Year ${app.year}` : ''}`} />
+                <Info icon={GraduationCap} value={`${app.school ?? '—'}${app.year ? ` · Year ${app.year}` : app.graduated ? ' · Graduate' : ''}`} />
                 {app.linkedin && <Info icon={Link2} value={app.linkedin} link />}
                 {app.student_skills && app.student_skills.length > 0 && (
                   <div>
@@ -973,7 +973,7 @@ export default function ApplicantView() {
 								<div className="min-w-0">
 									<p className="text-sm font-semibold">{app.full_name}</p>
 									<p className="text-xs text-muted-foreground">
-										{app.school ?? ''}{app.year ? ` · Y${app.year}` : ''}
+										{app.school ?? ''}{app.year ? ` · Y${app.year}` : app.graduated ? ' · Grad' : ''}
 									</p>
 								</div>
 							</div>
