@@ -1375,4 +1375,7 @@ export const evidenceApi = {
   async setUsedIn(id: string, usedIn: string[]): Promise<EvidenceItem> {
     return (await apiFetch(`/evidence/${id}/used-in`, { method: 'POST', body: JSON.stringify({ used_in: usedIn }) })) as EvidenceItem
   },
+  async summary(studentId: string): Promise<{ summary: string }> {
+    return (await apiFetch(`/evidence/student/${studentId}/summary`)) as { summary: string }
+  },
 }

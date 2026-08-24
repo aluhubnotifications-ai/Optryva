@@ -31,7 +31,7 @@ import {
   Trash2,
   type LucideIcon,
 } from 'lucide-react'
-import { applicationsApi, jobsApi, messagesApi, type SmartShortlistCandidate } from '@/lib/api'
+import { applicationsApi, jobsApi, messagesApi, evidenceApi, type SmartShortlistCandidate } from '@/lib/api'
 import { useCompanyData } from '@/lib/companyData'
 import { useCurrentUser } from '@/lib/store'
 import type { Application, ApplicationStatus, JobListing, Message } from '@/types'
@@ -45,7 +45,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs'
 import { Modal } from '@/components/ui/Modal'
 import { JobPostingView } from '@/components/JobPostingView'
 import { ShowYourWork } from '@/components/ShowYourWork'
-import { EvidenceGallery } from '@/components/EvidenceGallery'
+import { EmployerEvidenceSummary } from '@/components/EmployerEvidenceSummary'
 import { useToast } from '@/components/ui/toast'
 import { cn, daysUntil, formatDate } from '@/lib/utils'
 
@@ -677,10 +677,10 @@ export default function ApplicantView() {
            </SectionCard>
          </TabsContent>
 
-          {/* Evidence — reviewer verifies the candidate's proof */}
-          <TabsContent value="evidence" className="space-y-5">
-            <EvidenceGallery studentId={app.student_id} mode="viewer" />
-          </TabsContent>
+           {/* Evidence — employers see an AI summary, with a path to the full gallery */}
+           <TabsContent value="evidence" className="space-y-5">
+             <EmployerEvidenceSummary studentId={app.student_id} />
+           </TabsContent>
 
         {/* Assessment */}
         {hasAssignment && (

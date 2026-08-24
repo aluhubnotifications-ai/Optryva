@@ -4,6 +4,7 @@ import { ArrowLeft, MapPin, GraduationCap, Building2, Mail, Linkedin, Github, Gl
 import { profilesApi } from '@/lib/api'
 import type { Profile } from '@/types'
 import { Card, CardBody, Badge, Avatar, Skeleton } from '@/components/ui/primitives'
+import { EvidenceGallery } from '@/components/EvidenceGallery'
 import { formatDate } from '@/lib/utils'
 
 /** Read-only profile view for ANY user by id (student / company / school).
@@ -118,6 +119,13 @@ export default function UserProfile() {
           </div>
         </CardBody>
       </Card>
+
+      {/* Evidence gallery — reviewers land here from the employer AI summary */}
+      {!isOrg && (
+        <div className="mt-5">
+          <EvidenceGallery studentId={p.id} mode="viewer" />
+        </div>
+      )}
     </div>
   )
 }

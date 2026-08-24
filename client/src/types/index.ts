@@ -14,6 +14,7 @@ export interface Profile {
   avatar_url?: string
   cover_url?: string
   bio?: string
+  evidence_summary?: string | null
   // student
   school?: string
   major?: string

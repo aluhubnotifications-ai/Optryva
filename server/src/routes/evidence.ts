@@ -167,6 +167,47 @@ async function summarizeEvidence(title: string, content: string): Promise<string
   return mistralText({ system: sys, user, maxTokens: 300 })
 }
 
+// Build a candidate-level AI summary of ALL a student's evidence — what they've
+// actually done — for employers to read instead of scrolling raw gallery images.
+async function buildCandidateSummary(studentId: string): Promise<string | null> {
+  if (!hasMistral()) return null
+  const items = (await sb.from('evidence_items')
+    .select('title,description,ai_summary,confirmed_skills,status')
+    .eq('student_id', studentId)
+    .order('created_at', { ascending: false })).data as
+    | { title: string; description: string | null; ai_summary: string | null; confirmed_skills: string[]; status: string }[]
+    | null
+  if (!items || items.length === 0) return 'No evidence submitted yet.'
+  const bullets = items
+    .map((it, i) => {
+      const skills = (it.confirmed_skills ?? []).join(', ')
+      const detail = it.ai_summary || it.description || ''
+      return `${i + 1}. ${it.title} [${it.status}]${skills ? ` — skills: ${skills}` : ''}\n   ${detail}`
+    })
+    .join('\n')
+  const sys =
+    'You are writing an evidence summary for an employer reviewing a student ' +
+    'candidate on a hiring platform. Based on the candidate\'s evidence items ' +
+    'below, write a clear, substantive summary of what the candidate has actually ' +
+    'done. Start with a short overall paragraph (2-3 sentences) capturing their ' +
+    'main strengths and themes, then explain EACH evidence item in a bullet, ' +
+    'describing what they did and produced and why it matters. Be specific and ' +
+    'grounded in the provided details; do not invent. Use plain language an ' +
+    'employer would understand.'
+  return mistralText({ system: sys, user: `Candidate evidence:\n${bullets}`, maxTokens: 800 })
+}
+
+// Recompute and persist the candidate summary on the student's profile so it
+// stays fresh and can be served cheaply to employers.
+async function refreshCandidateSummary(studentId: string) {
+  try {
+    const summary = await buildCandidateSummary(studentId)
+    if (summary) await sb.from('profiles').update({ evidence_summary: summary }).eq('id', studentId)
+  } catch {
+    /* non-fatal */
+  }
+}
+
 // Keep the student's real `student_skills` in sync with confirmed evidence so
 // approved evidence actually supports résumé matching. Verified evidence marks
 // the skill verified; otherwise it's a normal student skill.
@@ -210,6 +251,21 @@ evidence.get('/student/:studentId', async (req, res) => {
     await sb.from('evidence_items').select('*').eq('student_id', req.params.studentId).order('created_at', { ascending: false }),
   ) as EvidenceRow[]
   res.json(rows)
+})
+
+// Candidate-level AI summary for employers. Returns the cached profile summary,
+// generating + storing it on first request if missing.
+evidence.get('/student/:studentId/summary', async (req, res) => {
+  const studentId = req.params.studentId
+  const profile = (await sb.from('profiles').select('evidence_summary').eq('id', studentId).maybeSingle()).data as
+    | { evidence_summary: string | null }
+    | null
+  let summary = profile?.evidence_summary ?? null
+  if (!summary) {
+    summary = await buildCandidateSummary(studentId)
+    if (summary) await sb.from('profiles').update({ evidence_summary: summary }).eq('id', studentId)
+  }
+  res.json({ summary: summary ?? 'No evidence submitted yet.' })
 })
 
 evidence.post('/', async (req, res) => {
@@ -338,6 +394,7 @@ evidence.post('/:id/confirm', async (req, res) => {
       .single(),
   ) as EvidenceRow
   await syncSkills(row.student_id, confirmed, updated.status === 'verified')
+  await refreshCandidateSummary(row.student_id)
   res.json(updated)
 })
 
@@ -369,6 +426,7 @@ evidence.post('/:id/verify', async (req, res) => {
       .single(),
   ) as EvidenceRow
   await syncSkills(row.student_id, updated.confirmed_skills, updated.status === 'verified' || updated.status === 'supervisor_verified' || updated.status === 'employer_verified')
+  await refreshCandidateSummary(row.student_id)
   res.json(updated)
 })
 
