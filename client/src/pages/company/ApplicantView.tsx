@@ -425,7 +425,7 @@ export default function ApplicantView() {
   const listingDeadline = job ? daysUntil(job.deadline) : null
 
   return (
-    <div className="mx-auto max-w-[1400px]">
+    <div className="mx-auto max-w-[1500px]">
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
@@ -436,7 +436,7 @@ export default function ApplicantView() {
         </button>
       </div>
 
-      <div className="mt-4 grid gap-5 lg:grid-cols-[240px_minmax(0,1fr)_320px]">
+      <div className="mt-4 grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)_320px]">
         {/* Sidebar: other applicants for this job — jump straight to any of them */}
         <aside className="lg:sticky lg:top-[7.5rem] lg:h-[calc(100vh-9rem)]">
           <Card className="h-full">
