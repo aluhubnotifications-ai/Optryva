@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -212,6 +212,10 @@ function CountrySelect() {
   const { country, setCountry } = useGeo()
   const stats = useCountryStats((s) => s.stats)
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [highlight, setHighlight] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
   // Merge the fixed country list with any custom country a company/school typed
   // on a listing — so students can still research those jobs by country.
   const customCountries = Object.keys(stats)
@@ -219,8 +223,59 @@ function CountrySelect() {
     .map((name) => ({ code: name.slice(0, 2).toLowerCase(), name, flag: '🌍' }))
   const allCountries = [...COUNTRIES, ...customCountries]
   const current = allCountries.find((c) => c.name === country) ?? allCountries[0]
+
+  const q = query.trim().toLowerCase()
+  const filtered = q
+    ? allCountries.filter((c) => c.name.toLowerCase().includes(q))
+    : allCountries
+  const exact = allCountries.some((c) => c.name.toLowerCase() === q)
+  const canUseCustom = q.length > 0 && !exact
+  const optionCount = filtered.length + (canUseCustom ? 1 : 0)
+
+  useEffect(() => {
+    if (open) {
+      setQuery('')
+      setHighlight(0)
+      // focus the search box once the popover mounts
+      requestAnimationFrame(() => inputRef.current?.focus())
+    }
+  }, [open])
+
+  useEffect(() => {
+    setHighlight(0)
+  }, [query])
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [])
+
+  function choose(name: string) {
+    setCountry(name)
+    setOpen(false)
+  }
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setHighlight((h) => Math.min(h + 1, optionCount - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setHighlight((h) => Math.max(h - 1, 0))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      if (canUseCustom && highlight === filtered.length) choose(query.trim())
+      else if (filtered[highlight]) choose(filtered[highlight].name)
+    } else if (e.key === 'Escape') {
+      setOpen(false)
+    }
+  }
+
   return (
-    <div className="relative">
+    <div className="relative" ref={wrapRef}>
       <button
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1.5 text-sm font-medium hover:bg-muted"
@@ -237,41 +292,66 @@ function CountrySelect() {
               initial={{ opacity: 0, y: -6, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -6, scale: 0.97 }}
-              className="absolute right-0 z-20 mt-2 max-h-80 w-60 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-card"
+              className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-border bg-card p-2 shadow-card"
             >
-              <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Browse by country
-              </p>
-              {allCountries.map((c) => {
-                const st = stats[c.name]
-                const hasIntern = (st?.internships ?? 0) > 0
-                const active = c.name === country
-                return (
+              <div className="relative mb-1">
+                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  ref={inputRef}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  placeholder="Search or type a country"
+                  className="w-full rounded-lg border border-border bg-card py-1.5 pl-8 pr-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                />
+              </div>
+              <div className="max-h-72 overflow-y-auto">
+                {filtered.length === 0 && !canUseCustom && (
+                  <p className="px-3 py-2 text-sm text-muted-foreground">No countries match.</p>
+                )}
+                {filtered.map((c, i) => {
+                  const st = stats[c.name]
+                  const hasIntern = (st?.internships ?? 0) > 0
+                  const active = c.name === country
+                  return (
+                    <button
+                      key={c.code}
+                      onClick={() => choose(c.name)}
+                      onMouseEnter={() => setHighlight(i)}
+                      className={cn(
+                        'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm hover:bg-muted',
+                        i === highlight && 'bg-muted',
+                        active && 'bg-primary/10 text-primary',
+                        hasIntern && !active && 'ring-1 ring-inset ring-accent/30',
+                      )}
+                    >
+                      <CountryFlag c={c} />
+                      <span className="flex-1 text-left">{c.name}</span>
+                      {hasIntern && (
+                        <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
+                          Intern
+                        </span>
+                      )}
+                      {st && st.total > 0 && (
+                        <span className="text-xs tabular-nums text-muted-foreground">{st.total}</span>
+                      )}
+                    </button>
+                  )
+                })}
+                {canUseCustom && (
                   <button
-                    key={c.code}
-                    onClick={() => {
-                      setCountry(c.name)
-                      setOpen(false)
-                    }}
+                    onClick={() => choose(query.trim())}
+                    onMouseEnter={() => setHighlight(filtered.length)}
                     className={cn(
                       'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm hover:bg-muted',
-                      active && 'bg-primary/10 text-primary',
-                      hasIntern && !active && 'ring-1 ring-inset ring-accent/30',
+                      highlight === filtered.length && 'bg-muted',
                     )}
                   >
-                    <CountryFlag c={c} />
-                    <span className="flex-1 text-left">{c.name}</span>
-                    {hasIntern && (
-                      <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
-                        Intern
-                      </span>
-                    )}
-                    {st && st.total > 0 && (
-                      <span className="text-xs tabular-nums text-muted-foreground">{st.total}</span>
-                    )}
+                    <Search className="h-4 w-4 text-muted-foreground" />
+                    <span className="flex-1 text-left">Use &ldquo;{query.trim()}&rdquo;</span>
                   </button>
-                )
-              })}
+                )}
+              </div>
             </motion.div>
           </>
         )}
