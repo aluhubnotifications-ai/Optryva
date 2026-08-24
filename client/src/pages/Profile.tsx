@@ -17,8 +17,11 @@ import {
   Camera,
   Eye,
   MapPin,
+  Compass,
+  CheckCircle2,
+  Circle,
 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { useMatchRun } from '@/lib/matchRun'
 import { fetchProtectedDocument, profilesApi } from '@/lib/api'
@@ -176,8 +179,21 @@ export default function Profile() {
     setCountryInput('')
   }
 
+  const studentChecklist = [
+    { label: 'Full name', done: !!form.full_name.trim() },
+    { label: 'Bio', done: !!form.bio.trim() },
+    { label: 'School & major', done: !!(form.school.trim() && form.major.trim()) },
+    { label: 'Location', done: !!form.location.trim() },
+    { label: 'A link (LinkedIn/GitHub)', done: !!(form.linkedin.trim() || form.github.trim() || form.website.trim()) },
+    { label: 'CV / résumé', done: !!user.cv_url },
+  ]
+  const sDone = studentChecklist.filter((c) => c.done).length
+  const sPct = Math.round((sDone / studentChecklist.length) * 100)
+
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="mx-auto max-w-6xl">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="space-y-5">
       {/* Header */}
       <Card>
         <CardBody className="flex flex-wrap items-center gap-4">
@@ -361,6 +377,72 @@ export default function Profile() {
           </Button>
         </div>
       </Modal>
+        </div>
+
+        <aside className="space-y-5 lg:sticky lg:top-6 self-start">
+          {/* Quick actions */}
+          <Card>
+            <CardBody className="space-y-2">
+              <h2 className="font-semibold">Quick actions</h2>
+              <Link to="/app/jobs" className="flex items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+                <Briefcase className="h-4 w-4" /> Browse opportunities
+              </Link>
+              <Link to="/app/research" className="flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted">
+                <Compass className="h-4 w-4" /> Research roles
+              </Link>
+              <Link to="/app/applications" className="flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted">
+                <FileText className="h-4 w-4" /> My applications
+              </Link>
+              <Link to={`/app/u/${user.id}`} className="flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted">
+                <User className="h-4 w-4" /> View public profile
+              </Link>
+            </CardBody>
+          </Card>
+
+          {/* Profile completeness */}
+          <Card>
+            <CardBody className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold">Profile completeness</h2>
+                <span className="text-sm font-medium text-muted-foreground">{sPct}%</span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${sPct}%` }} />
+              </div>
+              <ul className="space-y-1.5 text-sm">
+                {studentChecklist.map((c) => (
+                  <li key={c.label} className="flex items-center gap-2">
+                    {c.done ? (
+                      <CheckCircle2 className="h-4 w-4 text-accent" />
+                    ) : (
+                      <Circle className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <span className={c.done ? 'text-foreground' : 'text-muted-foreground'}>{c.label}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-muted-foreground">A complete profile gets you better AI matches.</p>
+            </CardBody>
+          </Card>
+
+          {/* Plan */}
+          <Card>
+            <CardBody className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Crown className="h-5 w-5 text-primary" />
+                <h2 className="font-semibold">Plan</h2>
+              </div>
+              <Badge tone="primary" className="gap-1">
+                <Crown className="h-3 w-3" /> {user.plan.toUpperCase()} plan
+              </Badge>
+              <p className="text-sm text-muted-foreground">Manage seats, billing and upgrade your plan.</p>
+              <Link to="/app/usage" className="flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted">
+                Manage plan
+              </Link>
+            </CardBody>
+          </Card>
+        </aside>
+      </div>
     </div>
   )
 }
