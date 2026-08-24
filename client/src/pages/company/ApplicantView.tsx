@@ -44,6 +44,7 @@ import { DocumentList } from '@/components/DocumentList'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs'
 import { Modal } from '@/components/ui/Modal'
 import { JobPostingView } from '@/components/JobPostingView'
+import { ShowYourWork } from '@/components/ShowYourWork'
 import { useToast } from '@/components/ui/toast'
 import { cn, daysUntil, formatDate } from '@/lib/utils'
 
@@ -781,6 +782,21 @@ export default function ApplicantView() {
                 <p className="text-muted-foreground"><span className="font-medium text-foreground">Why this fit:</span> {app.match_rationale}</p>
               </div>
             )}
+
+            <ShowYourWork
+              employerScore={app.match_score}
+              rationale={app.match_rationale}
+              verdict={shortlistCand?.verdict ?? null}
+              category={shortlistCand?.category ?? null}
+              assessment={
+                app.assignment_status === 'submitted'
+                  ? `${app.assignment_score ?? '—'}/100`
+                  : app.assignment_status === 'pending'
+                    ? 'pending (assigned, not completed)'
+                    : 'not required for this role'
+              }
+              decisionNote={app.decision_reason ?? null}
+            />
 
             {app.resume_snapshot && (
               <div className="mt-3 rounded-lg border border-border bg-muted/30 p-3 text-sm">
