@@ -21,7 +21,7 @@ type EvidenceRow = {
   used_in: string[]
   extracted_skills: string[]
   confirmed_skills: string[]
-  status: 'self_reported' | 'student_approved' | 'verified'
+  status: 'self_reported' | 'ai_analyzed' | 'student_approved' | 'supervisor_verified' | 'employer_verified' | 'verified'
   verified_by: string | null
   verified_at: string | null
   verification_requested: boolean
@@ -33,10 +33,12 @@ async function extractEvidenceSkills(text: string): Promise<string[]> {
   if (!hasMistral()) return []
   const sys =
     'You are a skills extractor for a student portfolio. Given a description of ' +
-    'work (and optionally a project/GitHub URL), return ONLY a JSON array of short, ' +
-    'concrete skill or competency strings (e.g. "Python", "Data cleaning", ' +
-    '"Stakeholder communication"). No explanations, no objects — just a JSON array ' +
-    'of strings. If nothing concrete is present, return [].'
+    'work and/or text pulled from linked web pages (project pages, portfolios, ' +
+    'GitHub repos, articles), return ONLY a JSON array of short, concrete skill or ' +
+    'competency strings (e.g. "Python", "Data cleaning", "Stakeholder communication"). ' +
+    'Base skills on the actual content provided, not the URLs themselves. No ' +
+    'explanations, no objects — just a JSON array of strings. If nothing concrete ' +
+    'is present, return [].'
   const out = await mistralText({ system: sys, user: text, maxTokens: 400 })
   if (!out) return []
   try {
@@ -55,6 +57,46 @@ async function extractEvidenceSkills(text: string): Promise<string[]> {
     }
   }
   return []
+}
+
+// Lightweight in-process page fetcher — the Crawl4AI-equivalent step for our
+// Node/Workers runtime. Fetch a public URL and return clean, AI-ready text
+// (title + meta description + body). For JS-heavy sites a Crawl4AI/Playwright
+// sidecar can be added later; user-submitted URLs stay the default source.
+async function fetchLinkText(url: string): Promise<string | null> {
+  try {
+    const resp = await fetch(url, {
+      signal: AbortSignal.timeout(8000),
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'OptryvaBot/1.0 (+https://optryva.aluhub-notifications.workers.dev)',
+        Accept: 'text/html,application/xhtml+xml,text/plain',
+      },
+    })
+    if (!resp.ok) return null
+    const ct = resp.headers.get('content-type') ?? ''
+    if (!/text\/(html|plain)|application\/xhtml/.test(ct)) return null
+    const raw = await resp.text()
+    if (raw.length > 500_000) return null
+    const title = raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim() ?? ''
+    const desc =
+      raw.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1]?.trim() ??
+      raw.match(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["']/i)?.[1]?.trim() ??
+      ''
+    const body = raw
+      .replace(/<!--[\s\S]*?-->/g, ' ')
+      .replace(/<(script|style|noscript)[\s\S]*?<\/\1>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 6000)
+    const cleaned = [title, desc, body].filter(Boolean).join('\n').slice(0, 7000).trim()
+    return cleaned || null
+  } catch {
+    return null
+  }
 }
 
 // Keep the student's real `student_skills` in sync with confirmed evidence so
@@ -147,8 +189,18 @@ evidence.post('/:id/extract', async (req, res) => {
     | EvidenceRow
     | null
   if (!row) return res.status(404).json({ error: 'not_found' })
-  const text = [row.title, row.description, (row.links ?? []).join('\n')].filter(Boolean).join('\n')
-  const skills = await extractEvidenceSkills(text)
+  const links = row.links ?? []
+  const linkBlocks: string[] = []
+  for (const link of links.slice(0, 4)) {
+    const content = await fetchLinkText(link)
+    if (content) linkBlocks.push(`Linked page (${link}):\n${content}`)
+  }
+  const text = [
+    row.title ? `Title: ${row.title}` : '',
+    row.description ? `Description: ${row.description}` : '',
+    ...linkBlocks,
+  ].filter(Boolean).join('\n\n')
+  const skills = await extractEvidenceSkills(text || links.join('\n'))
   // Mark the item as AI-analyzed so the gallery can show that step in the flow.
   const status = row.status === 'self_reported' ? 'ai_analyzed' : row.status
   const updated = must(
