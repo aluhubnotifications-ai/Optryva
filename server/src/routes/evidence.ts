@@ -333,3 +333,66 @@ evidence.get('/:id/comments', async (req, res) => {
   ) as Array<{ id: string; evidence_id: string; user_id: string; content: string; created_at: string; updated_at: string }>
   res.json(comments)
 })
+
+// ---------------------------------------------------------------------------
+// Evidence chatbot — an AI assistant grounded in this candidate's evidence.
+// Employers ask "is this true?" / "where is the proof?" and get honest,
+// source-based answers plus suggestions for what to request next.
+// ---------------------------------------------------------------------------
+
+type ChatMsg = { id: string; role: 'employer' | 'ai'; content: string; created_at: string }
+
+evidence.get('/student/:studentId/chat', async (req, res) => {
+  const msgs = must(
+    await sb.from('evidence_chat_messages')
+      .select('id,role,content,created_at')
+      .eq('user_id', req.user!.id)
+      .eq('student_id', req.params.studentId)
+      .order('created_at', { ascending: true })
+      .limit(100),
+  ) as ChatMsg[]
+  res.json(msgs)
+})
+
+evidence.post('/student/:studentId/chat', async (req, res) => {
+  const b = req.body ?? {}
+  const question = String(b.content ?? '').trim()
+  if (!question) return res.status(400).json({ error: 'content_required' })
+  const studentId = req.params.studentId
+
+  const userMsg = must(
+    await sb.from('evidence_chat_messages').insert({
+      id: uid('ch'),
+      student_id: studentId,
+      user_id: req.user!.id,
+      role: 'employer',
+      content: question,
+    }).select('id,role,content,created_at').single(),
+  ) as ChatMsg
+
+  // Grounding context: every item incl. what AI extracted from its sources + links.
+  const items = (await sb.from('evidence_items')
+    .select('title,description,ai_summary,confirmed_skills,status,links,url')
+    .eq('student_id', studentId)
+    .order('created_at', { ascending: false })).data as CandidateEvidenceItem[] | null
+
+  let answer: string | null = null
+  try {
+    answer = await extractionClient.ask(question, items ?? [])
+  } catch {
+    answer = null
+  }
+  if (!answer) answer = 'Sorry — I could not analyse the evidence right now. Please try again in a moment.'
+
+  const aiMsg = must(
+    await sb.from('evidence_chat_messages').insert({
+      id: uid('ch'),
+      student_id: studentId,
+      user_id: req.user!.id,
+      role: 'ai',
+      content: answer,
+    }).select('id,role,content,created_at').single(),
+  ) as ChatMsg
+
+  res.json([userMsg, aiMsg])
+})

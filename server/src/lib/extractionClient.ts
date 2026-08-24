@@ -6,22 +6,23 @@
 import { hasMistral } from '@/lib/mistral'
 import type { CandidateEvidenceItem } from '@/lib/extraction'
 
-const EXTRACTION_URL = process.env.EXTRACTION_WORKER_URL
-const EXTRACTION_TOKEN = process.env.EXTRACTION_WORKER_TOKEN
+const EXTRACTION_URL = (process.env.EXTRACTION_WORKER_URL ?? '').trim().replace(/\/+$/, '')
+const EXTRACTION_TOKEN = (process.env.EXTRACTION_WORKER_TOKEN ?? '').trim()
 
 async function call<T>(path: string, body: unknown): Promise<T | null> {
   if (!EXTRACTION_URL || !EXTRACTION_TOKEN) {
     console.warn('[extractionClient] EXTRACTION_WORKER_URL/TOKEN not configured')
     return null
   }
-  const r = await fetch(`${EXTRACTION_URL}${path}`, {
+  const target = `${EXTRACTION_URL}${path}`
+  const r = await fetch(target, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${EXTRACTION_TOKEN}` },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(90_000),
   })
   if (!r.ok) {
-    console.error(`[extractionClient] ${path} -> ${r.status}`)
+    console.error(`[extractionClient] ${target} -> ${r.status}`)
     return null
   }
   return (await r.json()) as T
@@ -45,6 +46,9 @@ export const extractionClient = {
   },
   candidateSummary(items: CandidateEvidenceItem[]) {
     return call<{ summary: string | null }>('/candidate-summary', { items }).then((x) => x?.summary ?? null)
+  },
+  ask(question: string, items: CandidateEvidenceItem[]) {
+    return call<{ answer: string | null }>('/ask', { question, items }).then((x) => x?.answer ?? null)
   },
 }
 

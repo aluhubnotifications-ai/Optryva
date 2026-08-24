@@ -6,6 +6,7 @@ import {
   pdfText,
   delegateFile,
   buildCandidateSummary,
+  answerQuestion,
   type CandidateEvidenceItem,
 } from '@/lib/extraction'
 
@@ -67,6 +68,14 @@ app.post('/candidate-summary', async (req, res) => {
   if (!Array.isArray(items)) return res.status(400).json({ error: 'items array required' })
   const summary = await buildCandidateSummary(items as CandidateEvidenceItem[])
   res.json({ summary: summary ?? null })
+})
+
+app.post('/ask', async (req, res) => {
+  const { question, items } = req.body ?? {}
+  if (!question || typeof question !== 'string') return res.status(400).json({ error: 'question required' })
+  if (!Array.isArray(items)) return res.status(400).json({ error: 'items array required' })
+  const answer = await answerQuestion(question, items as CandidateEvidenceItem[])
+  res.json({ answer: answer ?? null })
 })
 
 // Health check (public).

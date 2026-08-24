@@ -160,3 +160,46 @@ export async function buildCandidateSummary(items: CandidateEvidenceItem[]): Pro
     'Markdown: bold for titles (**Title:**), "- " for bullets. Keep concise.'
   return mistralText({ system: sys, user: `Candidate evidence:\n${bullets}`, maxTokens: 900 })
 }
+
+// ---------------------------------------------------------------------------
+// 7) Evidence chatbot: answer an employer's question grounded ONLY in the
+//    candidate's actual evidence (files/links AI already read + descriptions).
+// ---------------------------------------------------------------------------
+export async function answerQuestion(
+  question: string,
+  items: CandidateEvidenceItem[],
+): Promise<string | null> {
+  if (!hasMistral()) return null
+  const context = items && items.length > 0
+    ? items
+        .map((it, i) => {
+          const skills = (it.confirmed_skills ?? []).join(', ')
+          const detail = it.ai_summary || it.description || ''
+          const links = (it as { links?: string[] }).links ?? []
+          const linkLine = links.length ? `\n   Links provided by student: ${links.join(', ')}` : ''
+          return `${i + 1}. "${it.title}" [verification status: ${it.status}]${skills ? ` — skills: ${skills}` : ''}\n   What the AI extracted from the source: ${detail || '(no extractable content)'}${linkLine}`
+        })
+        .join('\n\n')
+    : '(No evidence items found.)'
+  const sys =
+    'You are Optryva\'s evidence-verification assistant helping an employer ' +
+    'interview a student candidate\'s portfolio. The employer asks questions ' +
+    'like "Is this true?", "Where is the proof?", "What exactly did they do?", ' +
+    '"Does anything look inconsistent?".\n\n' +
+    'Rules:\n' +
+    '- Ground EVERY answer strictly in the evidence context below (what AI ' +
+    'extracted from their files and linked pages). Never invent facts.\n' +
+    '- Be honest about limits of verification: self-reported or unverified ' +
+    'items are claims, not proof. Say so plainly when relevant.\n' +
+    '- If the evidence does NOT answer the question, say what is missing and ' +
+    'which specific link, file, or document the employer should request (e.g. ' +
+    '"ask for the live dashboard URL" or "request the published policy brief PDF").\n' +
+    '- Reference evidence items by number/title when pointing at proof.\n' +
+    '- Keep answers concise and skimmable (short paragraphs or a few bullets). ' +
+    'Professional tone, addressed to the recruiter.'
+  return mistralText({
+    system: sys,
+    user: `CANDIDATE EVIDENCE CONTEXT:\n${context}\n\nEMPLOYER QUESTION: ${question}`,
+    maxTokens: 700,
+  })
+}
