@@ -5,6 +5,7 @@ import {
   GraduationCap,
   Link2,
   FileText,
+  Images,
   Upload,
   Sparkles,
   Crown,
@@ -52,9 +53,9 @@ export default function Profile() {
   const [confirmRemoveCv, setConfirmRemoveCv] = useState(false)
   const [tab, setTab] = useState<'profile' | 'resumes' | 'gallery'>('profile')
   const TABS = [
-    { id: 'profile', label: 'Profile' },
-    { id: 'resumes', label: 'Résumés' },
-    { id: 'gallery', label: 'Gallery' },
+    { id: 'profile', label: 'Profile', Icon: User },
+    { id: 'resumes', label: 'Résumés', Icon: FileText },
+    { id: 'gallery', label: 'Gallery', Icon: Images },
   ] as const
 
   async function changePicture(avatar_url: string) {
@@ -242,16 +243,23 @@ export default function Profile() {
       </Card>
 
       {/* Tabs */}
-      <div className="mb-5 mt-5 flex gap-1 rounded-lg bg-muted p-1 text-sm">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={cn('flex-1 rounded-md px-3 py-1.5 font-medium transition-colors', tab === t.id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="mb-5 mt-5 flex gap-1 rounded-xl border border-border bg-muted/60 p-1 text-sm">
+        {TABS.map((t) => {
+          const active = tab === t.id
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={cn(
+                'flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 font-medium transition-all',
+                active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-background/60 hover:text-foreground',
+              )}
+            >
+              <t.Icon className={cn('h-4 w-4', active ? 'text-primary' : '')} />
+              {t.label}
+            </button>
+          )
+        })}
       </div>
 
       {tab === 'profile' && (
