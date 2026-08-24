@@ -50,6 +50,7 @@ export default function ApplicationDetail() {
 	const [confirmDelete, setConfirmDelete] = useState(false);
 	const [tab, setTab] = useState("overview");
 	const [attemptIdx, setAttemptIdx] = useState<number | null>(null);
+	const [showAllTimeline, setShowAllTimeline] = useState(false);
 
 	useEffect(() => {
 		(async () => {
@@ -464,48 +465,64 @@ export default function ApplicationDetail() {
 
 				<TabsContent value="overview">
 					<Card>
-						<CardBody>
-							<h2 className="mb-4 font-semibold">Timeline</h2>
-							<ol className="space-y-4">
-								{app.timeline.map((t, i) => (
-									<li key={i} className="flex gap-3">
-										<div className="flex flex-col items-center">
-											<div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/12 text-primary">
-												<CheckCircle2 className="h-4 w-4" />
-											</div>
-											{i < app.timeline.length - 1 && (
-												<div className="my-1 w-0.5 flex-1 bg-border" />
-											)}
-										</div>
-										<div className="pb-1">
-											<p className="text-sm font-medium capitalize">
-												{t.status === "applied"
-													? "Application submitted"
-													: t.status === "test_return"
-														? "Test attempt returned"
-														: t.status === "test_submitted"
-															? t.late
-																? "Test submitted (late)"
-																: "Test submitted"
-															: `Moved to ${t.status}`}
-											</p>
-											<p className="flex items-center gap-1 text-xs text-muted-foreground">
-												<Clock className="h-3 w-3" /> {timeAgo(t.at)}
-											</p>
-										</div>
-									</li>
-								))}
-							</ol>
+					<CardBody>
+						{app.cover_note && (
+							<div className="mb-6">
+								<h3 className="mb-2 font-semibold">Your cover note</h3>
+								<p className="text-sm leading-relaxed text-muted-foreground">
+									{app.cover_note}
+								</p>
+							</div>
+						)}
 
-							{app.cover_note && (
-								<div className="mt-6 border-t border-border pt-4">
-									<h3 className="mb-2 font-semibold">Your cover note</h3>
-									<p className="text-sm leading-relaxed text-muted-foreground">
-										{app.cover_note}
-									</p>
-								</div>
-							)}
-						</CardBody>
+						<h2 className="mb-4 font-semibold">Timeline</h2>
+						{app.timeline.length === 0 ? (
+							<p className="text-sm text-muted-foreground">No activity yet.</p>
+						) : (
+							<>
+								<ol className="space-y-4">
+									{(showAllTimeline ? app.timeline : app.timeline.slice(0, 6)).map((t, i, list) => (
+										<li key={i} className="flex gap-3">
+											<div className="flex flex-col items-center">
+												<div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/12 text-primary">
+													<CheckCircle2 className="h-4 w-4" />
+												</div>
+												{i < list.length - 1 && (
+													<div className="my-1 w-0.5 flex-1 bg-border" />
+												)}
+											</div>
+											<div className="pb-1">
+												<p className="text-sm font-medium capitalize">
+													{t.status === "applied"
+														? "Application submitted"
+														: t.status === "test_return"
+															? "Test attempt returned"
+															: t.status === "test_submitted"
+																? t.late
+																	? "Test submitted (late)"
+																	: "Test submitted"
+																: `Moved to ${t.status}`}
+												</p>
+												<p className="flex items-center gap-1 text-xs text-muted-foreground">
+													<Clock className="h-3 w-3" /> {timeAgo(t.at)}
+												</p>
+											</div>
+										</li>
+									))}
+								</ol>
+								{app.timeline.length > 6 && (
+									<Button
+										variant="ghost"
+										size="sm"
+										className="mt-3"
+										onClick={() => setShowAllTimeline((v) => !v)}
+									>
+										{showAllTimeline ? "Show less" : `Show all ${app.timeline.length} events`}
+									</Button>
+								)}
+							</>
+						)}
+					</CardBody>
 					</Card>
 				</TabsContent>
 
