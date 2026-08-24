@@ -306,6 +306,14 @@ export const jobsApi = {
   async rescoreShortlist(jobId: string): Promise<SmartShortlistResponse> {
     return (await apiFetch(`/jobs/${jobId}/shortlist/rescore`, { method: 'POST' })) as SmartShortlistResponse
   },
+  // Employer AI research: free-form question about one candidate (candidateId) or
+  // the whole applicant pipeline for a job.
+  async research(jobId: string, question: string, candidateId?: string): Promise<{ answer: string }> {
+    return (await apiFetch(`/jobs/${jobId}/research`, {
+      method: 'POST',
+      body: JSON.stringify({ question, candidateId }),
+    })) as { answer: string }
+  },
 }
 
 export interface SmartShortlistCandidate {

@@ -35,6 +35,7 @@ import type { Application, ApplicationStatus, JobListing, Message } from '@/type
 import { VIOLATION_LABEL } from '@/components/ProctorMonitor'
 import { Card, CardBody, Badge, Avatar, Label, Textarea, Input } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
+import { EmployerResearchPanel } from '@/components/EmployerResearchPanel'
 import { AppProgressSteps } from '@/components/AppProgressSteps'
 import { DocumentList } from '@/components/DocumentList'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs'
@@ -916,9 +917,13 @@ export default function ApplicantView() {
                 <p className="text-xs text-muted-foreground">Last updated {formatDate(app.decided_at)} · {decidedByMe ? 'by you' : 'by a reviewer'}{app.decision_reason ? ' · reason on file' : ''}</p>
               )}
             </div>
-          </SectionCard>
-        </TabsContent>
-      </Tabs>
+           </SectionCard>
+
+           <div className="mt-4">
+             <EmployerResearchPanel jobId={app.job_id} candidateId={app.student_id} candidateName={app.full_name} />
+           </div>
+         </TabsContent>
+       </Tabs>
 
       {/* Sticky action bar — disposition actions stay within reach while scrolling */}
       <div className="sticky bottom-2 z-10 -mx-1 rounded-xl border border-border bg-card/95 p-3 shadow-card backdrop-blur">

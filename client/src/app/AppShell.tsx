@@ -101,7 +101,6 @@ const studentNav: NavItem[] = [
 const companyNav: NavItem[] = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/app/listings', label: 'Listings & applications', icon: Briefcase },
-  { to: '/app/research', label: 'Research', icon: Search },
   { to: '/app/messages', label: 'Messages', icon: MessageSquare },
   { to: '/app/company-profile', label: 'Company Profile', icon: Building2 },
 ]

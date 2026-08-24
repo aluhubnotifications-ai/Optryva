@@ -8,6 +8,7 @@ import { Avatar, Badge, Card, CardBody, Skeleton, Textarea } from '@/components/
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { avatarRingStyle } from '@/pages/company/ApplicantView'
+import { EmployerResearchPanel } from '@/components/EmployerResearchPanel'
 import { cn, formatDate } from '@/lib/utils'
 
 export const statusTone = { draft: 'outline', pending: 'default', reviewed: 'primary', shortlisted: 'accent', hired: 'success', rejected: 'danger', cancelled: 'danger' } as const
@@ -372,6 +373,9 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
           </div>
         </CardBody>
       </Card>
+
+      <EmployerResearchPanel jobId={jobId} title="Ask AI about this pipeline" />
+
       {data.mistral && data.summary && (
         <Card>
           <CardBody>

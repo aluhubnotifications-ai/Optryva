@@ -9,6 +9,7 @@ import { jobVisibleTo, schoolGates } from '@/lib/visibility'
 import { cacheGet, cacheSet, cacheDeletePrefix } from '@/lib/cache'
 import { mistralJsonBlocks, hasMistral } from '@/lib/mistral'
 import { getMatch, rowToMatchJob } from './ai/helpers'
+import { claudeText, hasClaude } from '@/lib/claude'
 
 export const jobs = Router()
 jobs.use(requireAuth)
@@ -347,6 +348,95 @@ jobs.post('/:jobId/shortlist/rescore', async (req, res) => {
     })
   } catch { /* best-effort cache write */ }
   return res.json({ ...payload, cached: false, computed_at: computedAt, rescored: true })
+})
+
+// Employer AI research: ask a free-form question about ONE candidate (candidateId)
+// or the whole applicant PIPELINE for a job. Grounded ONLY in stored candidate data
+// (profile, match, assessment, shortlist verdict) — never invents candidates.
+jobs.post('/:jobId/research', async (req, res) => {
+  const jobId = req.params.jobId
+  const { question, candidateId } = req.body ?? {}
+  const job = must(await sb.from('job_listings').select('*').eq('id', jobId).maybeSingle()) as any
+  if (!job) return res.status(404).json({ error: 'not_found' })
+  if (job.company_id !== req.user!.id && !isAdminEmail(req.user!.email)) return res.status(403).json({ error: 'forbidden' })
+  if (!question || typeof question !== 'string' || !question.trim()) return res.status(400).json({ error: 'missing_question' })
+  if (!hasClaude()) return res.status(501).json({ error: 'ai_unavailable' })
+
+  const appRows = (must(await sb.from('applications').select('*').eq('job_id', jobId).in('status', SHORTLIST_STATUS)) as any[]) ?? []
+  const studentIds = candidateId ? [candidateId] : Array.from(new Set(appRows.map((a) => a.student_id)))
+  const profRows = (must(await sb.from('profiles').select('id, full_name, major, location, skills, bio, school, year').in('id', studentIds)) as any[]) ?? []
+  const profById = new Map(profRows.map((p) => [p.id, p]))
+
+  // Pull shortlist verdicts from the cache (best-effort) so the answer can reference
+  // the existing Smart Shortlist read without re-scoring.
+  const slVerdicts: Record<string, any> = {}
+  try {
+    const cached = (await sb.from('shortlist_cache').select('payload').eq('job_id', jobId).maybeSingle()).data as any
+    if (cached?.payload) {
+      const parsed: any = typeof cached.payload === 'string' ? j.parse(cached.payload, { candidates: [] }) : cached.payload
+      for (const c of parsed?.candidates ?? []) slVerdicts[c.student_id] = c
+    }
+  } catch { /* ignore */ }
+
+  const buildCtx = (sid: string) => {
+    const p = profById.get(sid) ?? {}
+    const a = appRows.find((x) => x.student_id === sid)
+    const sl = slVerdicts[sid]
+    const snapshot: any = a?.resume_snapshot ? j.parse(a.resume_snapshot, null) : null
+    return {
+      name: p.full_name ?? 'Candidate',
+      major: p.major ?? null,
+      location: p.location ?? null,
+      school: p.school ?? null,
+      year: p.year ?? null,
+      skills: j.parse(p.skills, []),
+      bio: p.bio ?? null,
+      application_status: a?.status ?? null,
+      match_score: a?.match_score ?? null,
+      assessment_status: a?.assignment_status ?? null,
+      assessment_score: a?.assignment_score ?? null,
+      decision_reason: a?.decision_reason ?? null,
+      resume_summary: snapshot?.summary ?? null,
+      resume_skills: snapshot?.skills ?? null,
+      shortlist_verdict: sl?.verdict ?? null,
+      shortlist_category: sl?.category ?? null,
+      shortlist_fit: sl?.fit_score ?? null,
+      shortlist_note: sl?.decision_note ?? null,
+    }
+  }
+
+  const jobCtx =
+    `ROLE: ${job.title} (${job.listing_type})\n` +
+    `Tags: ${j.parse(job.tags, []).join(', ')}\n` +
+    `Description: ${(job.description || '').slice(0, 1500)}\n` +
+    `Qualifications: ${j.parse(job.qualifications, []).join('; ')}`
+
+  let answer: string | null = null
+  if (candidateId) {
+    const ctx = buildCtx(candidateId)
+    const system =
+      'You are an AI analyst helping an EMPLOYER evaluate a specific candidate for a role. ' +
+      'Use ONLY the candidate data provided. Be concise, neutral, and evidence-based. ' +
+      'Do not invent skills or experience. If something is missing, say so. Suggest next steps (interview, assessment, junior role) when useful.'
+    const user = `${jobCtx}\n\nCANDIDATE DATA:\n${JSON.stringify(ctx, null, 2)}\n\nEMPLOYER QUESTION: ${question}\n\nAnswer in plain text, 2-5 short paragraphs.`
+    answer = await claudeText({ system, user, maxTokens: 900 })
+  } else {
+    const list = studentIds
+      .map((sid) => {
+        const c = buildCtx(sid)
+        return `- ${c.name} | status ${c.application_status} | match ${c.match_score ?? 'n/a'} | assessment ${c.assessment_status}${c.assessment_score != null ? ` (${c.assessment_score})` : ''} | shortlist ${c.shortlist_verdict ?? 'n/a'}${c.shortlist_category ? ` (${c.shortlist_category})` : ''} | skills [${c.skills.join(', ')}]`
+      })
+      .join('\n')
+    const system =
+      'You are an AI analyst helping an EMPLOYER understand their applicant pipeline for a role. ' +
+      'Use ONLY the provided candidate summaries. Be concise, neutral, evidence-based. ' +
+      'Do not invent candidates. Highlight patterns, strengths, gaps, and suggest who to prioritize or what to probe next.'
+    const user = `${jobCtx}\n\nPIPELINE (${studentIds.length} applicants):\n${list}\n\nEMPLOYER QUESTION: ${question}\n\nAnswer in plain text, 2-5 short paragraphs.`
+    answer = await claudeText({ system, user, maxTokens: 1000 })
+  }
+
+  if (!answer) return res.status(502).json({ error: 'ai_failed' })
+  return res.json({ answer })
 })
 
 async function mistralShortlistAid(job: any, candidates: any[]): Promise<{ summary?: string; candidates?: any[] } | null> {
