@@ -8,11 +8,12 @@ import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/toast'
 import { cn, fileToDataUrl } from '@/lib/utils'
+import { COUNTRIES as GEO_COUNTRIES } from '@/lib/geo'
 
 const ROLES = ['Software Engineering', 'Data Science', 'Product Management', 'Marketing', 'Operations', 'Finance', 'Design', 'Consulting']
 const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Agriculture', 'Education', 'E-commerce', 'Consulting', 'Nonprofit']
 const TYPES: ListingType[] = ['Internship', 'Full-time', 'Part-time', 'Fellowship']
-const COUNTRIES = ['Rwanda', 'Kenya', 'Nigeria', 'Ghana', 'Uganda', 'Tanzania', 'Ethiopia', 'South Africa', 'Egypt', 'Senegal', 'Morocco']
+const COUNTRIES = GEO_COUNTRIES.filter((c) => c.code !== 'all' && c.code !== 'remote').map((c) => c.name)
 
 const blank = (base?: ResumeProfile): Omit<ResumeProfile, 'id' | 'student_id' | 'created_at' | 'updated_at'> => ({
   name: 'New résumé', target_roles: base?.target_roles ?? [], preferred_industries: base?.preferred_industries ?? [],

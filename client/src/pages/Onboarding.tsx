@@ -10,12 +10,13 @@ import { useMatchRun } from '@/lib/matchRun'
 import { needsOnboarding } from '@/lib/matchReady'
 import { profilesApi } from '@/lib/api'
 import { cn, fileToDataUrl } from '@/lib/utils'
+import { COUNTRIES as GEO_COUNTRIES } from '@/lib/geo'
 import type { ListingType, Profile as ProfileT } from '@/types'
 
 const ROLES = ['Software Engineering', 'Data Science', 'Product Management', 'Marketing', 'Operations', 'Finance', 'Design', 'Consulting']
 const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Agriculture', 'Education', 'E-commerce', 'Consulting', 'Nonprofit']
 const LISTING_TYPES: ListingType[] = ['Internship', 'Full-time', 'Part-time', 'Fellowship']
-const COUNTRIES = ['Rwanda', 'Kenya', 'Nigeria', 'Ghana', 'Uganda', 'Tanzania', 'Ethiopia', 'South Africa', 'Egypt', 'Senegal', 'Morocco', "Côte d'Ivoire"]
+const COUNTRIES = GEO_COUNTRIES.filter((c) => c.code !== 'all' && c.code !== 'remote').map((c) => c.name)
 
 export default function Onboarding() {
   const navigate = useNavigate()

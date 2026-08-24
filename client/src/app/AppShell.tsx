@@ -212,7 +212,13 @@ function CountrySelect() {
   const { country, setCountry } = useGeo()
   const stats = useCountryStats((s) => s.stats)
   const [open, setOpen] = useState(false)
-  const current = COUNTRIES.find((c) => c.name === country) ?? COUNTRIES[0]
+  // Merge the fixed country list with any custom country a company/school typed
+  // on a listing — so students can still research those jobs by country.
+  const customCountries = Object.keys(stats)
+    .filter((name) => !COUNTRIES.some((c) => c.name === name))
+    .map((name) => ({ code: name.slice(0, 2).toLowerCase(), name, flag: '🌍' }))
+  const allCountries = [...COUNTRIES, ...customCountries]
+  const current = allCountries.find((c) => c.name === country) ?? allCountries[0]
   return (
     <div className="relative">
       <button
@@ -236,22 +242,19 @@ function CountrySelect() {
               <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                 Browse by country
               </p>
-              {COUNTRIES.map((c) => {
+              {allCountries.map((c) => {
                 const st = stats[c.name]
                 const hasIntern = (st?.internships ?? 0) > 0
                 const active = c.name === country
                 return (
                   <button
                     key={c.code}
-                    disabled={c.disabled}
                     onClick={() => {
-                      if (c.disabled) return
                       setCountry(c.name)
                       setOpen(false)
                     }}
                     className={cn(
-                      'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm',
-                      c.disabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-muted',
+                      'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm hover:bg-muted',
                       active && 'bg-primary/10 text-primary',
                       hasIntern && !active && 'ring-1 ring-inset ring-accent/30',
                     )}

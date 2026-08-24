@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Building2, Save, Link2, Crown, Globe, ShieldCheck, Lock } from 'lucide-react'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { profilesApi } from '@/lib/api'
-import { COUNTRIES } from '@/lib/geo'
+import { CountryCombobox } from '@/components/ui/CountryCombobox'
 import type { Profile as ProfileT } from '@/types'
 import { Card, CardBody, Badge, Avatar, Input, Label, Textarea, Select } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
@@ -13,9 +13,9 @@ import { useToast } from '@/components/ui/toast'
   const SIZES = ['1-10', '11-50', '51-200', '201-500', '500+']
 const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Education', 'E-commerce', 'Agriculture', 'Consulting', 'Nonprofit']
 const PLAN_LABELS: Record<string, string> = { basic: 'Basic', standard: 'Standard', premium: 'Premium', free: 'Free' }
-// Real, selectable countries (excludes the "All countries" pseudo-option and the
-// not-yet-launched ones). 'Remote' is allowed so distributed orgs can self-tag.
-const COUNTRY_OPTIONS = COUNTRIES.filter((c) => c.code !== 'all' && !c.disabled).map((c) => c.name)
+// Real, selectable countries (excludes the "All countries" pseudo-option).
+// 'Remote' is allowed so distributed orgs can self-tag.
+
 
 export default function CompanyProfile() {
   const user = useCurrentUser()!
@@ -97,11 +97,8 @@ export default function CompanyProfile() {
             <div><Label>Location</Label><Input value={f.location} onChange={(e) => setF({ ...f, location: e.target.value })} placeholder="City / Remote" /></div>
             <div>
               <Label>Country</Label>
-              <Select value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })}>
-                <option value="">—</option>
-                {COUNTRY_OPTIONS.map((c) => <option key={c}>{c}</option>)}
-              </Select>
-              <p className="mt-1 text-xs text-muted-foreground">Your listings use this country. Schools may post in any country; companies are locked to it when creating opportunities.</p>
+              <CountryCombobox value={f.country} onChange={(v) => setF({ ...f, country: v })} placeholder="Select or type a country" />
+              <p className="mt-1 text-xs text-muted-foreground">Your listings use this country. Pick from the list or type your own — companies are locked to it when creating opportunities.</p>
             </div>
             <div><Label>Email</Label><Input value={f.email} disabled /></div>
           </div>

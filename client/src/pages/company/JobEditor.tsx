@@ -5,7 +5,7 @@ import type { LucideIcon } from 'lucide-react'
 import { fileToDataUrl, imageFileToDataUrl, cn } from '@/lib/utils'
 import { useCurrentUser } from '@/lib/store'
 import { aiApi, jobsApi } from '@/lib/api'
-import { COUNTRIES } from '@/lib/geo'
+import { CountryCombobox } from '@/components/ui/CountryCombobox'
 import { JobPostingView, AssignmentView } from '@/components/JobPostingView'
 import type { AiAssignment, AiAssignmentQuestion, AiRubricCriterion, JobListing, ListingType } from '@/types'
 import { Avatar, Input, Label, Textarea, Select, Skeleton } from '@/components/ui/primitives'
@@ -15,7 +15,7 @@ import { useToast } from '@/components/ui/toast'
 
 const CATEGORIES = ['Software Engineering', 'Data', 'Design', 'Marketing', 'Operations', 'Finance', 'Product']
 const LISTING_TYPES: ListingType[] = ['Internship', 'Full-time', 'Part-time', 'Fellowship']
-const LIVE_COUNTRIES = COUNTRIES.filter((c) => !c.disabled && c.code !== 'all').map((c) => c.name)
+
 
 type AssignmentDraft = {
   title: string
@@ -83,9 +83,6 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
   const navigate = useNavigate()
   const isSchool = user.user_type === 'school'
   const isCompany = user.user_type === 'company'
-  // Companies post their own opportunities, so the listing country is locked to
-  // the company's profile country. Schools may choose a country per opportunity.
-  const countryLocked = isCompany && !!user.country
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState(false)
@@ -386,11 +383,13 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
             <div><Label>Category</Label><Select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</Select></div>
             <div><Label>Type</Label><Select value={f.listing_type} onChange={(e) => setF({ ...f, listing_type: e.target.value as ListingType })}>{LISTING_TYPES.map((c) => <option key={c}>{c}</option>)}</Select></div>
             <div>
-              <Label>Country {countryLocked && <span className="text-xs font-normal text-muted-foreground">· locked to your company</span>}</Label>
-              <Select value={f.country} disabled={countryLocked} onChange={(e) => setF({ ...f, country: e.target.value })}>{LIVE_COUNTRIES.map((c) => <option key={c}>{c}</option>)}</Select>
-              {countryLocked
-                ? <p className="mt-1 text-xs text-muted-foreground">Company listings use your organization's country (set on your profile). Schools may post in any country.</p>
-                : isCompany && <p className="mt-1 text-xs text-muted-foreground">Set your company's country on your profile to lock future listings to it.</p>}
+              <Label>Country</Label>
+              <CountryCombobox value={f.country} onChange={(v) => setF({ ...f, country: v })} placeholder="Select or type a country" />
+              <p className="mt-1 text-xs text-muted-foreground">
+                {isCompany
+                  ? 'Pick a country from the list or type your own. Set your company country on your profile to prefill this.'
+                  : 'Pick a country from the list or type your own.'}
+              </p>
             </div>
             <div><Label>Location (display)</Label><Input value={f.location} onChange={(e) => setF({ ...f, location: e.target.value })} placeholder="London, UK · Hybrid" /></div>
             <div><Label>Pay / Stipend</Label><Input value={f.pay} onChange={(e) => setF({ ...f, pay: e.target.value })} placeholder="$2,000 / month" /></div>
