@@ -20,7 +20,6 @@ import {
   Compass,
   CheckCircle2,
   Circle,
-  ShieldCheck,
 } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useCurrentUser, useSession } from '@/lib/store'
@@ -34,7 +33,6 @@ import { AvatarEditor } from '@/components/AvatarEditor'
 import { useToast } from '@/components/ui/toast'
 import { formatDate, cn, fileToDataUrl } from '@/lib/utils'
 import { ResumeWorkspace } from '@/components/ResumeWorkspace'
-import { EvidenceLibrary } from '@/components/EvidenceLibrary'
 import { EvidenceGallery } from '@/components/EvidenceGallery'
 
 const ROLES = ['Software Engineering', 'Data Science', 'Product Management', 'Marketing', 'Operations', 'Finance', 'Design', 'Consulting']
@@ -52,6 +50,12 @@ export default function Profile() {
   const [skillInput, setSkillInput] = useState('')
   const [countryInput, setCountryInput] = useState('')
   const [confirmRemoveCv, setConfirmRemoveCv] = useState(false)
+  const [tab, setTab] = useState<'profile' | 'resumes' | 'gallery'>('profile')
+  const TABS = [
+    { id: 'profile', label: 'Profile' },
+    { id: 'resumes', label: 'Résumés' },
+    { id: 'gallery', label: 'Gallery' },
+  ] as const
 
   async function changePicture(avatar_url: string) {
     const updated = await profilesApi.update(user.id, { avatar_url })
@@ -195,6 +199,19 @@ export default function Profile() {
 
   return (
     <div className="mx-auto max-w-6xl">
+      <div className="mb-5 flex gap-1 rounded-lg bg-muted p-1 text-sm">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={cn('flex-1 rounded-md px-3 py-1.5 font-medium transition-colors', tab === t.id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'profile' && (
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="space-y-5">
       {/* Header */}
@@ -282,12 +299,6 @@ export default function Profile() {
         )}
         <p className="mt-2.5 flex items-center gap-1.5 text-xs text-muted-foreground"><Sparkles className="h-3.5 w-3.5 text-primary" /> Your CV is the #1 signal our AI uses to find your best-fit roles.</p>
       </Section>}
-      {user.user_type === 'student' && <ResumeWorkspace />}
-
-      {user.user_type === 'student' && (
-        <EvidenceTab studentId={user.id} />
-      )}
-
       {/* Legacy profile preferences are replaced by per-résumé preferences above. */}
       {false && <Section icon={Briefcase} title="Career preferences" hint="Feeds the AI matching engine">
         <Label>Roles I'm interested in</Label>
@@ -450,38 +461,11 @@ export default function Profile() {
           </Card>
         </aside>
       </div>
-    </div>
-  )
-}
+      )}
 
-function EvidenceTab({ studentId }: { studentId: string }) {
-  const [tab, setTab] = useState<'gallery' | 'manage'>('gallery')
-  const tabs = [
-    { id: 'gallery', label: 'Gallery' },
-    { id: 'manage', label: 'Manage & verify' },
-  ] as const
-  return (
-    <Card>
-      <CardBody>
-        <div className="mb-4 flex items-center gap-2">
-          <ShieldCheck className="h-5 w-5 text-primary" />
-          <h2 className="font-semibold">Evidence</h2>
-          <Badge tone="outline" className="ml-auto text-[11px]">Upload work → AI suggests skills → you confirm → a reviewer verifies</Badge>
-        </div>
-        <div className="mb-4 flex gap-1 rounded-lg bg-muted p-1 text-sm">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={cn('flex-1 rounded-md px-3 py-1.5 font-medium transition-colors', tab === t.id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        {tab === 'gallery' ? <EvidenceGallery studentId={studentId} mode="owner" /> : <EvidenceLibrary studentId={studentId} mode="owner" />}
-      </CardBody>
-    </Card>
+      {tab === 'resumes' && <ResumeWorkspace />}
+      {tab === 'gallery' && <EvidenceGallery studentId={user.id} mode="owner" />}
+    </div>
   )
 }
 
