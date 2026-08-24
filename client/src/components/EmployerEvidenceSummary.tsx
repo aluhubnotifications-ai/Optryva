@@ -38,6 +38,15 @@ function SummaryMarkdown({ text }: { text: string }) {
     }
     flush()
     if (!t) return
+    const heading = t.match(/^#{1,6}\s+(.*)$/)
+    if (heading) {
+      blocks.push(
+        <p key={`h-${idx}`} className="mt-3 font-semibold text-foreground">
+          {renderInline(heading[1], `h-${idx}`)}
+        </p>,
+      )
+      return
+    }
     if (/^\*\*[^*]+\*\*$/.test(t)) {
       blocks.push(
         <p key={`h-${idx}`} className="mt-3 font-semibold text-foreground">
