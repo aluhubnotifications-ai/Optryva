@@ -11,6 +11,11 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET
 const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI // e.g. https://api.optryva.workers.dev/api/oauth/google/callback
 
+// Cookies are only marked `secure` in production (or when cross-site), so the
+// OAuth state cookie actually gets stored on http://localhost during dev.
+// (Mirrors the refresh-cookie handling lower down.)
+const secureCookie = process.env.COOKIE_SAMESITE === 'none' || process.env.NODE_ENV === 'production'
+
 // Generate Google OAuth authorization URL with PKCE
 function generateAuthUrl(state: string, codeChallenge: string, codeChallengeMethod = 'S256'): string {
   const params = new URLSearchParams({
@@ -143,7 +148,7 @@ oauth.get('/google', async (req, res) => {
   // Store state in a short-lived cookie (validated in callback)
   res.cookie('oauth_state', state, {
     httpOnly: true,
-    secure: true,
+    secure: secureCookie,
     sameSite: 'lax',
     maxAge: 600, // 10 minutes
     path: '/',
@@ -245,7 +250,7 @@ oauth.get('/google/callback', async (req, res) => {
           returnTo,
         }), {
           httpOnly: true,
-          secure: true,
+          secure: secureCookie,
           sameSite: 'lax',
           maxAge: 600,
           path: '/',

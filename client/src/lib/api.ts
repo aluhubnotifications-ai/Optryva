@@ -76,10 +76,14 @@ export const authApi = {
       return null
     }
   },
-  /** Get Google OAuth authorization URL */
+  /** Google OAuth entry point.
+   *  The server's `/oauth/google` is a GET that 302-redirects the browser to
+   *  Google's consent screen (PKCE state in an httpOnly cookie), so we hand
+   *  back the URL and let the caller navigate via `window.location` — not a
+   *  fetch (which would follow the redirect and never leave the SPA). */
   async googleAuthUrl(returnTo?: string): Promise<{ url: string }> {
     const params = returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''
-    return postJson(`/oauth/google${params}`, {}) as Promise<{ url: string }>
+    return { url: `${API_BASE}/oauth/google${params}` }
   },
   /** Complete onboarding after role selection (called from RoleSelection page) */
   async completeOnboarding(payload: { user_type: Profile['user_type']; returnTo?: string }): Promise<{ accessToken: string; user: Profile }> {

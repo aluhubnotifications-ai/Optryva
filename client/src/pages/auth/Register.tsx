@@ -68,7 +68,7 @@ export default function Register() {
     setError(null)
     setGoogleLoading(true)
     try {
-      const { url } = await authApi.googleAuthUrl('/role-selection')
+      const { url } = await authApi.googleAuthUrl('/app')
       window.location.href = url
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google sign-up failed')
