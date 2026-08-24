@@ -91,10 +91,13 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
         if (cancelled) return
         const existing = list.find((a) => a.job_id === job.id && a.status !== 'draft')
         if (existing) {
-          // A cancelled attempt can be retried until attempts run out; only block
-          // (already-applied) when it's a real submission or attempts are exhausted.
+          // A cancelled attempt can be retried until attempts run out, and a withdrawn
+          // application can be restarted (the server reactivates the same record on
+          // submit). Only block (already-applied) for a real, still-active submission.
           const maxAttempts = job?.assignment?.max_attempts ?? 10
-          if (existing.status === 'cancelled' && (existing.attempts ?? 0) < maxAttempts) setAlreadyApplied(null)
+          const canRetry = existing.status === 'cancelled' && (existing.attempts ?? 0) < maxAttempts
+          const canReapply = existing.status === 'withdrawn'
+          if (canRetry || canReapply) setAlreadyApplied(null)
           else setAlreadyApplied(existing)
         }
       })

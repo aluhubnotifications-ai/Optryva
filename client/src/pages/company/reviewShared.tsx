@@ -11,7 +11,7 @@ import { avatarRingStyle } from '@/pages/company/ApplicantView'
 import { EmployerResearchPanel } from '@/components/EmployerResearchPanel'
 import { cn, formatDate } from '@/lib/utils'
 
-export const statusTone = { draft: 'outline', pending: 'default', reviewed: 'primary', shortlisted: 'accent', hired: 'success', rejected: 'danger', cancelled: 'danger' } as const
+export const statusTone = { draft: 'outline', pending: 'default', reviewed: 'primary', shortlisted: 'accent', hired: 'success', rejected: 'danger', cancelled: 'danger', withdrawn: 'outline' } as const
 export const FILTERS: (ApplicationStatus | 'all')[] = ['all', 'pending', 'reviewed', 'shortlisted', 'hired', 'rejected']
 
 export function band(score?: number): 'success' | 'accent' | 'default' | 'danger' {

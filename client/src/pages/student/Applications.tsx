@@ -18,6 +18,7 @@ const statusTone = {
   hired: 'success',
   rejected: 'danger',
   cancelled: 'danger',
+  withdrawn: 'outline',
 } as const
 
 const FILTERS: { key: ApplicationStatus | 'all'; label: string }[] = [
@@ -27,6 +28,7 @@ const FILTERS: { key: ApplicationStatus | 'all'; label: string }[] = [
   { key: 'shortlisted', label: 'Shortlisted' },
   { key: 'hired', label: 'Accepted' },
   { key: 'rejected', label: 'Rejected' },
+  { key: 'withdrawn', label: 'Withdrawn' },
 ]
 
 export default function Applications() {

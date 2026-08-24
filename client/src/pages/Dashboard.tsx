@@ -59,6 +59,7 @@ const statusTone = {
   hired: 'success',
   rejected: 'danger',
   cancelled: 'danger',
+  withdrawn: 'outline',
 } as const
 
 function StudentDashboard({ user }: { user: Profile }) {

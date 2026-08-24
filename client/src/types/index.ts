@@ -144,7 +144,7 @@ export interface AiAssignmentQuestion {
   maxWords?: number | null
 }
 
-export type ApplicationStatus = 'draft' | 'pending' | 'reviewed' | 'shortlisted' | 'hired' | 'rejected' | 'cancelled'
+export type ApplicationStatus = 'draft' | 'pending' | 'reviewed' | 'shortlisted' | 'hired' | 'rejected' | 'cancelled' | 'withdrawn'
 
 export interface AppDocument {
   kind: 'cv' | 'cover' | 'transcript' | 'recommendation' | 'portfolio' | 'certificate' | 'id'
@@ -192,7 +192,7 @@ export interface Application {
   assignment_attempts?: any[]
   tags?: string[]
   created_at: string
-  timeline: { status: ApplicationStatus | 'applied' | 'test_return' | 'test_submitted' | 'test_unlocked'; at: string; reason?: string; late?: boolean; note?: string; by?: string }[]
+  timeline: { status: ApplicationStatus | 'applied' | 'reapplied' | 'test_return' | 'test_submitted' | 'test_unlocked'; at: string; reason?: string; late?: boolean; note?: string; by?: string }[]
 }
 
 export interface MatchBreakdown {

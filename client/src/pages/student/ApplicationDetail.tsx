@@ -32,9 +32,10 @@ const statusTone = {
 	reviewed: "primary",
 	shortlisted: "accent",
 	hired: "success",
-	rejected: "danger",
-	cancelled: "danger",
-} as const;
+ 	rejected: "danger",
+ 	cancelled: "danger",
+ 	withdrawn: "outline",
+ } as const;
 
 export default function ApplicationDetail() {
 	const { id } = useParams();

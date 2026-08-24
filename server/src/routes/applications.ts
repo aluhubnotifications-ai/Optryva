@@ -125,7 +125,7 @@ applications.get('/job/:jobId', async (req, res) => {
   // Archived rows are excluded by default; ?archived=1 returns ONLY archived ones
   // (the employer's trash/recycle bin they can restore or purge).
   const showArchived = req.query.archived === '1'
-  let q = sb.from('applications').select('*').eq('job_id', req.params.jobId).in('status', ['pending', 'reviewed', 'shortlisted', 'hired', 'rejected'])
+  let q = sb.from('applications').select('*').eq('job_id', req.params.jobId).in('status', ['pending', 'reviewed', 'shortlisted', 'hired', 'rejected', 'withdrawn'])
   q = showArchived ? q.not('archived_at', 'is', null) : q.is('archived_at', null)
   const rows = must(await q.order('created_at', { ascending: false })) as any[]
   await attachStudentProfiles(rows)
@@ -143,7 +143,7 @@ applications.get('/company', async (req, res) => {
   // Employers only see submitted applications (hide drafts / cancelled attempts),
   // and archived rows are excluded unless ?archived=1 is passed.
   const showArchived = req.query.archived === '1'
-  let q = sb.from('applications').select('*').in('job_id', ids).in('status', ['pending', 'reviewed', 'shortlisted', 'hired', 'rejected'])
+  let q = sb.from('applications').select('*').in('job_id', ids).in('status', ['pending', 'reviewed', 'shortlisted', 'hired', 'rejected', 'withdrawn'])
   q = showArchived ? q.not('archived_at', 'is', null) : q.is('archived_at', null)
   const rows = must(await q.order('created_at', { ascending: false })) as any[]
   await attachStudentProfiles(rows)
@@ -169,9 +169,10 @@ applications.post('/', async (req, res) => {
   const job = must(await sb.from('job_listings').select('*').eq('id', b.job_id).maybeSingle()) as any
   if (!job) return res.status(404).json({ error: 'job_not_found' })
   const dup = must(await sb.from('applications').select('*').eq('student_id', req.user!.id).eq('job_id', b.job_id).maybeSingle()) as any
-  // A saved draft is resumed (turned into a real application) on submit; a real
-  // (already-submitted) application can't be re-created.
-  if (dup && dup.status !== 'draft') return res.status(409).json({ error: 'already_applied' })
+  // A saved draft is resumed (turned into a real application) on submit; a withdrawn
+  // application is reactivated (same record, fresh submission); a real, already-
+  // submitted application (pending/reviewed/etc.) can't be re-created.
+  if (dup && dup.status !== 'draft' && dup.status !== 'withdrawn') return res.status(409).json({ error: 'already_applied' })
 
   const documents = await Promise.all((b.documents ?? []).map(async (document: any) => {
     const stored = await storeDocument(req.user!.id, document.kind ?? 'document', document.name ?? 'document', document.url)
@@ -229,9 +230,10 @@ applications.post('/', async (req, res) => {
 
   const id = dup?.id ?? uid('a')
   const timeline = j.parse<any[]>(dup?.timeline ?? '[]', [])
-  timeline.push({ status: 'applied', at: ts })
+  timeline.push({ status: dup?.status === 'withdrawn' ? 'reapplied' : 'applied', at: ts })
   const row = {
     id, student_id: req.user!.id, job_id: b.job_id, status: 'pending',
+    archived_at: null,
     cover_note: b.cover_note ?? null, documents: j.stringify(documents),
     full_name: b.full_name, email: b.email, phone: b.phone ?? null,
     school: b.school ?? null, year: b.year ?? null, graduated: b.graduated ?? null, linkedin: b.linkedin ?? null,
@@ -321,6 +323,7 @@ applications.put('/draft', async (req, res) => {
   const id = existing?.id ?? uid('a')
   const row = {
     id, student_id: req.user!.id, job_id: b.job_id, status: 'draft',
+    archived_at: null,
     cover_note: b.cover_note ?? null, documents: j.stringify(documents),
     full_name: b.full_name, email: b.email, phone: b.phone ?? null,
     school: b.school ?? null, year: b.year ?? null, graduated: b.graduated ?? null, linkedin: b.linkedin ?? null,
@@ -624,6 +627,17 @@ applications.delete('/:id', async (req, res) => {
     isEmployer = !!job && (job.company_id === req.user!.id || isAdminEmail(req.user!.email))
   }
   if (!isStudent && !isEmployer) return res.status(403).json({ error: 'forbidden' })
+  // Student "withdraw" is SOFT: keep the row + its documents so the employer still
+  // sees it (marked "withdrawn") and the candidate can re-apply to the SAME record
+  // (reactivated on their next submit). Hard-deleting would erase history and make
+  // re-applications look like brand-new candidates.
+  if (isStudent) {
+    const timeline = j.parse<any[]>(r.timeline ?? '[]', [])
+    timeline.push({ status: 'withdrawn', at: now() })
+    must(await sb.from('applications').update({ status: 'withdrawn', timeline: j.stringify(timeline) }).eq('id', r.id))
+    return res.json({ ok: true, status: 'withdrawn' })
+  }
+  // Employer/admin: permanent delete (also removes the stored documents).
   await deleteApplicationDocuments(r)
   must(await sb.from('applications').delete().eq('id', r.id))
   res.json({ ok: true })
