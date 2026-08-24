@@ -42,6 +42,8 @@ import { EmployerResearchPanel } from '@/components/EmployerResearchPanel'
 import { AppProgressSteps } from '@/components/AppProgressSteps'
 import { DocumentList } from '@/components/DocumentList'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs'
+import { Modal } from '@/components/ui/Modal'
+import { JobPostingView } from '@/components/JobPostingView'
 import { useToast } from '@/components/ui/toast'
 import { cn, daysUntil, formatDate } from '@/lib/utils'
 
@@ -262,6 +264,8 @@ export default function ApplicantView() {
   // shortlist so the employer sees the shortlist's read alongside the assessment.
   const [shortlistCand, setShortlistCand] = useState<SmartShortlistCandidate | null>(null)
   const [rescoring, setRescoring] = useState(false)
+  const [showJob, setShowJob] = useState(false)
+  const [acting, setActing] = useState<ApplicationStatus | null>(null)
 
   async function load() {
     if (!id) return
@@ -321,11 +325,24 @@ export default function ApplicantView() {
 
   async function setStatus(s: ApplicationStatus) {
     if (s === 'rejected' && !decisionNote.trim()) {
-      toast({ title: 'Add a reason before rejecting', description: 'A rejection reason is required and recorded for audit.', tone: 'error' })
+      toast({ title: 'Add a reason before passing', description: 'A rejection reason is required and recorded for audit.', tone: 'error' })
       setTab('decision'); return
     }
-    const updated = await applicationsApi.setStatus(app!.id, s, decisionNote.trim() || undefined)
-    if (updated) { setApp(updated); markStale(); toast({ title: `Marked ${s === 'hired' ? 'hired' : s}`, tone: 'success' }) }
+    setActing(s)
+    try {
+      const updated = await applicationsApi.setStatus(app!.id, s, decisionNote.trim() || undefined)
+      if (updated) {
+        setApp(updated); markStale()
+        toast({
+          title: s === 'shortlisted' ? 'Shortlisted' : s === 'rejected' ? 'Passed on candidate' : s === 'hired' ? 'Marked as hired' : `Marked ${s}`,
+          tone: s === 'rejected' ? 'error' : 'success',
+        })
+      }
+    } catch (e) {
+      toast({ title: 'Could not update status', description: e instanceof Error ? e.message : undefined, tone: 'error' })
+    } finally {
+      setActing(null)
+    }
   }
 
   async function runAiScore() {
@@ -470,9 +487,16 @@ export default function ApplicantView() {
         </aside>
 
         <div className="min-w-0 space-y-5">
-          {/* Listing context — always visible so reviewers know which role this is for */}
+          {/* Listing context — always visible so reviewers know which role this is for.
+              Clicking it opens the full role details. */}
           {job && (
-        <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-card to-accent/5">
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => setShowJob(true)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowJob(true) } }}
+          className="cursor-pointer border-primary/20 bg-gradient-to-br from-primary/5 via-card to-accent/5 transition-colors hover:border-primary/40 hover:shadow-soft"
+        >
           <CardBody className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Applied for</p>
@@ -490,6 +514,9 @@ export default function ApplicantView() {
                   </Badge>
                 )}
               </div>
+              <p className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary">
+                View full role details <ChevronRight className="h-3.5 w-3.5" />
+              </p>
               </div>
           </CardBody>
         </Card>
@@ -731,6 +758,17 @@ export default function ApplicantView() {
                       : 'Assessment: not required for this role'}
                 </span>
               </div>
+              {/* Direct Smart Shortlist actions — the human decision the AI only aids. */}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="default" className="gap-1.5" onClick={() => setStatus('shortlisted')} disabled={app.status === 'shortlisted' || acting !== null} loading={acting === 'shortlisted'}>
+                  <Star className="h-4 w-4" /> Shortlist
+                </Button>
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setStatus('rejected')} disabled={app.status === 'rejected' || acting !== null} loading={acting === 'rejected'}>
+                  <XCircle className="h-4 w-4" /> Pass
+                </Button>
+                {app.status === 'shortlisted' && <span className="text-xs font-medium text-accent">Shortlisted — this candidate is advanced.</span>}
+                {app.status === 'rejected' && <span className="text-xs font-medium text-muted-foreground">Passed — decision recorded for audit.</span>}
+              </div>
             </div>
 
             {app.match_rationale && (
@@ -900,7 +938,7 @@ export default function ApplicantView() {
           <SectionCard n={1} title="Decision" desc="The final, human call">
             <div className="flex flex-wrap gap-2">
               {actions.map((a) => (
-                <Button key={a.status} variant={a.variant} className="gap-1.5" onClick={() => setStatus(a.status)} disabled={app.status === a.status}>
+                <Button key={a.status} variant={a.variant} className="gap-1.5" onClick={() => setStatus(a.status)} disabled={app.status === a.status || acting !== null} loading={acting === a.status}>
                   <a.icon className="h-4 w-4" /> {a.label}
                 </Button>
               ))}
@@ -954,7 +992,7 @@ export default function ApplicantView() {
             <Button variant="outline" size="sm" className="gap-1.5" onClick={advance} disabled={!NEXT_STATUS[app.status]}>
               <ChevronRight className="h-4 w-4" /> Advance
             </Button>
-            <Button size="sm" variant="danger" className="gap-1.5" onClick={() => setStatus('rejected')} disabled={app.status === 'rejected'}>
+                  <Button size="sm" variant="danger" className="gap-1.5" onClick={() => setStatus('rejected')} disabled={app.status === 'rejected' || acting !== null} loading={acting === 'rejected'}>
               <XCircle className="h-4 w-4" /> Reject
             </Button>
             <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => navigate(`/app/messages?thread=${app.id}&scope=application`)}>
@@ -1096,6 +1134,11 @@ export default function ApplicantView() {
 					</Card>
 				</aside>
     </div>
+
+      {/* Full role details, opened from the "Applied for" card. */}
+      <Modal open={showJob} onClose={() => setShowJob(false)} title={job ? `Role details — ${job.title}` : 'Role details'} size="lg">
+        {job && <JobPostingView job={job} brand={job.company_name} logo={job.company_avatar_url} />}
+      </Modal>
     </div>
   )
 }
