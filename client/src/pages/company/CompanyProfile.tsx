@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Building2, Save, Link2, Crown, Globe, ShieldCheck, Lock } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Building2, Save, Link2, Crown, Globe, ShieldCheck, Lock, Gauge, Briefcase, CheckCircle2, Circle } from 'lucide-react'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { profilesApi } from '@/lib/api'
 import { CountryCombobox } from '@/components/ui/CountryCombobox'
@@ -63,8 +64,21 @@ export default function CompanyProfile() {
     toast({ title: 'Company profile saved', tone: 'success' })
   }
 
+  const checklist = [
+    { label: 'Company name', done: !!f.company_name.trim() },
+    { label: 'About / bio', done: !!f.bio.trim() },
+    { label: 'Industry & size', done: !!(f.industry && f.company_size) },
+    { label: 'Location & country', done: !!(f.location.trim() && f.country.trim()) },
+    { label: 'Website or LinkedIn', done: !!(f.website.trim() || f.linkedin.trim()) },
+    { label: 'Logo uploaded', done: !!user.avatar_url },
+  ]
+  const doneCount = checklist.filter((c) => c.done).length
+  const pct = Math.round((doneCount / checklist.length) * 100)
+
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="mx-auto max-w-6xl">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="space-y-5">
       {/* Cover + identity */}
       <Card className="overflow-hidden">
         <CoverEditor src={user.cover_url} isSchool={isSchool} onChange={changeCover} />
@@ -151,6 +165,81 @@ export default function CompanyProfile() {
       </Card>
 
       <div className="flex justify-end"><Button onClick={save} loading={saving} className="gap-1.5"><Save className="h-4 w-4" /> Save changes</Button></div>
+        </div>
+
+        <aside className="space-y-5 lg:sticky lg:top-6 self-start">
+          {/* Quick actions */}
+          <Card>
+            <CardBody className="space-y-2">
+              <h2 className="font-semibold">Quick actions</h2>
+              <Link
+                to="/app/listings/new"
+                className="flex items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                <Briefcase className="h-4 w-4" /> Post an opportunity
+              </Link>
+              <Link
+                to="/app/listings"
+                className="flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
+              >
+                <Building2 className="h-4 w-4" /> My listings
+              </Link>
+              <Link
+                to="/app"
+                className="flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
+              >
+                <Gauge className="h-4 w-4" /> Analytics
+              </Link>
+            </CardBody>
+          </Card>
+
+          {/* Profile completeness */}
+          <Card>
+            <CardBody className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold">Profile completeness</h2>
+                <span className="text-sm font-medium text-muted-foreground">{pct}%</span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+              </div>
+              <ul className="space-y-1.5 text-sm">
+                {checklist.map((c) => (
+                  <li key={c.label} className="flex items-center gap-2">
+                    {c.done ? (
+                      <CheckCircle2 className="h-4 w-4 text-accent" />
+                    ) : (
+                      <Circle className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <span className={c.done ? 'text-foreground' : 'text-muted-foreground'}>{c.label}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-muted-foreground">A complete profile attracts more applicants.</p>
+            </CardBody>
+          </Card>
+
+          {/* Plan */}
+          <Card>
+            <CardBody className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Crown className="h-5 w-5 text-primary" />
+                <h2 className="font-semibold">Plan</h2>
+              </div>
+              <Badge tone="primary" className="gap-1">
+                <Crown className="h-3 w-3" /> {PLAN_LABELS[user.plan] ?? user.plan} plan
+              </Badge>
+              <p className="text-sm text-muted-foreground">Manage seats, billing and upgrade your plan.</p>
+              <Link
+                to="/app/usage"
+                className="flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
+              >
+                Manage plan
+              </Link>
+            </CardBody>
+          </Card>
+        </aside>
+      </div>
     </div>
   )
 }
