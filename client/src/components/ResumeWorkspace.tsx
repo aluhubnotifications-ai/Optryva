@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, Eye, FileText, Maximize2, Minimize2, Pause, Play, Plus, Save, Trash2, Upload, X } from 'lucide-react'
 import { Spinner } from '@/components/ui/Spinner'
-import { fetchProtectedDocument, resumesApi } from '@/lib/api'
-import type { ListingType, ResumeProfile, WorkType } from '@/types'
+import { fetchProtectedDocument, resumesApi, evidenceApi } from '@/lib/api'
+import type { EvidenceItem, ListingType, ResumeProfile, WorkType } from '@/types'
 import { Card, CardBody, Badge, Input, Label, Select } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -14,6 +14,15 @@ const ROLES = ['Software Engineering', 'Data Science', 'Product Management', 'Ma
 const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Agriculture', 'Education', 'E-commerce', 'Consulting', 'Nonprofit']
 const TYPES: ListingType[] = ['Internship', 'Full-time', 'Part-time', 'Fellowship']
 const COUNTRIES = GEO_COUNTRIES.filter((c) => c.code !== 'all' && c.code !== 'remote').map((c) => c.name)
+
+const EVIDENCE_STATUS: Record<string, string> = {
+  self_reported: 'Self-reported',
+  ai_analyzed: 'AI analyzed',
+  student_approved: 'Student approved',
+  supervisor_verified: 'Supervisor verified',
+  employer_verified: 'Employer verified',
+  verified: 'Verified',
+}
 
 const blank = (base?: ResumeProfile): Omit<ResumeProfile, 'id' | 'student_id' | 'created_at' | 'updated_at'> => ({
   name: 'New résumé', target_roles: base?.target_roles ?? [], preferred_industries: base?.preferred_industries ?? [],
@@ -34,10 +43,16 @@ export function ResumeWorkspace() {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewDocumentLoading, setPreviewDocumentLoading] = useState(false)
   const [previewExpanded, setPreviewExpanded] = useState(false)
+  const [evidence, setEvidence] = useState<EvidenceItem[]>([])
 
   useEffect(() => {
-    resumesApi.list().then(setResumes).catch(() => toast({ title: 'Could not load résumé profiles', tone: 'error' })).finally(() => setLoading(false))
+    resumesApi.list().then(setResumes).catch(() => toast({ title: 'Could not load résumé profiles', tone: 'error' }))
+    evidenceApi.list().then(setEvidence).catch(() => {}).finally(() => setLoading(false))
   }, [toast])
+
+  const evidenceById = new Map(evidence.map((item) => [item.id, item]))
+  const evidenceFor = (resumeId: string) =>
+    evidence.filter((item) => Array.isArray(item.used_in) && item.used_in.includes(resumeId))
 
   async function create() {
     if (pendingResumeId) return
@@ -157,6 +172,7 @@ export function ResumeWorkspace() {
                 onCountryInput={(value) => setCountryInputs((current) => ({ ...current, [resume.id]: value }))}
                 onUpload={(file) => upload(resume, file)}
                 onView={() => view(resume)}
+                evidence={evidenceFor(resume.id)}
                 initiallyOpen={pendingResumeId === resume.id}
               />
             ))}
@@ -195,7 +211,7 @@ export function ResumeWorkspace() {
   )
 }
 
-function ResumeCard({ resume, saving, skillInput, countryInput, onPatch, onSave, onRemove, onSkillInput, onCountryInput, onUpload, onView, initiallyOpen }: {
+function ResumeCard({ resume, saving, skillInput, countryInput, onPatch, onSave, onRemove, onSkillInput, onCountryInput, onUpload, onView, evidence, initiallyOpen }: {
   resume: ResumeProfile
   saving: boolean
   skillInput: string
@@ -207,6 +223,7 @@ function ResumeCard({ resume, saving, skillInput, countryInput, onPatch, onSave,
   onCountryInput: (value: string) => void
   onUpload: (file?: File) => void
   onView: () => void
+  evidence: EvidenceItem[]
   initiallyOpen: boolean
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -258,8 +275,26 @@ function ResumeCard({ resume, saving, skillInput, countryInput, onPatch, onSave,
       <Label className="mt-4">Skills for this direction</Label>
       <div className="flex flex-wrap gap-1.5">{resume.skills.map((skill) => <span key={skill} className="inline-flex items-center gap-1 rounded-full bg-primary/12 px-2.5 py-1 text-xs font-medium text-primary">{skill}<button type="button" onClick={() => onPatch({ skills: resume.skills.filter((item) => item !== skill) })} aria-label={`Remove ${skill}`}><X className="h-3 w-3" /></button></span>)}</div>
       <div className="mt-2 flex max-w-md gap-2"><Input value={skillInput} onChange={(event) => onSkillInput(event.target.value)} placeholder="Add a skill…" /><Button type="button" variant="outline" size="icon" onClick={() => addValue('skills', skillInput, () => onSkillInput(''))} aria-label="Add skill"><Plus className="h-4 w-4" /></Button></div>
-      <div className="mt-4 flex justify-end"><Button onClick={onSave} loading={saving} className="gap-1.5"><Save className="h-4 w-4" /> Save résumé</Button></div>
-      </>}
+       <div className="mt-4">
+         <Label>Linked evidence</Label>
+         {evidence.length === 0 ? (
+           <p className="mt-1.5 text-xs text-muted-foreground">No evidence linked yet — add proof in the Gallery tab and attach it here.</p>
+         ) : (
+           <div className="mt-1.5 space-y-1.5">
+             {evidence.map((ev) => (
+               <div key={ev.id} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
+                 <div className="min-w-0">
+                   <p className="truncate text-sm font-medium">{ev.title}</p>
+                   {ev.confirmed_skills.length > 0 && <p className="truncate text-xs text-muted-foreground">{ev.confirmed_skills.join(', ')}</p>}
+                 </div>
+                 <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', ev.status.includes('verified') ? 'bg-success/12 text-success' : ev.status === 'student_approved' ? 'bg-accent/12 text-accent' : 'bg-muted text-muted-foreground')}>{EVIDENCE_STATUS[ev.status] ?? ev.status}</span>
+               </div>
+             ))}
+           </div>
+         )}
+       </div>
+       <div className="mt-4 flex justify-end"><Button onClick={onSave} loading={saving} className="gap-1.5"><Save className="h-4 w-4" /> Save résumé</Button></div>
+       </>}
     </div>
   )
 }
