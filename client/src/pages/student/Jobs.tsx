@@ -28,6 +28,7 @@ import { useGeo, useCountryStats } from '@/lib/geo'
 import { jobsApi, profilesApi } from '@/lib/api'
 import type { AiMatch, JobListing, Profile } from '@/types'
 import { AIResearchPanel } from '@/components/AIResearchPanel'
+import { TrajectorySimulator } from '@/components/TrajectorySimulator'
 import { MatchRunner } from '@/components/MatchRunner'
 import { useMatchRun, needsMatchRun } from '@/lib/matchRun'
 import { useMatchProgress } from '@/lib/matchProgress'
@@ -665,6 +666,7 @@ function MatchAnalysis({
               <Bar label="Experience match" value={match.breakdown.experience} />
               <Bar label="Location fit" value={match.breakdown.location} />
               <Bar label="Compensation match" value={match.breakdown.compensation} />
+              <TrajectorySimulator match={match} />
               <Button variant="outline" size="sm" className="mt-1 w-full gap-1.5" onClick={onResearch}>
                 <Sparkles className="h-4 w-4 text-primary" /> Ask AI / full research on {brand}
               </Button>
