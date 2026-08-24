@@ -254,7 +254,13 @@ export interface StudentSkill {
   blurb?: string
 }
 
-export type EvidenceStatus = 'self_reported' | 'student_approved' | 'verified'
+export type EvidenceStatus =
+  | 'self_reported'
+  | 'ai_analyzed'
+  | 'student_approved'
+  | 'supervisor_verified'
+  | 'employer_verified'
+  | 'verified'
 
 export interface EvidenceItem {
   id: string
@@ -266,6 +272,7 @@ export interface EvidenceItem {
   file_name: string | null
   links: string[]
   files: { path: string; name: string }[]
+  used_in: string[]
   extracted_skills: string[]
   confirmed_skills: string[]
   status: EvidenceStatus

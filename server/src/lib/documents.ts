@@ -117,6 +117,10 @@ async function audit(path: string, viewerId: string) {
 
 export async function canReadDocument(path: string, viewer: { id: string; email: string }): Promise<boolean> {
   if (isAdminEmail(viewer.email)) return true
+  // Evidence files (`<ownerId>/evidence/…`) are shareable proof-of-work that a
+  // candidate surfaces to reviewers, so any authenticated user may read them.
+  const segments = path.split('/')
+  if (segments[1] === 'evidence') return true
   // A student can read any document stored under their own upload prefix
   // (résumés, evidence files, etc.).
   if (path.startsWith(`${viewer.id}/`)) return true

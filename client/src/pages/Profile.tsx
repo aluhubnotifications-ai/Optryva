@@ -35,6 +35,7 @@ import { useToast } from '@/components/ui/toast'
 import { formatDate, cn, fileToDataUrl } from '@/lib/utils'
 import { ResumeWorkspace } from '@/components/ResumeWorkspace'
 import { EvidenceLibrary } from '@/components/EvidenceLibrary'
+import { EvidenceGallery } from '@/components/EvidenceGallery'
 
 const ROLES = ['Software Engineering', 'Data Science', 'Product Management', 'Marketing', 'Operations', 'Finance', 'Design', 'Consulting']
 const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Agriculture', 'Education', 'E-commerce', 'Consulting', 'Nonprofit']
@@ -284,9 +285,7 @@ export default function Profile() {
       {user.user_type === 'student' && <ResumeWorkspace />}
 
       {user.user_type === 'student' && (
-        <Section icon={ShieldCheck} title="Evidence Library" hint="Upload work → AI suggests skills → you confirm → a reviewer verifies it">
-          <EvidenceLibrary studentId={user.id} mode="owner" />
-        </Section>
+        <EvidenceTab studentId={user.id} />
       )}
 
       {/* Legacy profile preferences are replaced by per-résumé preferences above. */}
@@ -452,6 +451,37 @@ export default function Profile() {
         </aside>
       </div>
     </div>
+  )
+}
+
+function EvidenceTab({ studentId }: { studentId: string }) {
+  const [tab, setTab] = useState<'gallery' | 'manage'>('gallery')
+  const tabs = [
+    { id: 'gallery', label: 'Gallery' },
+    { id: 'manage', label: 'Manage & verify' },
+  ] as const
+  return (
+    <Card>
+      <CardBody>
+        <div className="mb-4 flex items-center gap-2">
+          <ShieldCheck className="h-5 w-5 text-primary" />
+          <h2 className="font-semibold">Evidence</h2>
+          <Badge tone="outline" className="ml-auto text-[11px]">Upload work → AI suggests skills → you confirm → a reviewer verifies</Badge>
+        </div>
+        <div className="mb-4 flex gap-1 rounded-lg bg-muted p-1 text-sm">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={cn('flex-1 rounded-md px-3 py-1.5 font-medium transition-colors', tab === t.id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {tab === 'gallery' ? <EvidenceGallery studentId={studentId} mode="owner" /> : <EvidenceLibrary studentId={studentId} mode="owner" />}
+      </CardBody>
+    </Card>
   )
 }
 

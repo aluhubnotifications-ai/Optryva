@@ -1372,4 +1372,7 @@ export const evidenceApi = {
   async requestVerification(id: string): Promise<EvidenceItem> {
     return (await apiFetch(`/evidence/${id}/request-verification`, { method: 'POST' })) as EvidenceItem
   },
+  async setUsedIn(id: string, usedIn: string[]): Promise<EvidenceItem> {
+    return (await apiFetch(`/evidence/${id}/used-in`, { method: 'POST', body: JSON.stringify({ used_in: usedIn }) })) as EvidenceItem
+  },
 }

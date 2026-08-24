@@ -45,7 +45,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs'
 import { Modal } from '@/components/ui/Modal'
 import { JobPostingView } from '@/components/JobPostingView'
 import { ShowYourWork } from '@/components/ShowYourWork'
-import { EvidenceLibrary } from '@/components/EvidenceLibrary'
+import { EvidenceGallery } from '@/components/EvidenceGallery'
 import { useToast } from '@/components/ui/toast'
 import { cn, daysUntil, formatDate } from '@/lib/utils'
 
@@ -677,12 +677,10 @@ export default function ApplicantView() {
            </SectionCard>
          </TabsContent>
 
-         {/* Evidence — reviewer verifies the candidate's proof */}
-         <TabsContent value="evidence" className="space-y-5">
-           <SectionCard n={1} title="Candidate evidence" desc="Proof of work the candidate uploaded — verify it to label the evidence">
-             <EvidenceLibrary studentId={app.student_id} mode="viewer" />
-           </SectionCard>
-         </TabsContent>
+          {/* Evidence — reviewer verifies the candidate's proof */}
+          <TabsContent value="evidence" className="space-y-5">
+            <EvidenceGallery studentId={app.student_id} mode="viewer" />
+          </TabsContent>
 
         {/* Assessment */}
         {hasAssignment && (

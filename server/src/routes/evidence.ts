@@ -18,6 +18,7 @@ type EvidenceRow = {
   file_name: string | null
   links: string[]
   files: { path: string; name: string }[]
+  used_in: string[]
   extracted_skills: string[]
   confirmed_skills: string[]
   status: 'self_reported' | 'student_approved' | 'verified'
@@ -134,6 +135,7 @@ evidence.post('/', async (req, res) => {
       file_name: files[0]?.name ?? null,
       links,
       files,
+      used_in: [],
       status: 'self_reported',
     }).select('*').single(),
   ) as EvidenceRow
@@ -147,8 +149,10 @@ evidence.post('/:id/extract', async (req, res) => {
   if (!row) return res.status(404).json({ error: 'not_found' })
   const text = [row.title, row.description, (row.links ?? []).join('\n')].filter(Boolean).join('\n')
   const skills = await extractEvidenceSkills(text)
+  // Mark the item as AI-analyzed so the gallery can show that step in the flow.
+  const status = row.status === 'self_reported' ? 'ai_analyzed' : row.status
   const updated = must(
-    await sb.from('evidence_items').update({ extracted_skills: skills }).eq('id', row.id).select('*').single(),
+    await sb.from('evidence_items').update({ extracted_skills: skills, status }).eq('id', row.id).select('*').single(),
   ) as EvidenceRow
   res.json(updated)
 })
@@ -176,11 +180,21 @@ evidence.post('/:id/verify', async (req, res) => {
   const verified = b.verified !== false
   const row = (await sb.from('evidence_items').select('*').eq('id', req.params.id).maybeSingle()).data as EvidenceRow | null
   if (!row) return res.status(404).json({ error: 'not_found' })
+  const verifier = (await sb.from('profiles').select('user_type').eq('id', req.user!.id).maybeSingle()).data as { user_type: string } | null
+  let status: EvidenceRow['status']
+  if (verified) {
+    // A school user verifies as "supervisor"; a company as "employer".
+    if (verifier?.user_type === 'school') status = 'supervisor_verified'
+    else if (verifier?.user_type === 'company') status = 'employer_verified'
+    else status = 'verified'
+  } else {
+    status = row.verified_by ? 'student_approved' : 'self_reported'
+  }
   const updated = must(
     await sb
       .from('evidence_items')
       .update({
-        status: verified ? 'verified' : row.verified_by ? 'student_approved' : 'self_reported',
+        status,
         verified_by: verified ? req.user!.id : null,
         verified_at: verified ? now() : null,
       })
@@ -188,7 +202,21 @@ evidence.post('/:id/verify', async (req, res) => {
       .select('*')
       .single(),
   ) as EvidenceRow
-  await syncSkills(row.student_id, updated.confirmed_skills, updated.status === 'verified')
+  await syncSkills(row.student_id, updated.confirmed_skills, updated.status === 'verified' || updated.status === 'supervisor_verified' || updated.status === 'employer_verified')
+  res.json(updated)
+})
+
+// Attach / detach this evidence item from one or more résumé profiles.
+evidence.post('/:id/used-in', async (req, res) => {
+  const b = req.body ?? {}
+  const usedIn: string[] = Array.isArray(b.used_in) ? b.used_in.map((x: unknown) => String(x)).filter(Boolean) : []
+  const row = (await sb.from('evidence_items').select('*').eq('id', req.params.id).eq('student_id', req.user!.id).maybeSingle()).data as
+    | EvidenceRow
+    | null
+  if (!row) return res.status(404).json({ error: 'not_found' })
+  const updated = must(
+    await sb.from('evidence_items').update({ used_in: usedIn }).eq('id', row.id).select('*').single(),
+  ) as EvidenceRow
   res.json(updated)
 })
 
