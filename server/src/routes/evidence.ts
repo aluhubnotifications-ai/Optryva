@@ -187,14 +187,20 @@ async function buildCandidateSummary(studentId: string): Promise<string | null> 
     .join('\n')
   const sys =
     'You are writing an evidence summary for an employer reviewing a student ' +
-    'candidate on a hiring platform. Based on the candidate\'s evidence items ' +
-    'below, write a clear, substantive summary of what the candidate has actually ' +
-    'done. Start with a short overall paragraph (2-3 sentences) capturing their ' +
-    'main strengths and themes, then explain EACH evidence item in a bullet, ' +
-    'describing what they did and produced and why it matters. Be specific and ' +
-    'grounded in the provided details; do not invent. Use plain language an ' +
-    'employer would understand.'
-  return mistralText({ system: sys, user: `Candidate evidence:\n${bullets}`, maxTokens: 800 })
+    'candidate on a hiring platform. Write a polished, recruiter-ready summary ' +
+    'of what the candidate has actually done.\n\n' +
+    'Structure:\n' +
+    '1. A 2-3 sentence overview in active voice that captures the candidate\'s ' +
+    'main strengths, domains, and the tangible outcomes they deliver.\n' +
+    '2. A short "Evidence highlights" section where each evidence item is one ' +
+    'bullet: lead with the item title in bold, then a crisp sentence on what ' +
+    'they did and the impact or skill it demonstrates.\n\n' +
+    'Tone: confident and professional. Prefer specific, concrete language over ' +
+    'vague claims (e.g. "built an analytics dashboard that cut reporting time" ' +
+    'rather than "shows ability to build dashboards"). Use active voice. Do not ' +
+    'invent details not present. Use Markdown: bold for titles (**Title:**), ' +
+    '"- " for bullets. Keep the whole thing concise and skimmable.'
+  return mistralText({ system: sys, user: `Candidate evidence:\n${bullets}`, maxTokens: 900 })
 }
 
 // Recompute and persist the candidate summary on the student's profile so it
