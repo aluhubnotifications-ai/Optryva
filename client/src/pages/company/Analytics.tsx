@@ -7,6 +7,7 @@ import { applicationsApi, followsApi, jobsApi } from '@/lib/api'
 import type { Application, JobListing } from '@/types'
 import { Card, CardBody, Skeleton } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
+import { VerificationFlywheel } from '@/components/VerificationFlywheel'
 
 export default function Analytics() {
   const user = useCurrentUser()!
@@ -98,6 +99,12 @@ export default function Analytics() {
           </Card>
         ))}
       </div>
+
+      <VerificationFlywheel
+        reviews={apps.filter((a) => ['shortlisted', 'hired', 'rejected'].includes(a.status)).length}
+        assessments={apps.filter((a) => a.assignment_status === 'submitted').length}
+        shortlists={shortlisted}
+      />
 
       <div className="grid gap-5 lg:grid-cols-2">
         {/* Hiring funnel */}
