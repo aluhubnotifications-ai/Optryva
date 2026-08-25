@@ -17,8 +17,16 @@ import {
 
 const app = Router()
 
-// Guard: every request must carry `Authorization: Bearer <EXTRACTION_WORKER_TOKEN>`.
+// Public health check (no auth) — must be registered before the auth guard.
+app.get('/', (_req, res) => {
+  res.json({ ok: true, worker: 'extraction' })
+})
+
+// Guard: every request except the public health check must carry
+// `Authorization: Bearer <EXTRACTION_WORKER_TOKEN>`.
 app.use((req, res, next) => {
+  const reqPath = (req.raw?.req?.path as string) || ''
+  if (reqPath === '/') return next()
   const token = process.env.EXTRACTION_WORKER_TOKEN
   const auth = req.headers['authorization'] ?? req.headers['Authorization']
   if (!token || auth !== `Bearer ${token}`) {
@@ -76,11 +84,6 @@ app.post('/ask', async (req, res) => {
   if (!Array.isArray(items)) return res.status(400).json({ error: 'items array required' })
   const answer = await answerQuestion(question, items as CandidateEvidenceItem[])
   res.json({ answer: answer ?? null })
-})
-
-// Health check (public).
-app.get('/', (_req, res) => {
-  res.json({ ok: true, worker: 'extraction' })
 })
 
 export default {
