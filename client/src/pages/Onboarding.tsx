@@ -6,6 +6,7 @@ import {
   ArrowRight,
   Award,
   Briefcase,
+  Building2,
   Check,
   FileText,
   GraduationCap,
@@ -36,6 +37,8 @@ const WORK_OPTIONS = [
   { value: 'onsite', label: 'On-site' },
   { value: 'hybrid', label: 'Hybrid' },
 ]
+const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Agriculture', 'Education', 'E-commerce', 'Consulting', 'Nonprofit']
+const COMPANY_SIZES = ['1-10', '11-50', '51-200', '201-1000', '1000+']
 
 const ROLE_ICONS: Record<UserType, typeof GraduationCap> = {
   student: GraduationCap,
@@ -43,13 +46,15 @@ const ROLE_ICONS: Record<UserType, typeof GraduationCap> = {
   school: Landmark,
 }
 
-type StepId = 'role' | 'about' | 'location' | 'education' | 'skills' | 'resume'
+type StepId = 'role' | 'about' | 'location' | 'education' | 'school' | 'company' | 'skills' | 'resume'
 
 const STEP_META: Record<StepId, { label: string; icon: typeof User; blurb: string }> = {
   role: { label: 'Who you are', icon: User, blurb: 'This shapes your experience.' },
   about: { label: 'About you', icon: User, blurb: 'Just the basics — refine anytime.' },
   location: { label: 'Location & work', icon: MapPin, blurb: 'So we can match you to the right places.' },
   education: { label: 'Education', icon: GraduationCap, blurb: 'So schools and employers can find you.' },
+  school: { label: 'Your institution', icon: Building2, blurb: 'Help students recognize and trust you.' },
+  company: { label: 'Your company', icon: Briefcase, blurb: 'So we can match you with the right talent.' },
   skills: { label: 'Skills', icon: Sparkles, blurb: 'A few things you’re good at.' },
   resume: { label: 'Résumé', icon: FileText, blurb: 'Upload or paste — editable later.' },
 }
@@ -73,6 +78,12 @@ export default function Onboarding() {
   const [school, setSchool] = useState(user?.school ?? '')
   const [major, setMajor] = useState(user?.major ?? '')
   const [gpa, setGpa] = useState(user?.gpa ?? '')
+  const [bio, setBio] = useState(user?.bio ?? '')
+  const [studentDomains, setStudentDomains] = useState(
+    Array.isArray(user?.student_domains) ? (user?.student_domains as string[]).join(', ') : '',
+  )
+  const [industry, setIndustry] = useState(user?.industry ?? '')
+  const [companySize, setCompanySize] = useState(user?.company_size ?? '')
   const [skills, setSkills] = useState<string[]>(user?.skills ?? [])
   const [skillInput, setSkillInput] = useState('')
   const [cvUrl, setCvUrl] = useState<string | undefined>(user?.cv_url ?? undefined)
@@ -83,13 +94,17 @@ export default function Onboarding() {
 
   const hasResume = !!(cvUrl || cvText.trim())
 
-  // Steps adapt to the chosen role — only students answer the education step.
+  // Steps adapt to the chosen role — students get education, schools get an
+  // institution step, companies get a company step; everyone else shares the
+  // generic flow otherwise.
   const steps: { id: StepId; label: string }[] = [
     { id: 'role', label: 'Who you are' },
     { id: 'about', label: 'About you' },
     { id: 'location', label: 'Location & work' },
   ]
   if (userType === 'student') steps.push({ id: 'education', label: 'Education' })
+  else if (userType === 'school') steps.push({ id: 'school', label: 'Your institution' })
+  else if (userType === 'company') steps.push({ id: 'company', label: 'Your company' })
   steps.push({ id: 'skills', label: 'Skills' }, { id: 'resume', label: 'Résumé' })
 
   const current = steps[Math.min(step, steps.length) - 1]
@@ -136,6 +151,21 @@ export default function Onboarding() {
         if (!gpa.trim()) return toast({ title: 'Add your GPA or grades', tone: 'error' })
         await patchProfile({ school: school.trim(), major: major.trim(), gpa: gpa.trim() })
         goNext()
+      } else if (current.id === 'school') {
+        if (!bio.trim()) return toast({ title: 'Add a short description', tone: 'error' })
+        await patchProfile({
+          bio: bio.trim(),
+          student_domains: studentDomains
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean),
+        })
+        goNext()
+      } else if (current.id === 'company') {
+        if (!industry) return toast({ title: 'Choose an industry', tone: 'error' })
+        if (!companySize) return toast({ title: 'Choose a company size', tone: 'error' })
+        await patchProfile({ industry, company_size: companySize })
+        goNext()
       } else if (current.id === 'location') {
         if (!country.trim()) return toast({ title: 'Choose your country', tone: 'error' })
         if (!workType) return toast({ title: 'Choose a work preference', tone: 'error' })
@@ -179,6 +209,13 @@ export default function Onboarding() {
         major: major.trim(),
         gpa: gpa.trim(),
         skills,
+        ...(userType === 'school'
+          ? {
+              bio: bio.trim(),
+              student_domains: studentDomains.split(',').map((s) => s.trim()).filter(Boolean),
+            }
+          : {}),
+        ...(userType === 'company' ? { industry, company_size: companySize } : {}),
       })
       await onboardingApi.saveResume(cvText.trim() || undefined, cvUrl, cvFilename ?? undefined)
       // Refresh the cached profile so the completion gate sees the résumé and
@@ -358,6 +395,72 @@ export default function Onboarding() {
                   placeholder="e.g. 3.8/4.0 or Second Class Upper"
                   className="mt-1.5 bg-background"
                 />
+              </div>
+            </div>
+          )}
+
+          {current.id === 'school' && (
+            <div className="space-y-5">
+              <div>
+                <Label htmlFor="bio">About your institution</Label>
+                <Textarea
+                  id="bio"
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  placeholder="e.g. A public research university focused on engineering and agriculture…"
+                  rows={4}
+                  className="mt-1.5 bg-background"
+                />
+              </div>
+              <div>
+                <Label htmlFor="domains">Student email domains</Label>
+                <Input
+                  id="domains"
+                  value={studentDomains}
+                  onChange={(e) => setStudentDomains(e.target.value)}
+                  placeholder="e.g. student.example.edu, example.ac.ug"
+                  className="mt-1.5 bg-background"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">Comma-separated. Used to verify and privately match your students.</p>
+              </div>
+            </div>
+          )}
+
+          {current.id === 'company' && (
+            <div className="space-y-5">
+              <div>
+                <Label>Industry</Label>
+                <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
+                  {INDUSTRIES.map((ind) => (
+                    <button
+                      key={ind}
+                      type="button"
+                      onClick={() => setIndustry(ind)}
+                      className={`rounded-xl border p-3 text-left text-sm font-medium transition-colors ${
+                        industry === ind ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border hover:border-primary/40 hover:bg-muted/50'
+                      }`}
+                    >
+                      {ind}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <Label>Company size</Label>
+                <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
+                  {COMPANY_SIZES.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setCompanySize(s)}
+                      className={`rounded-xl border p-3 text-sm font-medium transition-colors ${
+                        companySize === s ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border hover:border-primary/40 hover:bg-muted/50'
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}

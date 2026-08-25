@@ -74,6 +74,20 @@ export function profileCompletion(p: Profile | null | undefined, resumeCount = 0
       required: true,
       section: 'about',
     },
+    {
+      key: 'institution',
+      label: 'Institution description',
+      done: p.user_type === 'school' ? !!p.bio?.trim() : true,
+      required: true,
+      section: 'about',
+    },
+    {
+      key: 'companyInfo',
+      label: 'Industry & company size',
+      done: p.user_type === 'company' ? !!(p.industry?.trim() && p.company_size?.trim()) : true,
+      required: true,
+      section: 'about',
+    },
     { key: 'resume', label: 'Résumé or basic profile', done: hasCv, required: true, section: 'resumes' },
     { key: 'evidence', label: 'Evidence of your work', done: hasEvidence, required: true, section: 'evidence' },
   ]
