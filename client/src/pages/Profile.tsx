@@ -26,7 +26,7 @@ import {
 import { Link, useNavigate } from 'react-router-dom'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { useMatchRun } from '@/lib/matchRun'
-import { fetchProtectedDocument, profilesApi, resumesApi, evidenceApi } from '@/lib/api'
+import { fetchProtectedDocument, profilesApi, resumesApi, evidenceApi, authApi } from '@/lib/api'
 import { profileCompletion, GOAL_OPTIONS, ROLE_OPTIONS, setEvidenceDeclined, isEvidenceDeclined, type OnboardingStep } from '@/lib/onboarding'
 import type { Profile as ProfileT, UserType, WorkType, ListingType } from '@/types'
 import { Card, CardBody, Badge, Avatar, Input, Label, Textarea, Select } from '@/components/ui/primitives'
@@ -648,6 +648,22 @@ function AccountSecurity() {
   const navigate = useNavigate()
   const logout = useSession((s) => s.logout)
   const [modal, setModal] = useState<null | 'email' | 'password' | 'delete'>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function doDelete() {
+    if (busy) return
+    setBusy(true)
+    try {
+      await authApi.deleteAccount()
+      setModal(null)
+      logout()
+      toast({ title: 'Account deleted', tone: 'info' })
+      navigate('/')
+    } catch (e) {
+      setBusy(false)
+      toast({ title: 'Could not delete account', description: e instanceof Error ? e.message : undefined, tone: 'error' })
+    }
+  }
 
   return (
     <Card>
@@ -685,12 +701,14 @@ function AccountSecurity() {
       <Modal open={modal === 'delete'} onClose={() => setModal(null)} size="sm" title="Delete account?" description="This is irreversible and removes all your applications, messages, and data.">
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setModal(null)}>Cancel</Button>
-          <Button variant="danger" onClick={() => { setModal(null); logout(); toast({ title: 'Account deleted (demo)', tone: 'info' }); navigate('/') }}>Delete forever</Button>
+          <Button variant="danger" loading={busy} onClick={doDelete}>Delete forever</Button>
         </div>
       </Modal>
     </Card>
   )
 }
+
+export { AccountSecurity }
 
 function Row({ icon: Icon, title, desc, onClick, danger }: { icon: typeof Mail; title: string; desc: string; onClick: () => void; danger?: boolean }) {
   return (

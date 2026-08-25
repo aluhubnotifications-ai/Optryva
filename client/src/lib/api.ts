@@ -67,6 +67,11 @@ export const authApi = {
       /* ignore network errors on logout */
     }
   },
+  /** Permanently delete the current account. The server cascades the delete to
+   *  profiles, jobs, applications, etc. via FK. Clears the refresh cookie. */
+  async deleteAccount(): Promise<void> {
+    await apiFetch('/auth/delete-account', { method: 'POST' })
+  },
   /** Fresh profile for the current token — used to refresh a persisted session
    *  (e.g. so is_admin / plan changes show up without re-logging-in). */
   async me(): Promise<Profile | null> {

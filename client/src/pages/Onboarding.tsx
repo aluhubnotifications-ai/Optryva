@@ -89,7 +89,10 @@ function CountryMultiSelect({ value, onChange }: { value: string[]; onChange: (v
   }, [])
 
   function add(name: string) {
-    if (!value.includes(name)) onChange([...value, name])
+    if (!value.includes(name)) {
+      onChange([...value, name])
+      playStep()
+    }
     setQ('')
     setOpen(false)
   }
@@ -101,12 +104,17 @@ function CountryMultiSelect({ value, onChange }: { value: string[]; onChange: (v
     <div>
       <div className="mt-2 flex flex-wrap gap-2">
         {value.map((c) => (
-          <span key={c} className="flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm text-primary">
+          <motion.span
+            key={c}
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm text-primary"
+          >
             {c}
             <button type="button" onClick={() => remove(c)} aria-label={`Remove ${c}`}>
               <X className="h-3.5 w-3.5" />
             </button>
-          </span>
+          </motion.span>
         ))}
       </div>
       <div className="relative mt-2" ref={wrapRef}>
@@ -206,6 +214,7 @@ export default function Onboarding() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [celebrating, setCelebrating] = useState(false)
+  const [resumeBurst, setResumeBurst] = useState(false)
 
   const hasResume = !!(cvUrl || cvText.trim())
 
@@ -251,7 +260,10 @@ export default function Onboarding() {
 
   function addSkill() {
     const s = skillInput.trim()
-    if (s && !skills.includes(s)) setSkills([...skills, s])
+    if (s && !skills.includes(s)) {
+      setSkills([...skills, s])
+      playStep()
+    }
     setSkillInput('')
   }
   function removeSkill(s: string) {
@@ -260,17 +272,23 @@ export default function Onboarding() {
 
   function addRole() {
     const s = roleInput.trim()
-    if (s && !desiredRoles.includes(s)) setDesiredRoles([...desiredRoles, s])
+    if (s && !desiredRoles.includes(s)) {
+      setDesiredRoles([...desiredRoles, s])
+      playStep()
+    }
     setRoleInput('')
   }
   function toggleRole(r: string) {
     setDesiredRoles((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]))
+    playStep()
   }
   function toggleIndustry(ind: string) {
     setPreferredIndustries((prev) => (prev.includes(ind) ? prev.filter((x) => x !== ind) : [...prev, ind]))
+    playStep()
   }
   function toggleListingType(t: string) {
     setPrefListingTypes((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]))
+    playStep()
   }
 
   async function handleNext() {
@@ -314,14 +332,11 @@ export default function Onboarding() {
         if (!hasResume) return toast({ title: 'Add a résumé or paste your experience', tone: 'error' })
         goNext()
       } else if (current.id === 'preferences') {
+        if (desiredRoles.length === 0) return toast({ title: 'Pick a career direction', tone: 'error' })
+        if (preferredIndustries.length === 0) return toast({ title: 'Pick at least one industry', tone: 'error' })
+        if (prefCountries.length === 0) return toast({ title: 'Pick at least one country (or Remote)', tone: 'error' })
         if (!workType) return toast({ title: 'Choose a work preference', tone: 'error' })
-        if (
-          desiredRoles.length === 0 &&
-          preferredIndustries.length === 0 &&
-          prefCountries.length === 0 &&
-          prefListingTypes.length === 0
-        )
-          return toast({ title: 'Pick at least one preference', tone: 'error' })
+        if (prefListingTypes.length === 0) return toast({ title: 'Pick at least one opportunity type', tone: 'error' })
         await patchProfile({
           desired_roles: desiredRoles,
           preferred_industries: preferredIndustries,
@@ -344,6 +359,9 @@ export default function Onboarding() {
       setCvUrl(url)
       setCvFilename(file.name)
       setCvText('')
+      playSuccess()
+      setResumeBurst(true)
+      setTimeout(() => setResumeBurst(false), 1300)
       toast({ title: 'Attached', description: file.name, tone: 'success' })
       setTimeout(() => setUploadProgress(null), 500)
     } catch (e) {
@@ -357,14 +375,11 @@ export default function Onboarding() {
     // Students finish straight from the Preferences step (their last step), so
     // validate here too — the per-step handleNext guard is skipped on the last.
     if (userType === 'student') {
+      if (desiredRoles.length === 0) return toast({ title: 'Pick a career direction', tone: 'error' })
+      if (preferredIndustries.length === 0) return toast({ title: 'Pick at least one industry', tone: 'error' })
+      if (prefCountries.length === 0) return toast({ title: 'Pick at least one country (or Remote)', tone: 'error' })
       if (!workType) return toast({ title: 'Choose a work preference', tone: 'error' })
-      if (
-        desiredRoles.length === 0 &&
-        preferredIndustries.length === 0 &&
-        prefCountries.length === 0 &&
-        prefListingTypes.length === 0
-      )
-        return toast({ title: 'Pick at least one preference', tone: 'error' })
+      if (prefListingTypes.length === 0) return toast({ title: 'Pick at least one opportunity type', tone: 'error' })
     }
     // Students pick their geography via "preferred countries" in Preferences, so
     // derive their base country from that (a non-Remote choice, else Remote).
@@ -635,12 +650,17 @@ export default function Onboarding() {
             <div>
               <div className="flex flex-wrap gap-2">
                 {skills.map((s) => (
-                  <span key={s} className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
+                  <motion.span
+                    key={s}
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary"
+                  >
                     {s}
                     <button type="button" onClick={() => removeSkill(s)} aria-label={`Remove ${s}`} className="rounded-full p-0.5 hover:bg-primary/15">
                       <X className="h-3.5 w-3.5" />
                     </button>
-                  </span>
+                  </motion.span>
                 ))}
                 {skills.length === 0 && <p className="text-sm text-muted-foreground">No skills yet — add a few below.</p>}
               </div>
@@ -729,28 +749,35 @@ export default function Onboarding() {
                   {CAREER_EXAMPLES.map((ex) => {
                     const active = desiredRoles.includes(ex)
                     return (
-                      <button
+                      <motion.button
                         key={ex}
                         type="button"
+                        whileTap={{ scale: 0.92 }}
+                        whileHover={{ scale: 1.04 }}
                         onClick={() => toggleRole(ex)}
-                        className={`rounded-full border px-3 py-1.5 text-sm transition-colors active:scale-95 ${
+                        className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
                           active ? 'border-primary bg-primary/10 text-primary' : 'border-input bg-background hover:border-primary/40'
                         }`}
                       >
                         {ex}
-                      </button>
+                      </motion.button>
                     )
                   })}
                 </div>
                 {desiredRoles.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {desiredRoles.map((r) => (
-                      <span key={r} className="flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm text-primary">
+                      <motion.span
+                        key={r}
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm text-primary"
+                      >
                         {r}
                         <button type="button" onClick={() => setDesiredRoles(desiredRoles.filter((x) => x !== r))}>
                           <X className="h-3.5 w-3.5" />
                         </button>
-                      </span>
+                      </motion.span>
                     ))}
                   </div>
                 )}
@@ -774,16 +801,18 @@ export default function Onboarding() {
                   {INDUSTRIES.map((ind) => {
                     const active = preferredIndustries.includes(ind)
                     return (
-                      <button
+                      <motion.button
                         key={ind}
                         type="button"
+                        whileTap={{ scale: 0.94 }}
+                        whileHover={{ scale: 1.03 }}
                         onClick={() => toggleIndustry(ind)}
-                        className={`rounded-xl border px-3 py-2 text-sm transition-colors active:scale-95 ${
+                        className={`rounded-xl border px-3 py-2 text-sm transition-colors ${
                           active ? 'border-primary bg-primary/10 text-primary' : 'border-input bg-background hover:border-primary/40'
                         }`}
                       >
                         {ind}
-                      </button>
+                      </motion.button>
                     )
                   })}
                 </div>
@@ -800,16 +829,21 @@ export default function Onboarding() {
                   {WORK_OPTIONS.map((o) => {
                     const active = workType === o.value
                     return (
-                      <button
+                      <motion.button
                         key={o.value}
                         type="button"
-                        onClick={() => setWorkType(o.value)}
-                        className={`rounded-xl border px-3 py-2 text-sm transition-colors active:scale-95 ${
+                        whileTap={{ scale: 0.94 }}
+                        whileHover={{ scale: 1.03 }}
+                        onClick={() => {
+                          setWorkType(o.value)
+                          playStep()
+                        }}
+                        className={`rounded-xl border px-3 py-2 text-sm transition-colors ${
                           active ? 'border-primary bg-primary/10 text-primary' : 'border-input bg-background hover:border-primary/40'
                         }`}
                       >
                         {o.label}
-                      </button>
+                      </motion.button>
                     )
                   })}
                 </div>
@@ -821,16 +855,18 @@ export default function Onboarding() {
                   {LISTING_TYPES.map((t) => {
                     const active = prefListingTypes.includes(t)
                     return (
-                      <button
+                      <motion.button
                         key={t}
                         type="button"
+                        whileTap={{ scale: 0.94 }}
+                        whileHover={{ scale: 1.03 }}
                         onClick={() => toggleListingType(t)}
-                        className={`rounded-xl border px-3 py-2 text-sm transition-colors active:scale-95 ${
+                        className={`rounded-xl border px-3 py-2 text-sm transition-colors ${
                           active ? 'border-primary bg-primary/10 text-primary' : 'border-input bg-background hover:border-primary/40'
                         }`}
                       >
                         {t}
-                      </button>
+                      </motion.button>
                     )
                   })}
                 </div>
@@ -857,9 +893,25 @@ export default function Onboarding() {
           )}
         </div>
       </div>
+      {resumeBurst && (
+        <div className="pointer-events-none fixed inset-0 z-[55] flex items-center justify-center">
+          <Confetti count={40} />
+        </div>
+      )}
       {celebrating && (
-        <div className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center">
-          <Confetti />
+        <div className="pointer-events-none fixed inset-0 z-[60] flex flex-col items-center justify-center gap-4">
+          <motion.div
+            initial={{ scale: 0.6, opacity: 0, y: 12 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 18 }}
+            className="rounded-2xl bg-card/90 px-6 py-4 text-center shadow-card backdrop-blur"
+          >
+            <div className="text-3xl">🎉</div>
+            <div className="mt-1 text-lg font-bold">You're all set!</div>
+            <div className="text-sm text-muted-foreground">Taking you to your profile…</div>
+          </motion.div>
+          <Confetti count={60} />
+          <Confetti count={60} />
         </div>
       )}
     </div>

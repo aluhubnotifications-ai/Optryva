@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { AvatarEditor } from '@/components/AvatarEditor'
 import { CoverEditor } from '@/components/CoverEditor'
 import { useToast } from '@/components/ui/toast'
+import { AccountSecurity } from '@/pages/Profile'
 
   const SIZES = ['1-10', '11-50', '51-200', '201-500', '500+']
 const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Education', 'E-commerce', 'Agriculture', 'Consulting', 'Nonprofit']
@@ -238,6 +239,9 @@ export default function CompanyProfile() {
               </Link>
             </CardBody>
           </Card>
+
+          {/* Account & Security (incl. delete account) */}
+          <AccountSecurity />
         </aside>
       </div>
     </div>

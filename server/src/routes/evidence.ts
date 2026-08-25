@@ -23,7 +23,7 @@ type EvidenceRow = {
   used_in: string[]
   extracted_skills: string[]
   confirmed_skills: string[]
-  status: 'self_reported' | 'ai_analyzed' | 'student_approved' | 'supervisor_verified' | 'employer_verified' | 'verified'
+  status: 'self_reported' | 'ai_analyzed' | 'student_approved'
   verified_by: string | null
   verified_at: string | null
   verification_requested: boolean
@@ -68,9 +68,8 @@ async function refreshCandidateSummary(studentId: string) {
 }
 
 // Keep the student's real `student_skills` in sync with confirmed evidence so
-// approved evidence actually supports résumé matching. Verified evidence marks
-// the skill verified; otherwise it's a normal student skill.
-async function syncSkills(studentId: string, skills: string[], verified: boolean) {
+// approved evidence actually supports résumé matching.
+async function syncSkills(studentId: string, skills: string[]) {
   for (const raw of skills) {
     const skill = raw.trim()
     if (!skill) continue
@@ -78,9 +77,7 @@ async function syncSkills(studentId: string, skills: string[], verified: boolean
       | { id: string; verified: boolean }
       | null
     if (existing) {
-      // Never downgrade an already-verified skill just because one evidence item changed.
-      const nextVerified = verified || existing.verified
-      await sb.from('student_skills').update({ verified: nextVerified, updated_at: now() }).eq('id', existing.id)
+      await sb.from('student_skills').update({ updated_at: now() }).eq('id', existing.id)
     } else {
       await sb.from('student_skills').insert({
         id: uid('sk'),
@@ -91,7 +88,7 @@ async function syncSkills(studentId: string, skills: string[], verified: boolean
         sessions: 0,
         rating: 0,
         rating_count: 0,
-        verified,
+        verified: false,
         portfolio_url: null,
       })
     }
@@ -245,93 +242,14 @@ evidence.post('/:id/confirm', async (req, res) => {
   if (!row) return res.status(404).json({ error: 'not_found' })
   const updated = must(
     await sb.from('evidence_items')
-      .update({ confirmed_skills: confirmed, status: 'student_approved', verification_requested: false })
+      .update({ confirmed_skills: confirmed, status: 'student_approved' })
       .eq('id', row.id)
       .select('*')
       .single(),
   ) as EvidenceRow
-  await syncSkills(row.student_id, confirmed, updated.status === 'verified')
+  await syncSkills(row.student_id, confirmed)
   await refreshCandidateSummary(row.student_id)
   res.json(updated)
-})
-
-evidence.post('/:id/verify', async (req, res) => {
-  const b = req.body ?? {}
-  const verified = b.verified !== false
-  const row = (await sb.from('evidence_items').select('*').eq('id', req.params.id).maybeSingle()).data as EvidenceRow | null
-  if (!row) return res.status(404).json({ error: 'not_found' })
-  const verifier = (await sb.from('profiles').select('user_type').eq('id', req.user!.id).maybeSingle()).data as { user_type: string } | null
-  let status: EvidenceRow['status']
-  if (verified) {
-    // A school user verifies as "supervisor"; a company as "employer".
-    if (verifier?.user_type === 'school') status = 'supervisor_verified'
-    else if (verifier?.user_type === 'company') status = 'employer_verified'
-    else status = 'verified'
-  } else {
-    status = row.verified_by ? 'student_approved' : 'self_reported'
-  }
-  const updated = must(
-    await sb
-      .from('evidence_items')
-      .update({
-        status,
-        verified_by: verified ? req.user!.id : null,
-        verified_at: verified ? now() : null,
-      })
-      .eq('id', row.id)
-      .select('*')
-      .single(),
-  ) as EvidenceRow
-  await syncSkills(row.student_id, updated.confirmed_skills, updated.status === 'verified' || updated.status === 'supervisor_verified' || updated.status === 'employer_verified')
-  await refreshCandidateSummary(row.student_id)
-  res.json(updated)
-})
-
-// Attach / detach this evidence item from one or more résumé profiles.
-evidence.post('/:id/used-in', async (req, res) => {
-  const b = req.body ?? {}
-  const usedIn: string[] = Array.isArray(b.used_in) ? b.used_in.map((x: unknown) => String(x)).filter(Boolean) : []
-  const row = (await sb.from('evidence_items').select('*').eq('id', req.params.id).eq('student_id', req.user!.id).maybeSingle()).data as
-    | EvidenceRow
-    | null
-  if (!row) return res.status(404).json({ error: 'not_found' })
-  const updated = must(
-    await sb.from('evidence_items').update({ used_in: usedIn }).eq('id', row.id).select('*').single(),
-  ) as EvidenceRow
-  res.json(updated)
-})
-
-evidence.post('/:id/request-verification', async (req, res) => {
-  const row = (await sb.from('evidence_items').select('*').eq('id', req.params.id).eq('student_id', req.user!.id).maybeSingle()).data as
-    | EvidenceRow
-    | null
-  if (!row) return res.status(404).json({ error: 'not_found' })
-  const updated = must(
-    await sb.from('evidence_items').update({ verification_requested: true }).eq('id', row.id).select('*').single(),
-  ) as EvidenceRow
-  res.json(updated)
-})
-
-evidence.post('/:id/comments', async (req, res) => {
-  const b = req.body ?? {}
-  const content = String(b.content ?? '').trim()
-  if (!content) return res.status(400).json({ error: 'content_required' })
-  const comment = must(
-    await sb.from('evidence_comments').insert({
-      id: uid('cm'),
-      evidence_id: req.params.id,
-      user_id: req.user!.id,
-      content,
-    }).select('*').single(),
-  ) as EvidenceRow & { id: string; evidence_id: string; user_id: string; content: string; created_at: string; updated_at: string }
-  res.json(comment)
-})
-
-evidence.get('/:id/comments', async (req, res) => {
-  const comments = must(
-    await sb.from('evidence_comments').select('*').eq('evidence_id', req.params.id).order('created_at', { ascending: false }),
-  ) as Array<{ id: string; evidence_id: string; user_id: string; content: string; created_at: string; updated_at: string }>
-  res.json(comments)
 })
 
 // ---------------------------------------------------------------------------
