@@ -1,4 +1,4 @@
-import { lazy, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { createBrowserRouter, isRouteErrorResponse, Navigate, Outlet, useRouteError } from 'react-router-dom'
 import { AppShell } from '@/app/AppShell'
 import { useSession, useCurrentUser } from '@/lib/store'
@@ -121,7 +121,20 @@ export const router = createBrowserRouter([
   { path: '/verify-email', element: <VerifyEmail /> },
   { path: '/forgot-password', element: <ForgotPassword /> },
   { path: '/role-selection', element: <Navigate to="/onboarding" replace /> },
-  { path: '/onboarding', element: <Onboarding /> },
+  {
+    path: '/onboarding',
+    element: (
+      <Suspense
+        fallback={
+          <div className="mesh-bg flex min-h-screen items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          </div>
+        }
+      >
+        <Onboarding />
+      </Suspense>
+    ),
+  },
   {
     path: '/app',
     element: <RequireAuth />,

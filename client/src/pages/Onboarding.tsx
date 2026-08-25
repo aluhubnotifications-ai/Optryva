@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -24,6 +24,7 @@ import { Confetti } from '@/components/Confetti'
 import { Button } from '@/components/ui/Button'
 import { Input, Label, Textarea } from '@/components/ui/primitives'
 import { CountryCombobox } from '@/components/ui/CountryCombobox'
+import { COUNTRIES } from '@/lib/geo'
 import { useToast } from '@/components/ui/toast'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { profilesApi, onboardingApi, authApi } from '@/lib/api'
@@ -40,8 +41,112 @@ const WORK_OPTIONS = [
 const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Agriculture', 'Education', 'E-commerce', 'Consulting', 'Nonprofit']
 const LISTING_TYPES = ['Internship', 'Fellowship', 'Part-time', 'Full-time', 'Graduate role', 'Volunteer']
 const COMPANY_SIZES = ['1-10', '11-50', '51-200', '201-1000', '1000+']
+const CAREER_EXAMPLES = [
+  'Software Engineering',
+  'Data Science / ML',
+  'Web Development',
+  'Mobile Development',
+  'Product Management',
+  'UX / UI Design',
+  'Mechanical Engineering',
+  'Electrical Engineering',
+  'Business / Strategy',
+  'Marketing',
+  'Sales',
+  'Finance / Accounting',
+  'Consulting',
+  'Operations',
+  'Research',
+  'Public Health',
+  'Medicine / Nursing',
+  'Education / Teaching',
+  'Law',
+  'Entrepreneurship',
+]
 
 type StepId = 'about' | 'location' | 'education' | 'school' | 'company' | 'skills' | 'resume' | 'preferences'
+
+// Multi-select country picker (with a "Remote (anywhere)" option) used for the
+// student "preferred countries" preference. Selecting a country adds a chip;
+// the chosen set is the student's matching geography.
+function CountryMultiSelect({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const [q, setQ] = useState('')
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  const list = useMemo(() => {
+    const all = [{ code: 'remote', name: 'Remote (anywhere)', flagUrl: '' }, ...COUNTRIES]
+    const query = q.trim().toLowerCase()
+    return query ? all.filter((c) => c.name.toLowerCase().includes(query)) : all
+  }, [q])
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [])
+
+  function add(name: string) {
+    if (!value.includes(name)) onChange([...value, name])
+    setQ('')
+    setOpen(false)
+  }
+  function remove(name: string) {
+    onChange(value.filter((x) => x !== name))
+  }
+
+  return (
+    <div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {value.map((c) => (
+          <span key={c} className="flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm text-primary">
+            {c}
+            <button type="button" onClick={() => remove(c)} aria-label={`Remove ${c}`}>
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="relative mt-2" ref={wrapRef}>
+        <input
+          type="text"
+          value={q}
+          placeholder="Search countries…"
+          onChange={(e) => {
+            setQ(e.target.value)
+            setOpen(true)
+          }}
+          onFocus={() => setOpen(true)}
+          className="flex h-9 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        />
+        {open && list.length > 0 && (
+          <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-card">
+            {list.slice(0, 60).map((c) => (
+              <button
+                type="button"
+                key={c.code}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  add(c.name)
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-muted"
+              >
+                {c.flagUrl ? (
+                  <img src={c.flagUrl} alt="" className="h-3.5 w-5 rounded-sm object-cover shadow-sm" />
+                ) : (
+                  <span className="h-3.5 w-5" />
+                )}
+                <span className="flex-1">{c.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 const STEP_META: Record<StepId, { label: string; icon: typeof User; blurb: string }> = {
   about: { label: 'About you', icon: User, blurb: 'Just the basics — refine anytime.' },
@@ -94,7 +199,6 @@ export default function Onboarding() {
   const [roleInput, setRoleInput] = useState('')
   const [preferredIndustries, setPreferredIndustries] = useState<string[]>(user?.preferred_industries ?? [])
   const [prefCountries, setPrefCountries] = useState<string[]>(user?.pref_countries ?? [])
-  const [countryInput, setCountryInput] = useState('')
   const [prefListingTypes, setPrefListingTypes] = useState<string[]>(user?.pref_listing_types ?? [])
   const [cvUrl, setCvUrl] = useState<string | undefined>(user?.cv_url ?? undefined)
   const [cvText, setCvText] = useState(user?.cv_text ?? '')
@@ -122,7 +226,9 @@ export default function Onboarding() {
   } else if (userType === 'company') {
     steps.push({ id: 'company', label: 'Your company' })
   }
-  steps.push({ id: 'location', label: 'Location & work' })
+  // Students answer country + work preference inside the Preferences step, so
+  // they don't get a duplicate Location step. Schools/companies still do.
+  if (userType !== 'student') steps.push({ id: 'location', label: 'Location & work' })
 
   const current = steps[Math.min(step, steps.length) - 1]
   const isLast = step === steps.length
@@ -157,10 +263,8 @@ export default function Onboarding() {
     if (s && !desiredRoles.includes(s)) setDesiredRoles([...desiredRoles, s])
     setRoleInput('')
   }
-  function addCountry() {
-    const s = countryInput.trim()
-    if (s && !prefCountries.includes(s)) setPrefCountries([...prefCountries, s])
-    setCountryInput('')
+  function toggleRole(r: string) {
+    setDesiredRoles((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]))
   }
   function toggleIndustry(ind: string) {
     setPreferredIndustries((prev) => (prev.includes(ind) ? prev.filter((x) => x !== ind) : [...prev, ind]))
@@ -210,6 +314,7 @@ export default function Onboarding() {
         if (!hasResume) return toast({ title: 'Add a résumé or paste your experience', tone: 'error' })
         goNext()
       } else if (current.id === 'preferences') {
+        if (!workType) return toast({ title: 'Choose a work preference', tone: 'error' })
         if (
           desiredRoles.length === 0 &&
           preferredIndustries.length === 0 &&
@@ -222,6 +327,7 @@ export default function Onboarding() {
           preferred_industries: preferredIndustries,
           pref_countries: prefCountries,
           pref_listing_types: prefListingTypes,
+          work_type: workType,
         })
         goNext()
       }
@@ -248,14 +354,32 @@ export default function Onboarding() {
 
   async function finish() {
     if (!hasResume) return toast({ title: 'Add a résumé or paste your experience', tone: 'error' })
+    // Students finish straight from the Preferences step (their last step), so
+    // validate here too — the per-step handleNext guard is skipped on the last.
+    if (userType === 'student') {
+      if (!workType) return toast({ title: 'Choose a work preference', tone: 'error' })
+      if (
+        desiredRoles.length === 0 &&
+        preferredIndustries.length === 0 &&
+        prefCountries.length === 0 &&
+        prefListingTypes.length === 0
+      )
+        return toast({ title: 'Pick at least one preference', tone: 'error' })
+    }
+    // Students pick their geography via "preferred countries" in Preferences, so
+    // derive their base country from that (a non-Remote choice, else Remote).
+    const baseCountry =
+      userType === 'student'
+        ? prefCountries.find((c) => c !== 'Remote') ?? prefCountries[0] ?? ''
+        : country.trim()
     setSaving(true)
     try {
       await patchProfile({
         user_type: userType,
         full_name: name.trim(),
         onboarding_goal: goal,
-        country: country.trim(),
-        location: country.trim(),
+        country: baseCountry,
+        location: baseCountry,
         work_type: workType,
         school: school.trim(),
         major: major.trim(),
@@ -600,17 +724,36 @@ export default function Onboarding() {
           {current.id === 'preferences' && (
             <div className="space-y-5">
               <div>
-                <Label>Career direction — roles you want</Label>
+                <Label>Career direction — pick what fits (or add your own)</Label>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {desiredRoles.map((r) => (
-                    <span key={r} className="flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm text-primary">
-                      {r}
-                      <button type="button" onClick={() => setDesiredRoles(desiredRoles.filter((x) => x !== r))}>
-                        <X className="h-3.5 w-3.5" />
+                  {CAREER_EXAMPLES.map((ex) => {
+                    const active = desiredRoles.includes(ex)
+                    return (
+                      <button
+                        key={ex}
+                        type="button"
+                        onClick={() => toggleRole(ex)}
+                        className={`rounded-full border px-3 py-1.5 text-sm transition-colors active:scale-95 ${
+                          active ? 'border-primary bg-primary/10 text-primary' : 'border-input bg-background hover:border-primary/40'
+                        }`}
+                      >
+                        {ex}
                       </button>
-                    </span>
-                  ))}
+                    )
+                  })}
                 </div>
+                {desiredRoles.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {desiredRoles.map((r) => (
+                      <span key={r} className="flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm text-primary">
+                        {r}
+                        <button type="button" onClick={() => setDesiredRoles(desiredRoles.filter((x) => x !== r))}>
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <Input
                   value={roleInput}
                   onChange={(e) => setRoleInput(e.target.value)}
@@ -620,8 +763,8 @@ export default function Onboarding() {
                       addRole()
                     }
                   }}
-                  placeholder="e.g. Data Analyst, Product Manager"
-                  className="mt-2 bg-background"
+                  placeholder="Add a custom role and press Enter"
+                  className="mt-3 bg-background"
                 />
               </div>
 
@@ -647,29 +790,29 @@ export default function Onboarding() {
               </div>
 
               <div>
-                <Label>Preferred countries</Label>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {prefCountries.map((c) => (
-                    <span key={c} className="flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm text-primary">
-                      {c}
-                      <button type="button" onClick={() => setPrefCountries(prefCountries.filter((x) => x !== c))}>
-                        <X className="h-3.5 w-3.5" />
+                <Label>Preferred countries (where you want to work)</Label>
+                <CountryMultiSelect value={prefCountries} onChange={setPrefCountries} />
+              </div>
+
+              <div>
+                <Label>Work preference</Label>
+                <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                  {WORK_OPTIONS.map((o) => {
+                    const active = workType === o.value
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => setWorkType(o.value)}
+                        className={`rounded-xl border px-3 py-2 text-sm transition-colors active:scale-95 ${
+                          active ? 'border-primary bg-primary/10 text-primary' : 'border-input bg-background hover:border-primary/40'
+                        }`}
+                      >
+                        {o.label}
                       </button>
-                    </span>
-                  ))}
+                    )
+                  })}
                 </div>
-                <Input
-                  value={countryInput}
-                  onChange={(e) => setCountryInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      addCountry()
-                    }
-                  }}
-                  placeholder="Type a country and press Enter"
-                  className="mt-2 bg-background"
-                />
               </div>
 
               <div>

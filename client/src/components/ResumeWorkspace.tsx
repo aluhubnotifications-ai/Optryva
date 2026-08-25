@@ -4,16 +4,15 @@ import { Spinner } from '@/components/ui/Spinner'
 import { fetchProtectedDocument, resumesApi, evidenceApi } from '@/lib/api'
 import type { EvidenceItem, ListingType, ResumeProfile, WorkType } from '@/types'
 import { Card, CardBody, Badge, Input, Label, Select } from '@/components/ui/primitives'
+import { CountryMultiSelect } from '@/components/ui/CountryMultiSelect'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/toast'
 import { cn, fileToDataUrl } from '@/lib/utils'
-import { COUNTRIES as GEO_COUNTRIES } from '@/lib/geo'
 
 const ROLES = ['Software Engineering', 'Data Science', 'Product Management', 'Marketing', 'Operations', 'Finance', 'Design', 'Consulting']
 const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Agriculture', 'Education', 'E-commerce', 'Consulting', 'Nonprofit']
 const TYPES: ListingType[] = ['Internship', 'Full-time', 'Part-time', 'Fellowship']
-const COUNTRIES = GEO_COUNTRIES.filter((c) => c.code !== 'all' && c.code !== 'remote').map((c) => c.name)
 
 const EVIDENCE_STATUS: Record<string, string> = {
   self_reported: 'Self-reported',
@@ -38,7 +37,6 @@ export function ResumeWorkspace() {
   const [saving, setSaving] = useState<string | null>(null)
   const [pendingResumeId, setPendingResumeId] = useState<string | null>(null)
   const [skillInputs, setSkillInputs] = useState<Record<string, string>>({})
-  const [countryInputs, setCountryInputs] = useState<Record<string, string>>({})
   const [preview, setPreview] = useState<{ resume: ResumeProfile; url: string; type: string } | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewDocumentLoading, setPreviewDocumentLoading] = useState(false)
@@ -164,12 +162,10 @@ export function ResumeWorkspace() {
                 resume={resume}
                 saving={saving === resume.id}
                 skillInput={skillInputs[resume.id] ?? ''}
-                countryInput={countryInputs[resume.id] ?? ''}
                 onPatch={(next) => patch(resume.id, next)}
                 onSave={() => save(resume)}
                 onRemove={() => remove(resume)}
                 onSkillInput={(value) => setSkillInputs((current) => ({ ...current, [resume.id]: value }))}
-                onCountryInput={(value) => setCountryInputs((current) => ({ ...current, [resume.id]: value }))}
                 onUpload={(file) => upload(resume, file)}
                 onView={() => view(resume)}
                 evidence={evidenceFor(resume.id)}
@@ -211,16 +207,14 @@ export function ResumeWorkspace() {
   )
 }
 
-function ResumeCard({ resume, saving, skillInput, countryInput, onPatch, onSave, onRemove, onSkillInput, onCountryInput, onUpload, onView, evidence, initiallyOpen }: {
+function ResumeCard({ resume, saving, skillInput, onPatch, onSave, onRemove, onSkillInput, onUpload, onView, evidence, initiallyOpen }: {
   resume: ResumeProfile
   saving: boolean
   skillInput: string
-  countryInput: string
   onPatch: (next: Partial<ResumeProfile>) => void
   onSave: () => void
   onRemove: () => void
   onSkillInput: (value: string) => void
-  onCountryInput: (value: string) => void
   onUpload: (file?: File) => void
   onView: () => void
   evidence: EvidenceItem[]
@@ -235,12 +229,18 @@ function ResumeCard({ resume, saving, skillInput, countryInput, onPatch, onSave,
     const values = resume[field] as string[]
     onPatch({ [field]: values.includes(value) ? values.filter((item) => item !== value) : [...values, value] })
   }
-  const addValue = (field: 'skills' | 'pref_countries', value: string, clear: () => void) => {
+  const addSkill = (value: string) => {
     const clean = value.trim()
-    const values = resume[field]
-    if (clean && !values.includes(clean)) onPatch({ [field]: [...values, clean] })
-    clear()
+    if (clean && !resume.skills.includes(clean)) onPatch({ skills: [...resume.skills, clean] })
+    onSkillInput('')
   }
+
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+  const summaryBits = [
+    resume.target_roles.length ? plural(resume.target_roles.length, 'role') : null,
+    resume.pref_countries.length ? plural(resume.pref_countries.length, 'location') : null,
+    resume.work_type !== 'any' ? resume.work_type : null,
+  ].filter(Boolean) as string[]
 
   return (
     <div className={cn('rounded-xl border p-4', resume.active ? 'border-primary/30 bg-primary/[0.02]' : 'border-border bg-muted/30')}>
@@ -256,45 +256,78 @@ function ResumeCard({ resume, saving, skillInput, countryInput, onPatch, onSave,
         </div>
       </div>
 
-      {open && <>
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <input ref={fileRef} type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(event) => onUpload(event.target.files?.[0])} />
-        {resume.cv_url && <Button variant="outline" size="sm" onClick={onView} className="gap-1.5"><Eye className="h-3.5 w-3.5" /> View</Button>}
-        <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} className="gap-1.5"><Upload className="h-3.5 w-3.5" /> {resume.cv_filename ? 'Replace résumé file' : 'Upload résumé file'}</Button>
-        {resume.cv_filename && <span className="text-xs text-muted-foreground">{resume.cv_filename}</span>}
-      </div>
+      {!open && summaryBits.length > 0 && (
+        <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          {summaryBits.map((bit, i) => (
+            <span key={bit} className="inline-flex items-center gap-2">
+              {i > 0 && <span className="h-1 w-1 rounded-full bg-muted-foreground/40" />}
+              {bit}
+            </span>
+          ))}
+        </p>
+      )}
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <div><Label>Work mode</Label><Select value={resume.work_type} onChange={(event) => onPatch({ work_type: event.target.value as WorkType })}><option value="any">Any</option><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="onsite">On-site</option></Select></div>
-        <div><Label>Opportunity types</Label><ChipGroup options={TYPES} selected={resume.pref_listing_types} onToggle={(value) => toggle('pref_listing_types', value)} /></div>
+      {open && (
+      <div className="mt-4 space-y-5">
+        <Group title="Résumé file">
+          <div className="flex flex-wrap items-center gap-2">
+            <input ref={fileRef} type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(event) => onUpload(event.target.files?.[0])} />
+            {resume.cv_url && <Button variant="outline" size="sm" onClick={onView} className="gap-1.5"><Eye className="h-3.5 w-3.5" /> View</Button>}
+            <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} className="gap-1.5"><Upload className="h-3.5 w-3.5" /> {resume.cv_filename ? 'Replace résumé file' : 'Upload résumé file'}</Button>
+            {resume.cv_filename && <span className="text-xs text-muted-foreground">{resume.cv_filename}</span>}
+          </div>
+        </Group>
+
+        <Group title="Opportunity preferences">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div><Label>Work mode</Label><Select value={resume.work_type} onChange={(event) => onPatch({ work_type: event.target.value as WorkType })}><option value="any">Any</option><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="onsite">On-site</option></Select></div>
+            <div><Label>Opportunity types</Label><ChipGroup options={TYPES} selected={resume.pref_listing_types} onToggle={(value) => toggle('pref_listing_types', value)} /></div>
+          </div>
+          <div className="mt-4"><Label>Target roles</Label><ChipGroup options={ROLES} selected={resume.target_roles} onToggle={(value) => toggle('target_roles', value)} /></div>
+          <div className="mt-4"><Label>Preferred industries</Label><ChipGroup options={INDUSTRIES} selected={resume.preferred_industries} onToggle={(value) => toggle('preferred_industries', value)} /></div>
+          <div className="mt-4">
+            <Label>Preferred locations</Label>
+            <p className="mb-2 text-xs text-muted-foreground">Where you'd like this direction to be considered. We won't match outside these — remote always counts, and an empty list means anywhere.</p>
+            <CountryMultiSelect value={resume.pref_countries} onChange={(v) => onPatch({ pref_countries: v })} />
+          </div>
+        </Group>
+
+        <Group title="Skills for this direction">
+          <div className="flex flex-wrap gap-1.5">{resume.skills.map((skill) => <span key={skill} className="inline-flex items-center gap-1 rounded-full bg-primary/12 px-2.5 py-1 text-xs font-medium text-primary">{skill}<button type="button" onClick={() => onPatch({ skills: resume.skills.filter((item) => item !== skill) })} aria-label={`Remove ${skill}`}><X className="h-3 w-3" /></button></span>)}</div>
+          <div className="mt-2 flex max-w-md gap-2"><Input value={skillInput} onChange={(event) => onSkillInput(event.target.value)} placeholder="Add a skill…" /><Button type="button" variant="outline" size="icon" onClick={() => addSkill(skillInput)} aria-label="Add skill"><Plus className="h-4 w-4" /></Button></div>
+        </Group>
+
+        <Group title="Linked evidence">
+          {evidence.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No evidence linked yet — add proof in the Gallery tab and attach it here.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {evidence.map((ev) => (
+                <div key={ev.id} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{ev.title}</p>
+                    {ev.confirmed_skills.length > 0 && <p className="truncate text-xs text-muted-foreground">{ev.confirmed_skills.join(', ')}</p>}
+                  </div>
+                  <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', ev.status.includes('verified') ? 'bg-success/12 text-success' : ev.status === 'student_approved' ? 'bg-accent/12 text-accent' : 'bg-muted text-muted-foreground')}>{EVIDENCE_STATUS[ev.status] ?? ev.status}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Group>
+
+        <div className="flex justify-end pt-1"><Button onClick={onSave} loading={saving} className="gap-1.5"><Save className="h-4 w-4" /> Save résumé</Button></div>
       </div>
-      <Label className="mt-4">Target roles</Label><ChipGroup options={ROLES} selected={resume.target_roles} onToggle={(value) => toggle('target_roles', value)} />
-      <Label className="mt-4">Preferred industries</Label><ChipGroup options={INDUSTRIES} selected={resume.preferred_industries} onToggle={(value) => toggle('preferred_industries', value)} />
-      <Label className="mt-4">Preferred locations</Label><ChipGroup options={COUNTRIES} selected={resume.pref_countries} onToggle={(value) => toggle('pref_countries', value)} />
-      <div className="mt-2 flex max-w-md gap-2"><Input value={countryInput} onChange={(event) => onCountryInput(event.target.value)} placeholder="Add another country…" /><Button type="button" variant="outline" size="icon" onClick={() => addValue('pref_countries', countryInput, () => onCountryInput(''))} aria-label="Add country"><Plus className="h-4 w-4" /></Button></div>
-      <Label className="mt-4">Skills for this direction</Label>
-      <div className="flex flex-wrap gap-1.5">{resume.skills.map((skill) => <span key={skill} className="inline-flex items-center gap-1 rounded-full bg-primary/12 px-2.5 py-1 text-xs font-medium text-primary">{skill}<button type="button" onClick={() => onPatch({ skills: resume.skills.filter((item) => item !== skill) })} aria-label={`Remove ${skill}`}><X className="h-3 w-3" /></button></span>)}</div>
-      <div className="mt-2 flex max-w-md gap-2"><Input value={skillInput} onChange={(event) => onSkillInput(event.target.value)} placeholder="Add a skill…" /><Button type="button" variant="outline" size="icon" onClick={() => addValue('skills', skillInput, () => onSkillInput(''))} aria-label="Add skill"><Plus className="h-4 w-4" /></Button></div>
-       <div className="mt-4">
-         <Label>Linked evidence</Label>
-         {evidence.length === 0 ? (
-           <p className="mt-1.5 text-xs text-muted-foreground">No evidence linked yet — add proof in the Gallery tab and attach it here.</p>
-         ) : (
-           <div className="mt-1.5 space-y-1.5">
-             {evidence.map((ev) => (
-               <div key={ev.id} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
-                 <div className="min-w-0">
-                   <p className="truncate text-sm font-medium">{ev.title}</p>
-                   {ev.confirmed_skills.length > 0 && <p className="truncate text-xs text-muted-foreground">{ev.confirmed_skills.join(', ')}</p>}
-                 </div>
-                 <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', ev.status.includes('verified') ? 'bg-success/12 text-success' : ev.status === 'student_approved' ? 'bg-accent/12 text-accent' : 'bg-muted text-muted-foreground')}>{EVIDENCE_STATUS[ev.status] ?? ev.status}</span>
-               </div>
-             ))}
-           </div>
-         )}
-       </div>
-       <div className="mt-4 flex justify-end"><Button onClick={onSave} loading={saving} className="gap-1.5"><Save className="h-4 w-4" /> Save résumé</Button></div>
-       </>}
+      )}
+    </div>
+  )
+}
+
+// Labelled sub-section used to break the résumé editor into scannable groups.
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="border-t border-border pt-4 first:border-t-0 first:pt-0">
+      <p className="mb-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+      {children}
     </div>
   )
 }

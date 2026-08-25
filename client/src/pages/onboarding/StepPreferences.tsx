@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 import { onboardingApi } from '@/lib/api'
 import { ChipGroup, SelectedChips, INDUSTRIES, WORK_MODES, OPPORTUNITY_TYPES, LOCATION_SUGGESTIONS } from './shared'
+import { CountryMultiSelect } from '@/components/ui/CountryMultiSelect'
 
 function FreeList({
   label,
@@ -148,7 +149,9 @@ export function StepPreferences({
         <ChipGroup options={[...INDUSTRIES]} selected={industries} onToggle={(v) => setIndustries(industries.includes(v) ? industries.filter((x) => x !== v) : [...industries, v])} />
       </div>
       <div className="mt-4">
-        <FreeList label="Locations" placeholder="e.g. Kigali, Rwanda" items={locations} setItems={setLocations} suggestions={LOCATION_SUGGESTIONS} />
+        <Label>Locations</Label>
+        <p className="mb-1.5 text-xs text-muted-foreground">Where you'd like to work. Pick from the list or type a city/country.</p>
+        <CountryMultiSelect value={locations} onChange={setLocations} placeholder="Search countries or type a city…" suggestions={LOCATION_SUGGESTIONS} />
       </div>
       <div className="mt-4">
         <Label>Work mode</Label>
