@@ -42,7 +42,10 @@ export const sb: SupabaseClient = new Proxy({} as SupabaseClient, {
 
 /** Unwrap a supabase result: throw on error, return data. */
 export function must<T>(res: { data: T; error: any }): T {
-  if (res.error) throw new Error(res.error.message ?? String(res.error))
+  if (res.error) {
+    console.error('[must] Supabase error:', res.error?.message ?? res.error)
+    throw new Error(res.error.message ?? String(res.error))
+  }
   return res.data
 }
 

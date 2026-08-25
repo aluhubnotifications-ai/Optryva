@@ -21,6 +21,7 @@ export function rowToProfile(r: any, includePrivate = false) {
     id: r.id,
     user_type: r.user_type,
     full_name: r.full_name,
+    onboarding_goal: r.onboarding_goal ?? undefined,
     email: r.email,
     avatar_url: r.avatar_url ?? undefined,
     cover_url: r.cover_url ?? undefined,

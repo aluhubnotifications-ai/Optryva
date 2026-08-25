@@ -59,7 +59,7 @@ profiles.get('/:id', async (req, res) => {
 })
 
 const EDITABLE = [
-  'full_name', 'avatar_url', 'cover_url', 'bio', 'school', 'major', 'year', 'graduated', 'location', 'country', 'gpa',
+  'full_name', 'onboarding_goal', 'user_type', 'avatar_url', 'cover_url', 'bio', 'school', 'major', 'year', 'graduated', 'location', 'country', 'gpa',
   'linkedin', 'github', 'twitter', 'website', 'cv_filename', 'cv_uploaded_at', 'cv_text', 'cv_url',
   'work_type', 'location_pref', 'company_name', 'industry', 'company_size',
 ] as const

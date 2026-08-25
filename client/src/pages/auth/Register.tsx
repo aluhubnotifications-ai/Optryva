@@ -54,8 +54,8 @@ export default function Register() {
         user_type: form.user_type,
       })
       login(user, accessToken)
-      // After email/password signup, go to role selection to confirm/change role
-      navigate('/role-selection')
+      // After email/password signup, go straight to the profile to finish setup.
+      navigate('/app/profile')
     } catch (err) {
       const code = err instanceof Error ? err.message : 'register_failed'
       setError(ERRORS[code] ?? 'Could not create your account. Is the server running?')
@@ -68,7 +68,7 @@ export default function Register() {
     setError(null)
     setGoogleLoading(true)
     try {
-      const { url } = await authApi.googleAuthUrl('/app')
+      const { url } = await authApi.googleAuthUrl('/app/profile')
       window.location.href = url
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google sign-up failed')

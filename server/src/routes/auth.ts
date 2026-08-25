@@ -77,7 +77,11 @@ auth.post('/login', async (req, res) => {
   const { email, password } = req.body ?? {}
   if (!email || !password) return res.status(400).json({ error: 'invalid' })
   const u = must(await sb.from('app_users').select('*').eq('email', email).maybeSingle()) as any
-  if (!u || !(await bcrypt.compare(password, u.password_hash))) return res.status(401).json({ error: 'bad_credentials' })
+  if (!u) return res.status(401).json({ error: 'bad_credentials' })
+  // Google-only accounts have no password — send them to Google sign-in rather
+  // than letting bcrypt.compare(password, null) throw an unhandled 500.
+  if (!u.password_hash) return res.status(401).json({ error: 'account_google' })
+  if (!(await bcrypt.compare(password, u.password_hash))) return res.status(401).json({ error: 'bad_credentials' })
   const profile = await fullProfile(u.id)
   const user = await authUserFromRow(profile)
   res.cookie(REFRESH_COOKIE, signRefresh(user), cookieOpts)

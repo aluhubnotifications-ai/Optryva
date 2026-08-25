@@ -39,6 +39,15 @@ app.use('/api/*', cors({
 }))
 
 app.get('/api/health', (c) => c.json({ ok: true, claude: hasClaude() }))
+
+// Google Search Console site-verification for the workers.dev property.
+// Served ONLY at this exact path. A catch-all that echoed other tokens
+// (incl. the pages.dev one) made Google flag the domain as "hacked".
+app.get('/google03074676ba7d4f93.html', (c) =>
+  c.body('google-site-verification: google03074676ba7d4f93.html', 200, {
+    'Content-Type': 'text/html; charset=utf-8',
+  })
+)
 app.route('/api/auth', auth.hono)
 app.route('/api/oauth', oauth.hono)
 app.route('/api/onboarding', onboarding.hono)

@@ -20,7 +20,8 @@ create table if not exists app_users (
   auth_provider  text,                       -- 'google' | 'email' | null
   provider_subject text,                     -- Google sub claim
   provider_metadata text,                   -- JSON: access_token, refresh_token, etc.
-  created_at     text not null
+  created_at    text not null,
+  updated_at    text
 );
 
 create table if not exists profiles (

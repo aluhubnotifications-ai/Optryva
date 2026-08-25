@@ -87,12 +87,60 @@ export const authApi = {
   },
   /** Complete onboarding after role selection (called from RoleSelection page) */
   async completeOnboarding(payload: { user_type: Profile['user_type']; returnTo?: string }): Promise<{ accessToken: string; user: Profile }> {
-    return postJson('/auth/complete-onboarding', payload) as Promise<{ accessToken: string; user: Profile }>
+    return apiFetch('/auth/complete-onboarding', { method: 'POST', body: JSON.stringify(payload) }) as Promise<{ accessToken: string; user: Profile }>
   },
   /** Handle pending Google account linking */
   async linkGoogle(payload: { email: string; password: string }): Promise<{ accessToken: string; user: Profile }> {
-    return postJson('/auth/link-google', payload) as Promise<{ accessToken: string; user: Profile }>
+    return apiFetch('/auth/link-google', { method: 'POST', body: JSON.stringify(payload) }) as Promise<{ accessToken: string; user: Profile }>
   },
+}
+
+// Establish a session on app load *without* a pre-existing access token. The
+// OAuth callback (and email/password login) set the httpOnly `optryva_rt`
+// refresh cookie; trading it for a fresh access token here lets a brand-new
+// Google user (who has no token in localStorage yet) reach /app or
+// /role-selection without being bounced to /login. Returns true if a session
+// was restored or bootstrapped.
+export async function bootstrapSession(): Promise<boolean> {
+  // The OAuth callback (and every login) sets the httpOnly `optryva_rt` refresh
+  // cookie but not a localStorage access token. Trade that cookie for a fresh,
+  // guaranteed-valid access token first — this is the reliable source of truth
+  // after a reload and avoids sending a possibly-expired persisted token (which
+  // would 401 before the per-request refresh kicks in). It also ensures the
+  // session store (userId) is populated so route guards don't bounce a valid user.
+  try {
+    const res = await fetch(`${API_BASE}/auth/refresh`, { method: 'POST', credentials: 'include' })
+    if (res.ok) {
+      const data = (await res.json().catch(() => null)) as { accessToken?: string } | null
+      const token = data?.accessToken
+      if (token) {
+        setAuthToken(token)
+        persistToken(token)
+        const profile = await authApi.me()
+        if (profile) {
+          const { useSession } = await import('@/lib/store')
+          useSession.getState().login(profile, token)
+          return true
+        }
+      }
+    }
+  } catch {
+    /* fall through to token validation */
+  }
+  // No/invalid refresh cookie: if we already hold an access token, validate it.
+  if (authToken) {
+    try {
+      const profile = await authApi.me()
+      if (profile) {
+        const { useSession } = await import('@/lib/store')
+        useSession.getState().login(profile, authToken)
+        return true
+      }
+    } catch {
+      /* invalid */
+    }
+  }
+  return false
 }
 
 export const onboardingApi = {

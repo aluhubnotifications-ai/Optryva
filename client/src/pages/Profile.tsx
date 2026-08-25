@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import {
   User,
   Briefcase,
@@ -21,12 +21,14 @@ import {
   Compass,
   CheckCircle2,
   Circle,
+  ArrowRight,
 } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { useMatchRun } from '@/lib/matchRun'
-import { fetchProtectedDocument, profilesApi } from '@/lib/api'
-import type { Profile as ProfileT, WorkType, ListingType } from '@/types'
+import { fetchProtectedDocument, profilesApi, resumesApi } from '@/lib/api'
+import { profileCompletion, GOAL_OPTIONS, ROLE_OPTIONS, type OnboardingStep } from '@/lib/onboarding'
+import type { Profile as ProfileT, UserType, WorkType, ListingType } from '@/types'
 import { Card, CardBody, Badge, Avatar, Input, Label, Textarea, Select } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -57,6 +59,27 @@ export default function Profile() {
     { id: 'resumes', label: 'Résumés', Icon: FileText },
     { id: 'gallery', label: 'Gallery', Icon: Images },
   ] as const
+
+  // How many résumé directions the student has — feeds the "Résumé" onboarding step.
+  const [resumeCount, setResumeCount] = useState(0)
+  useEffect(() => {
+    if (user.user_type === 'student') {
+      resumesApi.list().then((r) => setResumeCount(r.length)).catch(() => {})
+    }
+  }, [user.id, user.user_type])
+
+  // The 3-question quick intake (name / who you are / first goal) runs the moment
+  // a student arrives with any of those missing — e.g. straight after Google sign-in.
+  const [introOpen, setIntroOpen] = useState(
+    () => !user.full_name?.trim() || !user.user_type || !user.onboarding_goal?.trim(),
+  )
+  // Optional onboarding steps the student chose to "Skip for now" (session-only).
+  const [skipped, setSkipped] = useState<Set<string>>(new Set())
+
+  const completion = profileCompletion(user, resumeCount)
+  const isStudent = user.user_type === 'student'
+  const showGate = isStudent && !completion.requiredComplete
+  const showReminder = isStudent && completion.requiredComplete && completion.overallPercent < 100
 
   async function changePicture(avatar_url: string) {
     const updated = await profilesApi.update(user.id, { avatar_url })
@@ -104,6 +127,20 @@ export default function Profile() {
 
   function toggle(list: string[], set: (v: string[]) => void, v: string) {
     set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v])
+  }
+
+  // Jump the student to whichever field the onboarding step is about.
+  function focusStep(step: OnboardingStep) {
+    if (step.key === 'name' || step.key === 'role' || step.key === 'goal') {
+      setIntroOpen(true)
+      return
+    }
+    if (step.section === 'resumes') {
+      setTab('resumes')
+      return
+    }
+    setTab('profile')
+    setTimeout(() => document.getElementById('about-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60)
   }
 
   async function save() {
@@ -202,19 +239,50 @@ export default function Profile() {
     setCountryInput('')
   }
 
-  const studentChecklist = [
-    { label: 'Full name', done: !!form.full_name.trim() },
-    { label: 'Bio', done: !!form.bio.trim() },
-    { label: 'School & major', done: !!(form.school.trim() && form.major.trim()) },
-    { label: 'Location', done: !!form.location.trim() },
-    { label: 'A link (LinkedIn/GitHub)', done: !!(form.linkedin.trim() || form.github.trim() || form.website.trim()) },
-    { label: 'CV / résumé', done: !!user.cv_url },
-  ]
-  const sDone = studentChecklist.filter((c) => c.done).length
-  const sPct = Math.round((sDone / studentChecklist.length) * 100)
-
   return (
     <div className="mx-auto max-w-6xl">
+      {/* Onboarding gate / progress banner — always visible until the profile is
+          complete. Keeps the student oriented on what to do next. */}
+      {(showGate || showReminder) && (
+        <div className={cn(
+          'mb-5 rounded-2xl border p-4',
+          showGate ? 'border-primary/30 bg-primary/5' : 'border-border bg-muted/40',
+        )}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              {showGate ? (
+                <>
+                  <p className="font-semibold">Complete your profile to unlock better matches.</p>
+                  <p className="text-sm text-muted-foreground">
+                    {completion.requiredTotal - completion.requiredDone} important {completion.requiredTotal - completion.requiredDone === 1 ? 'step' : 'steps'} remaining.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold">Your profile is {completion.overallPercent}% complete.</p>
+                  <p className="text-sm text-muted-foreground">
+                    {completion.optionalRemaining > 0
+                      ? `Add ${completion.optionalRemaining > 1 ? 'a few more details' : 'one more detail'} to improve your matches.`
+                      : 'Nicely done — your profile is complete.'}
+                  </p>
+                </>
+              )}
+            </div>
+            {showGate && completion.nextStep && (
+              <Button onClick={() => focusStep(completion.nextStep!)} className="gap-1.5">
+                Continue setup <ArrowRight className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+          <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-all"
+              style={{ width: `${showGate ? completion.requiredPercent : completion.overallPercent}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Cover */}
       <div className="relative h-40 w-full overflow-hidden rounded-xl bg-gradient-to-r from-primary/30 via-accent/20 to-primary/30">
         {user.cover_url && <img src={user.cover_url} alt="Cover" className="h-full w-full object-cover" />}
@@ -266,7 +334,7 @@ export default function Profile() {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="space-y-5">
       {/* About */}
-      <Section icon={User} title="About">
+      <Section id="about-section" icon={User} title="About">
         <div className="space-y-4">
           <div><Label>Full name</Label><Input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
           <div><Label>Bio</Label><Textarea value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} placeholder="A short intro about you…" /></div>
@@ -415,9 +483,20 @@ export default function Profile() {
 
       <AccountSecurity />
 
-      {/* Remove CV confirmation */}
-      <Modal
-        open={confirmRemoveCv}
+        {/* Quick intake: name, who you are, first goal */}
+        <OnboardingIntro
+          open={introOpen}
+          user={user}
+          onClose={() => setIntroOpen(false)}
+          onSaved={() => {
+            setIntroOpen(false)
+            toast({ title: 'Profile updated', tone: 'success' })
+          }}
+        />
+
+        {/* Remove CV confirmation */}
+        <Modal
+          open={confirmRemoveCv}
         onClose={() => setConfirmRemoveCv(false)}
         size="sm"
         title="Remove your CV?"
@@ -452,31 +531,16 @@ export default function Profile() {
             </CardBody>
           </Card>
 
-          {/* Profile completeness */}
-          <Card>
-            <CardBody className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold">Profile completeness</h2>
-                <span className="text-sm font-medium text-muted-foreground">{sPct}%</span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${sPct}%` }} />
-              </div>
-              <ul className="space-y-1.5 text-sm">
-                {studentChecklist.map((c) => (
-                  <li key={c.label} className="flex items-center gap-2">
-                    {c.done ? (
-                      <CheckCircle2 className="h-4 w-4 text-accent" />
-                    ) : (
-                      <Circle className="h-4 w-4 text-muted-foreground" />
-                    )}
-                    <span className={c.done ? 'text-foreground' : 'text-muted-foreground'}>{c.label}</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="text-xs text-muted-foreground">A complete profile gets you better AI matches.</p>
-            </CardBody>
-          </Card>
+          {/* Profile completeness — required + optional steps with progress.
+              Student-only: companies/schools have their own (lighter) setup. */}
+          {isStudent && (
+            <ProfileCompletionCard
+              completion={completion}
+              skipped={skipped}
+              onFocus={focusStep}
+              onSkip={(k) => setSkipped((s) => new Set(s).add(k))}
+            />
+          )}
 
           {/* Plan */}
           <Card>
@@ -504,9 +568,9 @@ export default function Profile() {
   )
 }
 
-function Section({ icon: Icon, title, hint, children }: { icon: typeof User; title: string; hint?: string; children: React.ReactNode }) {
+function Section({ id, icon: Icon, title, hint, children }: { id?: string; icon: typeof User; title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <Card>
+    <Card id={id}>
       <CardBody>
         <div className="mb-4 flex items-center gap-2">
           <Icon className="h-5 w-5 text-primary" />
@@ -593,5 +657,197 @@ function Row({ icon: Icon, title, desc, onClick, danger }: { icon: typeof Mail; 
         <p className="text-xs text-muted-foreground">{desc}</p>
       </div>
     </button>
+  )
+}
+
+/* ---------- Onboarding: completion card ---------- */
+function ProfileCompletionCard({
+  completion,
+  skipped,
+  onFocus,
+  onSkip,
+}: {
+  completion: ReturnType<typeof profileCompletion>
+  skipped: Set<string>
+  onFocus: (step: OnboardingStep) => void
+  onSkip: (key: string) => void
+}) {
+  const visibleOptional = completion.optional.filter((s) => !(skipped.has(s.key) || s.done))
+  return (
+    <Card>
+      <CardBody className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold">
+            {completion.requiredComplete ? 'Profile completeness' : 'Finish setting up'}
+          </h2>
+          <span className="text-sm font-medium text-muted-foreground">{completion.overallPercent}%</span>
+        </div>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${completion.overallPercent}%` }} />
+        </div>
+
+        {!completion.requiredComplete && (
+          <p className="text-xs font-medium text-primary">
+            {completion.requiredTotal - completion.requiredDone} important {completion.requiredTotal - completion.requiredDone === 1 ? 'step' : 'steps'} to unlock your matches.
+          </p>
+        )}
+
+        <ul className="space-y-1.5 text-sm">
+          {completion.required.map((s) => (
+            <li key={s.key}>
+              <button
+                type="button"
+                onClick={() => onFocus(s)}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors',
+                  s.done ? 'text-foreground hover:bg-muted/40' : 'text-muted-foreground hover:bg-primary/5',
+                )}
+              >
+                {s.done ? (
+                  <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-accent" />
+                ) : (
+                  <Circle className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                )}
+                <span className={cn('flex-1', !s.done && 'font-medium')}>{s.label}</span>
+                {!s.done && <span className="text-[11px] text-primary">Complete</span>}
+              </button>
+            </li>
+          ))}
+
+          {visibleOptional.map((s) => (
+            <li key={s.key}>
+              <div className="flex items-center gap-2 rounded-lg px-2 py-1.5">
+                {s.done ? (
+                  <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-accent" />
+                ) : (
+                  <Circle className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                )}
+                <span className={cn('flex-1 text-muted-foreground', s.done && 'text-foreground')}>{s.label}</span>
+                {!s.done && (
+                  <button
+                    type="button"
+                    onClick={() => onSkip(s.key)}
+                    className="text-[11px] text-muted-foreground underline hover:text-foreground"
+                  >
+                    Skip for now
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        <p className="text-xs text-muted-foreground">
+          {completion.requiredComplete
+            ? 'Your important details are done — add the rest anytime to get better matches.'
+            : 'Complete the important steps above to start exploring opportunities.'}
+        </p>
+      </CardBody>
+    </Card>
+  )
+}
+
+/* ---------- Onboarding: 3-question quick intake ---------- */
+function OnboardingIntro({
+  open,
+  user,
+  onClose,
+  onSaved,
+}: {
+  open: boolean
+  user: ProfileT
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [name, setName] = useState(user.full_name ?? '')
+  const [userType, setUserType] = useState<UserType>(user.user_type ?? 'student')
+  const [goal, setGoal] = useState(user.onboarding_goal ?? '')
+  const [saving, setSaving] = useState(false)
+  const { toast } = useToast()
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      const updated = await profilesApi.update(user.id, {
+        full_name: name.trim(),
+        user_type: userType,
+        onboarding_goal: goal,
+      })
+      if (updated) useSession.getState().setProfile(updated)
+      onSaved()
+    } catch (err) {
+      toast({ title: 'Could not save', description: err instanceof Error ? err.message : undefined, tone: 'error' })
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} size="md" title="Welcome to Optryva" description="A few quick things so we can tailor your experience.">
+      <form onSubmit={submit} className="space-y-4">
+        <div>
+          <Label>What's your name?</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" required />
+        </div>
+
+        <div>
+          <Label>I'm here as a…</Label>
+          <div className="grid grid-cols-3 gap-2">
+            {ROLE_OPTIONS.map((r) => {
+              const on = userType === r.value
+              return (
+                <button
+                  key={r.value}
+                  type="button"
+                  onClick={() => setUserType(r.value)}
+                  aria-pressed={on}
+                  className={cn(
+                    'rounded-xl border p-3 text-center text-sm transition-colors',
+                    on ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/40',
+                  )}
+                >
+                  <span className="font-medium">{r.label}</span>
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground">{r.hint}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div>
+          <Label>Your first goal</Label>
+          <div className="grid gap-2">
+            {GOAL_OPTIONS.map((g) => {
+              const on = goal === g.value
+              return (
+                <button
+                  key={g.value}
+                  type="button"
+                  onClick={() => setGoal(g.value)}
+                  aria-pressed={on}
+                  className={cn(
+                    'flex items-center justify-between rounded-xl border px-3 py-2.5 text-left text-sm transition-colors',
+                    on ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/40',
+                  )}
+                >
+                  <span>
+                    <span className="font-medium">{g.label}</span>
+                    <span className="block text-[11px] text-muted-foreground">{g.hint}</span>
+                  </span>
+                  {on && <CheckCircle2 className="h-4 w-4 flex-shrink-0" />}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button type="button" variant="ghost" onClick={onClose}>I'll do this later</Button>
+          <Button type="submit" loading={saving} disabled={!name.trim() || !goal}>
+            {saving ? 'Saving…' : 'Continue'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   )
 }

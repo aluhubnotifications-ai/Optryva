@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/toast'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { useMatchRun } from '@/lib/matchRun'
+import { needsOnboarding } from '@/lib/matchReady'
 import { authApi, onboardingApi } from '@/lib/api'
 import { Stepper } from './onboarding/shared'
 import { StepDirection } from './onboarding/StepDirection'
@@ -33,14 +34,25 @@ export default function Onboarding() {
   if (user && user.user_type !== 'student') return <Navigate to="/app" replace />
 
   // Resume progress so the user can leave and pick up where they left off.
+  // Guard with a ref so getProgress is fetched at most once per mount — if
+  // useNavigate() returns a new reference each render the effect would
+  // otherwise re-fire on every render and spin an endless load loop.
+  const progressStarted = useRef(false)
   useEffect(() => {
+    if (progressStarted.current) return
+    progressStarted.current = true
     let active = true
     onboardingApi
       .getProgress()
       .then((p: any) => {
         if (!active) return
         const completed = Number(p?.completed_steps ?? 0)
-        if (completed >= 5) {
+        // Only jump to /app if the profile is actually onboarded. completed_steps
+        // can be ahead of real readiness (e.g. a résumé was never uploaded), and
+        // sending a not-yet-ready student to /app would bounce them straight back
+        // here — an infinite redirect loop. Stay on onboarding until truly
+        // match-ready. Read the live profile to avoid a stale closure.
+        if (completed >= 5 && !needsOnboarding(useSession.getState().profile)) {
           navigate('/app', { replace: true })
           return
         }
@@ -54,7 +66,11 @@ export default function Onboarding() {
     return () => {
       active = false
     }
-  }, [navigate])
+    // Run once on mount. Depending on `navigate` here would re-run the effect
+    // on every render (useNavigate can return a new ref each render), which
+    // re-calls getProgress and spins an infinite load loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Autosave the current step position (fire-and-forget).
   function markStep(n: number) {

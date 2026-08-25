@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 
 const ERRORS: Record<string, string> = {
   bad_credentials: 'Incorrect email or password.',
+  account_google: 'This account uses Google. Please sign in with Google above.',
   invalid: 'Please enter your email and password.',
 }
 
@@ -30,7 +31,7 @@ export default function Login() {
     try {
       const { accessToken, user } = await authApi.login(email.trim(), password)
       login(user, accessToken)
-      navigate('/app')
+      navigate('/app/profile')
     } catch (err) {
       const code = err instanceof Error ? err.message : 'login_failed'
       setError(ERRORS[code] ?? 'Could not sign in. Is the server running?')
@@ -43,7 +44,7 @@ export default function Login() {
     setError(null)
     setGoogleLoading(true)
     try {
-      const { url } = await authApi.googleAuthUrl('/app')
+      const { url } = await authApi.googleAuthUrl('/app/profile')
       window.location.href = url
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google sign-in failed')

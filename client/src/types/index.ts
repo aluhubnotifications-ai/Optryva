@@ -10,6 +10,7 @@ export interface Profile {
   id: string
   user_type: UserType
   full_name: string
+  onboarding_goal?: string
   email: string
   avatar_url?: string
   cover_url?: string

@@ -3,15 +3,14 @@ import { createBrowserRouter, isRouteErrorResponse, Navigate, Outlet, useRouteEr
 import { AppShell } from '@/app/AppShell'
 import { useSession, useCurrentUser } from '@/lib/store'
 import { authApi } from '@/lib/api'
-import { needsOnboarding } from '@/lib/matchReady'
+import { requiresProfileCompletion } from '@/lib/onboarding'
+import { useLocation } from 'react-router-dom'
 
 import Landing from '@/pages/Landing'
 import Login from '@/pages/auth/Login'
 import Register from '@/pages/auth/Register'
 import VerifyEmail from '@/pages/auth/VerifyEmail'
 import ForgotPassword from '@/pages/auth/ForgotPassword'
-import Onboarding from '@/pages/Onboarding'
-import RoleSelection from '@/pages/auth/RoleSelection'
 
 const Dashboard = lazy(() => import('@/pages/Dashboard'))
 const Research = lazy(() => import('@/pages/Research'))
@@ -42,6 +41,7 @@ const ApplicantView = lazy(() => import('@/pages/company/ApplicantView'))
 function RequireAuth() {
   const userId = useSession((s) => s.userId)
   const profile = useSession((s) => s.profile)
+  const location = useLocation()
   // Refresh the persisted profile from the server on load, so changes made since
   // last login (is_admin, plan, …) take effect without a re-login.
   useEffect(() => {
@@ -49,10 +49,13 @@ function RequireAuth() {
     authApi.me().then((p) => { if (p) useSession.getState().setProfile(p) })
   }, [userId])
   if (!userId) return <Navigate to="/login" replace />
-  // A student can't be matched without a résumé + preferences — collect them in
-  // a required onboarding step instead of failing silently later. Companies and
-  // already-complete students fall straight through.
-  if (needsOnboarding(profile)) return <Navigate to="/onboarding" replace />
+  // New students land on their Profile and stay there until the important steps
+  // are complete — the app sends them straight back here. Once the required
+  // fields are done they can explore freely; a progress card keeps nudging them
+  // to 100%. Companies and schools never hit this gate.
+  if (requiresProfileCompletion(profile) && location.pathname !== '/app/profile') {
+    return <Navigate to="/app/profile" replace />
+  }
   return (
     <AppShell>
       <Outlet />
@@ -114,8 +117,8 @@ export const router = createBrowserRouter([
   { path: '/register', element: <Register /> },
   { path: '/verify-email', element: <VerifyEmail /> },
   { path: '/forgot-password', element: <ForgotPassword /> },
-  { path: '/role-selection', element: <RoleSelection /> },
-  { path: '/onboarding', element: <Onboarding /> },
+  { path: '/role-selection', element: <Navigate to="/app/profile" replace /> },
+  { path: '/onboarding', element: <Navigate to="/app/profile" replace /> },
   {
     path: '/app',
     element: <RequireAuth />,

@@ -47,6 +47,15 @@ async function verifyPKCE(codeVerifier: string, codeChallenge: string): Promise<
   return hashBase64 === codeChallenge
 }
 
+// Decode a base64url string. JWT segments are base64url WITHOUT padding, which
+// the Workers runtime's atob rejects unless we restore the '=' padding first.
+function b64urlDecode(s: string): string {
+  const b64 = s.replace(/-/g, '+').replace(/_/g, '/')
+  const pad = b64.length % 4
+  const padded = pad ? b64 + '='.repeat(4 - pad) : b64
+  return atob(padded)
+}
+
 // Exchange authorization code for tokens
 async function exchangeCodeForTokens(code: string, codeVerifier: string) {
   const res = await fetch('https://oauth2.googleapis.com/token', {
@@ -82,7 +91,7 @@ async function verifyIdToken(idToken: string) {
   
   // Parse JWT header to find the right key
   const [headerB64] = idToken.split('.')
-  const header = JSON.parse(atob(headerB64.replace(/-/g, '+').replace(/_/g, '/')))
+  const header = JSON.parse(b64urlDecode(headerB64))
   
   const key = keys.find((k: any) => k.kid === header.kid)
   if (!key) throw new Error('no_matching_key')
@@ -96,16 +105,17 @@ async function verifyIdToken(idToken: string) {
     ['verify']
   )
   
-  const [signed, signatureB64] = idToken.split('.').slice(0, 2).join('.') 
+  const signatureB64 = idToken.split('.')[2]
+  const signed = `${headerB64}.${idToken.split('.')[1]}`
   const data = new TextEncoder().encode(signed)
-  const signature = new Uint8Array(atob(signatureB64.replace(/-/g, '+').replace(/_/g, '/')).split('').map(c => c.charCodeAt(0)))
+  const signature = new Uint8Array(b64urlDecode(signatureB64).split('').map(c => c.charCodeAt(0)))
   
   const valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', cryptoKey, signature, data)
   if (!valid) throw new Error('invalid_signature')
   
   // Parse payload
   const payloadB64 = idToken.split('.')[1]
-  const payload = JSON.parse(atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')))
+  const payload = JSON.parse(b64urlDecode(payloadB64))
   
   // Verify claims
   if (payload.aud !== GOOGLE_CLIENT_ID) throw new Error('invalid_audience')
@@ -185,7 +195,7 @@ oauth.get('/google/callback', async (req, res) => {
   
   let statePayload: { r: string; cv: string; cs: string }
   try {
-    statePayload = JSON.parse(atob(stateCookie.replace(/-/g, '+').replace(/_/g, '/')))
+    statePayload = JSON.parse(b64urlDecode(stateCookie))
   } catch {
     return res.redirect('/?oauth_error=invalid_state_payload')
   }
@@ -328,25 +338,20 @@ oauth.get('/google/callback', async (req, res) => {
     
     res.cookie('optryva_rt', refreshToken, cookieOpts)
     
-    // Redirect based on onboarding state
+    // Redirect to the Profile hub. The client keeps a new student on their
+    // Profile (with a progress card) until the important onboarding steps are
+    // done, so we always land there after Google sign-in. `returnTo` is still
+    // honoured for users who already finished onboarding.
     const clientOrigin = process.env.CLIENT_ORIGIN ?? 'http://localhost:5173'
-    let redirectUrl: string
-    
-    if (!progress || progress.completed_steps === 0) {
-      // First time — go to role selection
-      redirectUrl = `${clientOrigin}/role-selection?returnTo=${encodeURIComponent(returnTo)}`
-    } else if (progress.current_step <= progress.completed_steps) {
-      // In progress — go to onboarding step
-      redirectUrl = `${clientOrigin}/onboarding?step=${progress.current_step}`
-    } else {
-      // Complete — go to app
-      redirectUrl = `${clientOrigin}${returnTo}`
-    }
-    
+    const redirectUrl =
+      progress && progress.completed_steps > 0 && progress.current_step <= progress.completed_steps
+        ? `${clientOrigin}${returnTo}`
+        : `${clientOrigin}/app/profile`
     return res.redirect(redirectUrl)
   } catch (err) {
     console.error('Google OAuth callback error:', err)
-    return res.redirect('/?oauth_error=callback_failed')
+    const detail = err instanceof Error ? err.message : String(err)
+    return res.redirect('/?oauth_error=callback_failed&detail=' + encodeURIComponent(detail))
   }
 })
 
