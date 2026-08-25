@@ -11,8 +11,6 @@ import Login from '@/pages/auth/Login'
 import Register from '@/pages/auth/Register'
 import VerifyEmail from '@/pages/auth/VerifyEmail'
 import ForgotPassword from '@/pages/auth/ForgotPassword'
-import Onboarding from '@/pages/Onboarding'
-
 const Dashboard = lazy(() => import('@/pages/Dashboard'))
 const Research = lazy(() => import('@/pages/Research'))
 const Jobs = lazy(() => import('@/pages/student/Jobs'))
@@ -36,6 +34,7 @@ const Listings = lazy(() => import('@/pages/company/Listings'))
 const JobEditor = lazy(() => import('@/pages/company/JobEditor'))
 const CompanyProfile = lazy(() => import('@/pages/company/CompanyProfile'))
 const ApplicantView = lazy(() => import('@/pages/company/ApplicantView'))
+const Onboarding = lazy(() => import('@/pages/Onboarding'))
 // Note: company Analytics is shown inline on the Dashboard, so there is no
 // separate /app/analytics route.
 

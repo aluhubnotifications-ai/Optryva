@@ -27,7 +27,7 @@ import { CountryCombobox } from '@/components/ui/CountryCombobox'
 import { useToast } from '@/components/ui/toast'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { profilesApi, onboardingApi, authApi } from '@/lib/api'
-import { fileToDataUrl } from '@/lib/utils'
+import { fileToDataUrlWithProgress } from '@/lib/utils'
 import { requiresProfileCompletion, ROLE_CHOICES } from '@/lib/onboarding'
 import { playStep, playSuccess } from '@/lib/sound'
 import type { UserType } from '@/types'
@@ -99,6 +99,7 @@ export default function Onboarding() {
   const [cvUrl, setCvUrl] = useState<string | undefined>(user?.cv_url ?? undefined)
   const [cvText, setCvText] = useState(user?.cv_text ?? '')
   const [cvFilename, setCvFilename] = useState<string | null>(user?.cv_filename ?? null)
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [celebrating, setCelebrating] = useState(false)
 
@@ -205,6 +206,9 @@ export default function Onboarding() {
         if (skills.length === 0) return toast({ title: 'Add at least one skill', tone: 'error' })
         await patchProfile({ skills })
         goNext()
+      } else if (current.id === 'resume') {
+        if (!hasResume) return toast({ title: 'Add a résumé or paste your experience', tone: 'error' })
+        goNext()
       } else if (current.id === 'preferences') {
         if (
           desiredRoles.length === 0 &&
@@ -229,12 +233,15 @@ export default function Onboarding() {
   async function attachCv(file?: File | null) {
     if (!file) return
     try {
-      const url = await fileToDataUrl(file)
+      setUploadProgress(0)
+      const url = await fileToDataUrlWithProgress(file, setUploadProgress)
       setCvUrl(url)
       setCvFilename(file.name)
       setCvText('')
       toast({ title: 'Attached', description: file.name, tone: 'success' })
+      setTimeout(() => setUploadProgress(null), 500)
     } catch (e) {
+      setUploadProgress(null)
       toast({ title: "Couldn't read file", description: e instanceof Error ? e.message : undefined, tone: 'error' })
     }
   }
@@ -545,6 +552,21 @@ export default function Onboarding() {
                 </div>
                 <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => attachCv(e.target.files?.[0])} />
               </label>
+
+              {uploadProgress !== null && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
+                    <span>Uploading résumé…</span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
 
               {cvFilename && cvUrl && (
                 <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 p-4">

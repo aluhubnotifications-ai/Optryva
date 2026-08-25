@@ -166,6 +166,29 @@ export async function fileToDataUrl(file: File, maxBytes = 8 * 1024 * 1024): Pro
   })
 }
 
+/** Like {@link fileToDataUrl} but reports 0–100 read progress (for large files). */
+export async function fileToDataUrlWithProgress(
+  file: File,
+  onProgress: (percent: number) => void,
+  maxBytes = 8 * 1024 * 1024,
+): Promise<string> {
+  if (file.size > maxBytes) {
+    throw new Error(`File is too large (${formatBytes(file.size)}). Max ${formatBytes(maxBytes)}.`)
+  }
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100))
+    }
+    reader.onload = () => {
+      onProgress(100)
+      resolve(reader.result as string)
+    }
+    reader.onerror = () => reject(new Error('Could not read the file.'))
+    reader.readAsDataURL(file)
+  })
+}
+
 /** Human-readable byte size, e.g. 234000 → "229 KB". */
 export function formatBytes(bytes: number): string {
   if (!bytes) return '0 B'
