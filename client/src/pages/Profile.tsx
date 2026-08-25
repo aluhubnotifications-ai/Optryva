@@ -26,8 +26,8 @@ import {
 import { Link, useNavigate } from 'react-router-dom'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { useMatchRun } from '@/lib/matchRun'
-import { fetchProtectedDocument, profilesApi, resumesApi } from '@/lib/api'
-import { profileCompletion, GOAL_OPTIONS, ROLE_OPTIONS, type OnboardingStep } from '@/lib/onboarding'
+import { fetchProtectedDocument, profilesApi, resumesApi, evidenceApi } from '@/lib/api'
+import { profileCompletion, GOAL_OPTIONS, ROLE_OPTIONS, setEvidenceDeclined, type OnboardingStep } from '@/lib/onboarding'
 import type { Profile as ProfileT, UserType, WorkType, ListingType } from '@/types'
 import { Card, CardBody, Badge, Avatar, Input, Label, Textarea, Select } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
@@ -76,7 +76,18 @@ export default function Profile() {
   // Optional onboarding steps the student chose to "Skip for now" (session-only).
   const [skipped, setSkipped] = useState<Set<string>>(new Set())
 
-  const completion = profileCompletion(user, resumeCount)
+  const [evidenceCount, setEvidenceCount] = useState(0)
+  const [evidenceTick, setEvidenceTick] = useState(0)
+  useEffect(() => {
+    let active = true
+    evidenceApi
+      .list()
+      .then((list) => { if (active) setEvidenceCount(list.length) })
+      .catch(() => undefined)
+    return () => { active = false }
+  }, [user.id, evidenceTick, tab])
+
+  const completion = profileCompletion(user, resumeCount, evidenceCount)
   const isStudent = user.user_type === 'student'
   // Guidance shows for EVERY incomplete account — student, company, school, or a
   // Google sign-in that hasn't picked a role yet — not only students.
@@ -139,6 +150,10 @@ export default function Profile() {
     }
     if (step.section === 'resumes') {
       setTab('resumes')
+      return
+    }
+    if (step.section === 'evidence') {
+      setTab('gallery')
       return
     }
     setTab('profile')
@@ -565,7 +580,29 @@ export default function Profile() {
       )}
 
       {tab === 'resumes' && <ResumeWorkspace />}
-      {tab === 'gallery' && <EvidenceGallery studentId={user.id} mode="owner" />}
+      {tab === 'gallery' && (
+        <div>
+          {evidenceCount === 0 && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-muted/40 p-4">
+              <p className="text-sm text-muted-foreground">
+                Evidence proves your skills — projects, certs, awards, writing. Add what you have.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setEvidenceDeclined(user.id, true)
+                  setEvidenceTick((t) => t + 1)
+                  toast({ title: "Got it — we'll skip evidence for now", tone: 'success' })
+                }}
+              >
+                I don't have any evidence yet
+              </Button>
+            </div>
+          )}
+          <EvidenceGallery studentId={user.id} mode="owner" />
+        </div>
+      )}
     </div>
   )
 }

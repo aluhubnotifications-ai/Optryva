@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Check, FileText, Loader2, Upload } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, FileText, Plus, Upload, X } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/Button'
 import { Input, Label, Textarea } from '@/components/ui/primitives'
+import { CountryCombobox } from '@/components/ui/CountryCombobox'
 import { useToast } from '@/components/ui/toast'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { profilesApi, onboardingApi, authApi } from '@/lib/api'
@@ -17,7 +18,7 @@ const WORK_OPTIONS = [
   { value: 'hybrid', label: 'Hybrid' },
 ]
 
-const STEP_LABELS = ['Who you are', 'About you', 'Location & work', 'Résumé']
+type StepId = 'role' | 'about' | 'location' | 'education' | 'skills' | 'resume'
 
 export default function Onboarding() {
   const navigate = useNavigate()
@@ -33,14 +34,31 @@ export default function Onboarding() {
   const [userType, setUserType] = useState<UserType | ''>(user?.user_type ?? '')
   const [name, setName] = useState(user?.full_name ?? '')
   const [goal, setGoal] = useState(user?.onboarding_goal ?? '')
-  const [location, setLocation] = useState(user?.location ?? '')
+  const [country, setCountry] = useState(user?.country ?? user?.location ?? '')
   const [workType, setWorkType] = useState(user?.work_type ?? '')
+  const [school, setSchool] = useState(user?.school ?? '')
+  const [major, setMajor] = useState(user?.major ?? '')
+  const [gpa, setGpa] = useState(user?.gpa ?? '')
+  const [skills, setSkills] = useState<string[]>(user?.skills ?? [])
+  const [skillInput, setSkillInput] = useState('')
   const [cvUrl, setCvUrl] = useState<string | undefined>(user?.cv_url ?? undefined)
   const [cvText, setCvText] = useState(user?.cv_text ?? '')
   const [cvFilename, setCvFilename] = useState<string | null>(user?.cv_filename ?? null)
   const [saving, setSaving] = useState(false)
 
   const hasResume = !!(cvUrl || cvText.trim())
+
+  // Steps adapt to the chosen role — only students answer the education step.
+  const steps: { id: StepId; label: string }[] = [
+    { id: 'role', label: 'Who you are' },
+    { id: 'about', label: 'About you' },
+    { id: 'location', label: 'Location & work' },
+  ]
+  if (userType === 'student') steps.push({ id: 'education', label: 'Education' })
+  steps.push({ id: 'skills', label: 'Skills' }, { id: 'resume', label: 'Résumé' })
+
+  const current = steps[Math.min(step, steps.length) - 1]
+  const isLast = step === steps.length
 
   async function patchProfile(patch: Record<string, unknown>) {
     if (!user) return
@@ -49,27 +67,46 @@ export default function Onboarding() {
   }
 
   function goNext() {
-    setStep((s) => Math.min(4, s + 1))
+    setStep((s) => Math.min(steps.length, s + 1))
   }
   function goBack() {
     setStep((s) => Math.max(1, s - 1))
   }
 
+  function addSkill() {
+    const s = skillInput.trim()
+    if (s && !skills.includes(s)) setSkills([...skills, s])
+    setSkillInput('')
+  }
+  function removeSkill(s: string) {
+    setSkills(skills.filter((x) => x !== s))
+  }
+
   async function handleNext() {
     try {
-      if (step === 1) {
+      if (current.id === 'role') {
         if (!userType) return toast({ title: 'Pick who you are', tone: 'error' })
         await patchProfile({ user_type: userType })
         goNext()
-      } else if (step === 2) {
+      } else if (current.id === 'about') {
         if (!name.trim()) return toast({ title: 'Add your name', tone: 'error' })
         if (!goal) return toast({ title: 'Choose a goal', tone: 'error' })
         await patchProfile({ full_name: name.trim(), onboarding_goal: goal })
         goNext()
-      } else if (step === 3) {
-        if (!location.trim()) return toast({ title: 'Add your country or location', tone: 'error' })
+      } else if (current.id === 'education') {
+        if (!school.trim()) return toast({ title: 'Add your school', tone: 'error' })
+        if (!major.trim()) return toast({ title: 'Add your major', tone: 'error' })
+        if (!gpa.trim()) return toast({ title: 'Add your GPA or grades', tone: 'error' })
+        await patchProfile({ school: school.trim(), major: major.trim(), gpa: gpa.trim() })
+        goNext()
+      } else if (current.id === 'location') {
+        if (!country.trim()) return toast({ title: 'Choose your country', tone: 'error' })
         if (!workType) return toast({ title: 'Choose a work preference', tone: 'error' })
-        await patchProfile({ location: location.trim(), work_type: workType })
+        await patchProfile({ country: country.trim(), location: country.trim(), work_type: workType })
+        goNext()
+      } else if (current.id === 'skills') {
+        if (skills.length === 0) return toast({ title: 'Add at least one skill', tone: 'error' })
+        await patchProfile({ skills })
         goNext()
       }
     } catch (e) {
@@ -98,8 +135,13 @@ export default function Onboarding() {
         user_type: userType,
         full_name: name.trim(),
         onboarding_goal: goal,
-        location: location.trim(),
+        country: country.trim(),
+        location: country.trim(),
         work_type: workType,
+        school: school.trim(),
+        major: major.trim(),
+        gpa: gpa.trim(),
+        skills,
       })
       await onboardingApi.saveResume(cvText.trim() || undefined, cvUrl, cvFilename ?? undefined)
       // Refresh the cached profile so the completion gate sees the résumé and
@@ -118,17 +160,19 @@ export default function Onboarding() {
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/40">
       <header className="mx-auto flex max-w-2xl items-center justify-between px-6 py-6">
         <Logo />
-        <span className="text-xs font-medium text-muted-foreground">Step {step} of 4</span>
+        <span className="text-xs font-medium text-muted-foreground">
+          Step {step} of {steps.length}
+        </span>
       </header>
 
       <div className="mx-auto max-w-2xl px-6">
         <div className="mb-8 flex items-center gap-2">
-          {STEP_LABELS.map((label, i) => {
+          {steps.map((s, i) => {
             const n = i + 1
             const active = n === step
             const done = n < step
             return (
-              <div key={label} className="flex flex-1 items-center gap-2">
+              <div key={s.id} className="flex flex-1 items-center gap-2">
                 <div
                   className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
                     done ? 'bg-primary text-primary-foreground' : active ? 'bg-primary/15 text-primary ring-2 ring-primary' : 'bg-muted text-muted-foreground'
@@ -136,15 +180,15 @@ export default function Onboarding() {
                 >
                   {done ? <Check className="h-4 w-4" /> : n}
                 </div>
-                <span className={`hidden text-xs font-medium sm:block ${active ? 'text-foreground' : 'text-muted-foreground'}`}>{label}</span>
-                {n < STEP_LABELS.length && <div className={`h-0.5 flex-1 rounded ${done ? 'bg-primary' : 'bg-muted'}`} />}
+                <span className={`hidden text-xs font-medium sm:block ${active ? 'text-foreground' : 'text-muted-foreground'}`}>{s.label}</span>
+                {n < steps.length && <div className={`h-0.5 flex-1 rounded ${done ? 'bg-primary' : 'bg-muted'}`} />}
               </div>
             )
           })}
         </div>
 
         <div className="rounded-3xl border border-border bg-card p-6 sm:p-8">
-          {step === 1 && (
+          {current.id === 'role' && (
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Welcome to Optryva</h1>
               <p className="mt-1 text-sm text-muted-foreground">First, tell us who you are. This shapes your experience.</p>
@@ -166,7 +210,7 @@ export default function Onboarding() {
             </div>
           )}
 
-          {step === 2 && (
+          {current.id === 'about' && (
             <div>
               <h1 className="text-2xl font-bold tracking-tight">A few quick details</h1>
               <p className="mt-1 text-sm text-muted-foreground">Just the basics — you can refine everything later.</p>
@@ -197,20 +241,14 @@ export default function Onboarding() {
             </div>
           )}
 
-          {step === 3 && (
+          {current.id === 'location' && (
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Where are you based?</h1>
               <p className="mt-1 text-sm text-muted-foreground">We use this to match you to relevant opportunities.</p>
               <div className="mt-6 space-y-5">
                 <div>
-                  <Label htmlFor="location">Country or location</Label>
-                  <Input
-                    id="location"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="e.g. Germany, or Berlin"
-                    className="mt-1.5"
-                  />
+                  <Label htmlFor="country">Country</Label>
+                  <CountryCombobox id="country" value={country} onChange={setCountry} placeholder="Search countries…" className="mt-1.5" />
                 </div>
                 <div>
                   <Label>Work preference</Label>
@@ -233,12 +271,68 @@ export default function Onboarding() {
             </div>
           )}
 
-          {step === 4 && (
+          {current.id === 'education' && (
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Your education</h1>
+              <p className="mt-1 text-sm text-muted-foreground">So employers and universities can find you.</p>
+              <div className="mt-6 space-y-5">
+                <div>
+                  <Label htmlFor="school">School / University</Label>
+                  <Input id="school" value={school} onChange={(e) => setSchool(e.target.value)} placeholder="e.g. University of Nairobi" className="mt-1.5" />
+                </div>
+                <div>
+                  <Label htmlFor="major">Major / field of study</Label>
+                  <Input id="major" value={major} onChange={(e) => setMajor(e.target.value)} placeholder="e.g. Computer Science" className="mt-1.5" />
+                </div>
+                <div>
+                  <Label htmlFor="gpa">GPA / grades</Label>
+                  <Input
+                    id="gpa"
+                    value={gpa}
+                    onChange={(e) => setGpa(e.target.value)}
+                    placeholder="e.g. 3.8/4.0 or Second Class Upper"
+                    className="mt-1.5"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {current.id === 'skills' && (
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Your skills</h1>
+              <p className="mt-1 text-sm text-muted-foreground">Add a few skills that describe what you do.</p>
+              <div className="mt-6">
+                <div className="flex flex-wrap gap-1.5">
+                  {skills.map((s) => (
+                    <span key={s} className="inline-flex items-center gap-1 rounded-full bg-primary/12 px-2.5 py-1 text-xs font-medium text-primary">
+                      {s}
+                      <button type="button" onClick={() => removeSkill(s)} aria-label={`Remove ${s}`}>
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    addSkill()
+                  }}
+                  className="mt-3 flex gap-2"
+                >
+                  <Input value={skillInput} onChange={(e) => setSkillInput(e.target.value)} placeholder="e.g. Python, Design, Public Speaking" className="max-w-xs" />
+                  <Button type="submit" variant="outline" size="icon">
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {current.id === 'resume' && (
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Add your résumé</h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Upload a PDF or Word file, or paste your experience. It stays editable from your profile.
-              </p>
+              <p className="mt-1 text-sm text-muted-foreground">Upload a PDF or Word file, or paste your experience. It stays editable from your profile.</p>
               <div className="mt-6 space-y-4">
                 <label className="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-dashed border-input p-5 transition-colors hover:border-primary/50 hover:bg-primary/5">
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -285,13 +379,13 @@ export default function Onboarding() {
           <Button variant="ghost" onClick={goBack} disabled={step === 1 || saving}>
             <ArrowLeft className="h-4 w-4" /> Back
           </Button>
-          {step < 4 ? (
+          {!isLast ? (
             <Button onClick={handleNext}>
               Continue <ArrowRight className="h-4 w-4" />
             </Button>
           ) : (
             <Button onClick={finish} disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Finish & go to profile
+              {saving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <Check className="h-4 w-4" />} Finish & go to profile
             </Button>
           )}
         </div>

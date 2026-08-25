@@ -18,7 +18,7 @@ import type { Profile, UserType } from '@/types'
 // they have them; they must never block onboarding.
 // ----------------------------------------------------------------------------
 
-export type StepSection = 'about' | 'resumes' | 'intro'
+export type StepSection = 'about' | 'resumes' | 'intro' | 'evidence'
 
 export interface OnboardingStep {
   key: string
@@ -42,7 +42,7 @@ export interface OnboardingState {
   optionalRemaining: number
 }
 
-export function profileCompletion(p: Profile | null | undefined, resumeCount = 0): OnboardingState {
+export function profileCompletion(p: Profile | null | undefined, resumeCount = 0, evidenceCount = 0): OnboardingState {
   if (!p) {
     return {
       required: [],
@@ -58,22 +58,30 @@ export function profileCompletion(p: Profile | null | undefined, resumeCount = 0
   }
 
   const hasCv = !!(p.cv_text || p.cv_url) || resumeCount > 0
+  const hasEvidence = evidenceCount > 0 || isEvidenceDeclined(p.id)
 
   const required: OnboardingStep[] = [
     { key: 'name', label: 'Your name', done: !!p.full_name?.trim(), required: true, section: 'about' },
     { key: 'role', label: 'Who you are — Student, Employer, or University', done: !!p.user_type, required: true, section: 'intro' },
     { key: 'goal', label: 'Your first goal', done: !!p.onboarding_goal?.trim(), required: true, section: 'intro' },
-    { key: 'location', label: 'Location', done: !!p.location?.trim(), required: true, section: 'about' },
+    { key: 'country', label: 'Country', done: !!(p.country?.trim() || p.location?.trim()), required: true, section: 'about' },
     { key: 'work', label: 'Work preferences', done: !!p.work_type && p.work_type !== 'any', required: true, section: 'about' },
+    { key: 'skills', label: 'Your skills', done: (p.skills?.length ?? 0) > 0, required: true, section: 'about' },
+    {
+      key: 'education',
+      label: 'School, major & GPA',
+      done: p.user_type === 'student' ? !!(p.major?.trim() && p.school?.trim() && p.gpa?.trim()) : true,
+      required: true,
+      section: 'about',
+    },
     { key: 'resume', label: 'Résumé or basic profile', done: hasCv, required: true, section: 'resumes' },
+    { key: 'evidence', label: 'Evidence of your work', done: hasEvidence, required: true, section: 'evidence' },
   ]
 
   const optional: OnboardingStep[] = [
     { key: 'bio', label: 'Short bio', done: !!p.bio?.trim(), required: false, section: 'about' },
-    { key: 'major', label: 'Major or field of study', done: !!p.major?.trim(), required: false, section: 'about' },
     { key: 'year', label: 'Year of study', done: !!(p.year || p.graduated), required: false, section: 'about' },
     { key: 'links', label: 'A link (LinkedIn or GitHub)', done: !!(p.linkedin?.trim() || p.github?.trim() || p.website?.trim()), required: false, section: 'about' },
-    { key: 'skills', label: 'Add your skills', done: (p.skills?.length ?? 0) > 0, required: false, section: 'about' },
     { key: 'career', label: 'First career direction or role', done: (p.desired_roles?.length ?? 0) > 0, required: false, section: 'about' },
   ]
 
@@ -97,14 +105,40 @@ export function profileCompletion(p: Profile | null | undefined, resumeCount = 0
 }
 
 /**
- * Whether the router should keep the user on their Profile until the important
- * steps are complete. Every new account — student, company, school, or a Google
- * sign-in that hasn't picked a role yet — is held on Profile until the required
- * (simple) steps are done. Once complete they can explore freely.
+ * Client-side acknowledgment that a user has chosen "I don't have any evidence
+ * yet". Stored per-user in localStorage so the required-evidence gate can be
+ * satisfied without a dedicated DB column. Evidence the user later adds also
+ * satisfies the gate (see `profileCompletion`).
+ */
+export function setEvidenceDeclined(id: string, declined: boolean) {
+  try {
+    if (declined) localStorage.setItem(`optryva:evidence_declined:${id}`, '1')
+    else localStorage.removeItem(`optryva:evidence_declined:${id}`)
+  } catch {
+    /* ignore storage errors */
+  }
+}
+
+export function isEvidenceDeclined(id?: string): boolean {
+  if (!id) return false
+  try {
+    return localStorage.getItem(`optryva:evidence_declined:${id}`) === '1'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Whether the router should bounce the user to onboarding. Every new account is
+ * held until the *blocking* required steps are done — role, name, goal, country,
+ * work, skills, education, and résumé. Evidence is also required, but it's
+ * completed from the Profile (with an "I don't have any" option) and the router
+ * can't see the evidence count, so it's intentionally excluded from this bounce.
  */
 export function requiresProfileCompletion(p: Profile | null | undefined): boolean {
   if (!p) return false
-  return !profileCompletion(p).requiredComplete
+  const blocking = profileCompletion(p).required.filter((s) => s.key !== 'evidence')
+  return blocking.some((s) => !s.done)
 }
 
 export const GOAL_OPTIONS: { value: string; label: string; hint: string }[] = [
