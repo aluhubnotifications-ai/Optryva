@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -58,9 +58,18 @@ export default function Onboarding() {
   const { toast } = useToast()
 
   const userId = useSession((s) => s.userId)
+  const setNeedsOnboarding = useSession((s) => s.setNeedsOnboarding)
   if (!userId) return <Navigate to="/login" replace />
   // Already finished the required steps → go straight to the app.
   if (user && !requiresProfileCompletion(user)) return <Navigate to="/app/profile" replace />
+
+  // This user is in the wizard because they're a new account (flagged ?new=1 by
+  // register / the OAuth callback). Mirror that into the persisted
+  // `needsOnboarding` flag so a refresh or navigating away can't let them skip
+  // the required steps — the router re-holds them here until they finish.
+  useEffect(() => {
+    if (userId) setNeedsOnboarding(userId, true)
+  }, [userId, setNeedsOnboarding])
 
   const [step, setStep] = useState(1)
   const [userType, setUserType] = useState<UserType | ''>(user?.user_type ?? '')
@@ -213,6 +222,9 @@ export default function Onboarding() {
       // doesn't bounce us straight back to onboarding.
       const refreshed = await authApi.me()
       if (refreshed) useSession.getState().setProfile(refreshed)
+      // Mark onboarding complete so the router never forces this user through
+      // the wizard again.
+      if (userId) useSession.getState().setNeedsOnboarding(userId, false)
       setCelebrating(true)
       playSuccess()
       toast({ title: "You're all set!", description: 'Taking you to your profile…', tone: 'success' })

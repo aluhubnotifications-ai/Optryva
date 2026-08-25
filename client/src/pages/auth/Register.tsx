@@ -54,6 +54,9 @@ export default function Register() {
         user_type: form.user_type,
       })
       login(user, accessToken)
+      // Mark this new account as owing onboarding so the router holds them in the
+      // wizard (mirrored from ?new=1 and persisted against refresh/navigation).
+      useSession.getState().setNeedsOnboarding(user.id, true)
       // New accounts go to the onboarding wizard (flagged ?new=1 so the router
       // holds them there until the required steps are done).
       navigate('/onboarding?new=1')
