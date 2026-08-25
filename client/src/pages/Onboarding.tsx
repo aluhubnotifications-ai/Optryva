@@ -1,6 +1,22 @@
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Check, FileText, Plus, Upload, X } from 'lucide-react'
+import {
+  ArrowLeft,
+  ArrowRight,
+  Award,
+  Briefcase,
+  Check,
+  FileText,
+  GraduationCap,
+  Landmark,
+  Loader2,
+  MapPin,
+  Plus,
+  Sparkles,
+  Upload,
+  User,
+  X,
+} from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/Button'
 import { Input, Label, Textarea } from '@/components/ui/primitives'
@@ -18,7 +34,22 @@ const WORK_OPTIONS = [
   { value: 'hybrid', label: 'Hybrid' },
 ]
 
+const ROLE_ICONS: Record<UserType, typeof GraduationCap> = {
+  student: GraduationCap,
+  company: Briefcase,
+  school: Landmark,
+}
+
 type StepId = 'role' | 'about' | 'location' | 'education' | 'skills' | 'resume'
+
+const STEP_META: Record<StepId, { label: string; icon: typeof User; blurb: string }> = {
+  role: { label: 'Who you are', icon: User, blurb: 'This shapes your experience.' },
+  about: { label: 'About you', icon: User, blurb: 'Just the basics — refine anytime.' },
+  location: { label: 'Location & work', icon: MapPin, blurb: 'So we can match you to the right places.' },
+  education: { label: 'Education', icon: GraduationCap, blurb: 'So schools and employers can find you.' },
+  skills: { label: 'Skills', icon: Sparkles, blurb: 'A few things you’re good at.' },
+  resume: { label: 'Résumé', icon: FileText, blurb: 'Upload or paste — editable later.' },
+}
 
 export default function Onboarding() {
   const navigate = useNavigate()
@@ -59,6 +90,9 @@ export default function Onboarding() {
 
   const current = steps[Math.min(step, steps.length) - 1]
   const isLast = step === steps.length
+  const meta = STEP_META[current.id]
+  const StepIcon = meta.icon
+  const progress = Math.round((step / steps.length) * 100)
 
   async function patchProfile(patch: Record<string, unknown>) {
     if (!user) return
@@ -157,28 +191,37 @@ export default function Onboarding() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted/40">
-      <header className="mx-auto flex max-w-2xl items-center justify-between px-6 py-6">
-        <Logo />
-        <span className="text-xs font-medium text-muted-foreground">
-          Step {step} of {steps.length}
-        </span>
-      </header>
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/[0.07]">
+      <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col px-4 py-8 sm:px-6">
+        <header className="flex items-center justify-between">
+          <Logo />
+          <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">Step {step} of {steps.length}</span>
+        </header>
 
-      <div className="mx-auto max-w-2xl px-6">
-        <div className="mb-8 flex items-center gap-2">
+        {/* progress */}
+        <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${progress}%` }} />
+        </div>
+
+        {/* step pills */}
+        <div className="mt-5 flex items-center gap-2">
           {steps.map((s, i) => {
             const n = i + 1
             const active = n === step
             const done = n < step
+            const Icon = STEP_META[s.id].icon
             return (
               <div key={s.id} className="flex flex-1 items-center gap-2">
                 <div
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                    done ? 'bg-primary text-primary-foreground' : active ? 'bg-primary/15 text-primary ring-2 ring-primary' : 'bg-muted text-muted-foreground'
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
+                    done
+                      ? 'bg-primary text-primary-foreground'
+                      : active
+                        ? 'bg-primary/15 text-primary ring-2 ring-primary'
+                        : 'bg-muted text-muted-foreground'
                   }`}
                 >
-                  {done ? <Check className="h-4 w-4" /> : n}
+                  {done ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
                 </div>
                 <span className={`hidden text-xs font-medium sm:block ${active ? 'text-foreground' : 'text-muted-foreground'}`}>{s.label}</span>
                 {n < steps.length && <div className={`h-0.5 flex-1 rounded ${done ? 'bg-primary' : 'bg-muted'}`} />}
@@ -187,194 +230,201 @@ export default function Onboarding() {
           })}
         </div>
 
-        <div className="rounded-3xl border border-border bg-card p-6 sm:p-8">
-          {current.id === 'role' && (
+        {/* card */}
+        <div className="mt-6 flex-1 rounded-3xl border border-border bg-card p-6 shadow-xl shadow-black/5 sm:p-9">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <StepIcon className="h-5 w-5" />
+            </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Welcome to Optryva</h1>
-              <p className="mt-1 text-sm text-muted-foreground">First, tell us who you are. This shapes your experience.</p>
-              <div className="mt-6 grid gap-3">
-                {ROLE_OPTIONS.map((r) => (
+              <h1 className="text-2xl font-bold tracking-tight">{current.id === 'role' ? 'Welcome to Optryva' : meta.label}</h1>
+              <p className="text-sm text-muted-foreground">{meta.blurb}</p>
+            </div>
+          </div>
+
+          {current.id === 'role' && (
+            <div className="grid gap-3">
+              {ROLE_OPTIONS.map((r) => {
+                const Icon = ROLE_ICONS[r.value]
+                return (
                   <button
                     key={r.value}
                     type="button"
                     onClick={() => setUserType(r.value)}
-                    className={`flex flex-col items-start gap-1 rounded-2xl border p-5 text-left transition-colors ${
-                      userType === r.value ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border hover:border-primary/40'
+                    className={`group flex items-center gap-4 rounded-2xl border p-4 text-left transition-all ${
+                      userType === r.value
+                        ? 'border-primary bg-primary/5 ring-2 ring-primary/30'
+                        : 'border-border hover:border-primary/40 hover:bg-muted/50'
                     }`}
                   >
-                    <span className="font-semibold">{r.label}</span>
-                    <span className="text-sm text-muted-foreground">{r.hint}</span>
+                    <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-colors ${
+                      userType === r.value ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground group-hover:text-foreground'
+                    }`}>
+                      <Icon className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <span className="block font-semibold">{r.label}</span>
+                      <span className="text-sm text-muted-foreground">{r.hint}</span>
+                    </div>
                   </button>
-                ))}
-              </div>
+                )
+              })}
             </div>
           )}
 
           {current.id === 'about' && (
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">A few quick details</h1>
-              <p className="mt-1 text-sm text-muted-foreground">Just the basics — you can refine everything later.</p>
-              <div className="mt-6 space-y-5">
-                <div>
-                  <Label htmlFor="name">Your name</Label>
-                  <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Alex Rivera" className="mt-1.5" />
-                </div>
-                <div>
-                  <Label>What brings you here?</Label>
-                  <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
-                    {GOAL_OPTIONS.map((g) => (
-                      <button
-                        key={g.value}
-                        type="button"
-                        onClick={() => setGoal(g.value)}
-                        className={`rounded-xl border p-3 text-left text-sm transition-colors ${
-                          goal === g.value ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border hover:border-primary/40'
-                        }`}
-                      >
-                        <span className="block font-semibold">{g.label}</span>
-                        <span className="text-xs text-muted-foreground">{g.hint}</span>
-                      </button>
-                    ))}
-                  </div>
+            <div className="space-y-5">
+              <div>
+                <Label htmlFor="name">Your name</Label>
+                <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Alex Rivera" className="mt-1.5 bg-background" />
+              </div>
+              <div>
+                <Label>What brings you here?</Label>
+                <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
+                  {GOAL_OPTIONS.map((g) => (
+                    <button
+                      key={g.value}
+                      type="button"
+                      onClick={() => setGoal(g.value)}
+                      className={`rounded-xl border p-3 text-left text-sm transition-colors ${
+                        goal === g.value ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border hover:border-primary/40 hover:bg-muted/50'
+                      }`}
+                    >
+                      <span className="block font-semibold">{g.label}</span>
+                      <span className="text-xs text-muted-foreground">{g.hint}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
           )}
 
           {current.id === 'location' && (
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Where are you based?</h1>
-              <p className="mt-1 text-sm text-muted-foreground">We use this to match you to relevant opportunities.</p>
-              <div className="mt-6 space-y-5">
-                <div>
-                  <Label htmlFor="country">Country</Label>
-                  <CountryCombobox id="country" value={country} onChange={setCountry} placeholder="Search countries…" className="mt-1.5" />
-                </div>
-                <div>
-                  <Label>Work preference</Label>
-                  <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
-                    {WORK_OPTIONS.map((w) => (
-                      <button
-                        key={w.value}
-                        type="button"
-                        onClick={() => setWorkType(w.value)}
-                        className={`rounded-xl border p-3 text-sm font-medium transition-colors ${
-                          workType === w.value ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border hover:border-primary/40'
-                        }`}
-                      >
-                        {w.label}
-                      </button>
-                    ))}
-                  </div>
+            <div className="space-y-5">
+              <div>
+                <Label htmlFor="country">Country</Label>
+                <CountryCombobox id="country" value={country} onChange={setCountry} placeholder="Search countries…" className="mt-1.5 bg-background" />
+              </div>
+              <div>
+                <Label>Work preference</Label>
+                <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
+                  {WORK_OPTIONS.map((w) => (
+                    <button
+                      key={w.value}
+                      type="button"
+                      onClick={() => setWorkType(w.value)}
+                      className={`rounded-xl border p-3 text-sm font-medium transition-colors ${
+                        workType === w.value ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border hover:border-primary/40 hover:bg-muted/50'
+                      }`}
+                    >
+                      {w.label}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
           )}
 
           {current.id === 'education' && (
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Your education</h1>
-              <p className="mt-1 text-sm text-muted-foreground">So employers and universities can find you.</p>
-              <div className="mt-6 space-y-5">
-                <div>
-                  <Label htmlFor="school">School / University</Label>
-                  <Input id="school" value={school} onChange={(e) => setSchool(e.target.value)} placeholder="e.g. University of Nairobi" className="mt-1.5" />
-                </div>
-                <div>
-                  <Label htmlFor="major">Major / field of study</Label>
-                  <Input id="major" value={major} onChange={(e) => setMajor(e.target.value)} placeholder="e.g. Computer Science" className="mt-1.5" />
-                </div>
-                <div>
-                  <Label htmlFor="gpa">GPA / grades</Label>
-                  <Input
-                    id="gpa"
-                    value={gpa}
-                    onChange={(e) => setGpa(e.target.value)}
-                    placeholder="e.g. 3.8/4.0 or Second Class Upper"
-                    className="mt-1.5"
-                  />
-                </div>
+            <div className="space-y-5">
+              <div>
+                <Label htmlFor="school">School / University</Label>
+                <Input id="school" value={school} onChange={(e) => setSchool(e.target.value)} placeholder="e.g. University of Nairobi" className="mt-1.5 bg-background" />
+              </div>
+              <div>
+                <Label htmlFor="major">Major / field of study</Label>
+                <Input id="major" value={major} onChange={(e) => setMajor(e.target.value)} placeholder="e.g. Computer Science" className="mt-1.5 bg-background" />
+              </div>
+              <div>
+                <Label htmlFor="gpa">GPA / grades</Label>
+                <Input
+                  id="gpa"
+                  value={gpa}
+                  onChange={(e) => setGpa(e.target.value)}
+                  placeholder="e.g. 3.8/4.0 or Second Class Upper"
+                  className="mt-1.5 bg-background"
+                />
               </div>
             </div>
           )}
 
           {current.id === 'skills' && (
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Your skills</h1>
-              <p className="mt-1 text-sm text-muted-foreground">Add a few skills that describe what you do.</p>
-              <div className="mt-6">
-                <div className="flex flex-wrap gap-1.5">
-                  {skills.map((s) => (
-                    <span key={s} className="inline-flex items-center gap-1 rounded-full bg-primary/12 px-2.5 py-1 text-xs font-medium text-primary">
-                      {s}
-                      <button type="button" onClick={() => removeSkill(s)} aria-label={`Remove ${s}`}>
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    addSkill()
-                  }}
-                  className="mt-3 flex gap-2"
-                >
-                  <Input value={skillInput} onChange={(e) => setSkillInput(e.target.value)} placeholder="e.g. Python, Design, Public Speaking" className="max-w-xs" />
-                  <Button type="submit" variant="outline" size="icon">
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </form>
+              <div className="flex flex-wrap gap-2">
+                {skills.map((s) => (
+                  <span key={s} className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
+                    {s}
+                    <button type="button" onClick={() => removeSkill(s)} aria-label={`Remove ${s}`} className="rounded-full p-0.5 hover:bg-primary/15">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </span>
+                ))}
+                {skills.length === 0 && <p className="text-sm text-muted-foreground">No skills yet — add a few below.</p>}
               </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  addSkill()
+                }}
+                className="mt-4 flex gap-2"
+              >
+                <Input
+                  value={skillInput}
+                  onChange={(e) => setSkillInput(e.target.value)}
+                  placeholder="e.g. Python, Design, Public Speaking"
+                  className="bg-background"
+                />
+                <Button type="submit" variant="outline" size="icon" aria-label="Add skill">
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </form>
             </div>
           )}
 
           {current.id === 'resume' && (
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Add your résumé</h1>
-              <p className="mt-1 text-sm text-muted-foreground">Upload a PDF or Word file, or paste your experience. It stays editable from your profile.</p>
-              <div className="mt-6 space-y-4">
-                <label className="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-dashed border-input p-5 transition-colors hover:border-primary/50 hover:bg-primary/5">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <Upload className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Upload your résumé</p>
-                    <p className="text-xs text-muted-foreground">PDF or Word</p>
-                  </div>
-                  <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => attachCv(e.target.files?.[0])} />
-                </label>
-
-                {cvFilename && cvUrl && (
-                  <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 p-4">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/15 text-success">
-                      <FileText className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{cvFilename}</p>
-                      <p className="text-xs text-muted-foreground">Attached</p>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => { setCvUrl(undefined); setCvFilename(null) }}>Remove</Button>
-                  </div>
-                )}
-
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <div className="h-px flex-1 bg-border" />
-                  or paste
-                  <div className="h-px flex-1 bg-border" />
+            <div className="space-y-4">
+              <label className="flex cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-input bg-muted/30 p-8 text-center transition-colors hover:border-primary/50 hover:bg-primary/5">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Upload className="h-6 w-6" />
                 </div>
+                <div>
+                  <p className="text-sm font-medium">Upload your résumé</p>
+                  <p className="text-xs text-muted-foreground">PDF or Word</p>
+                </div>
+                <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => attachCv(e.target.files?.[0])} />
+              </label>
 
-                <Textarea
-                  value={cvText}
-                  onChange={(e) => { setCvText(e.target.value); if (e.target.value.trim()) { setCvUrl(undefined); setCvFilename(null) } }}
-                  placeholder="Paste your experience, skills, and education…"
-                  rows={6}
-                />
+              {cvFilename && cvUrl && (
+                <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 p-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/15 text-success">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{cvFilename}</p>
+                    <p className="text-xs text-muted-foreground">Attached</p>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => { setCvUrl(undefined); setCvFilename(null) }}>Remove</Button>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <div className="h-px flex-1 bg-border" />
+                or paste
+                <div className="h-px flex-1 bg-border" />
               </div>
+
+              <Textarea
+                value={cvText}
+                onChange={(e) => { setCvText(e.target.value); if (e.target.value.trim()) { setCvUrl(undefined); setCvFilename(null) } }}
+                placeholder="Paste your experience, skills, and education…"
+                rows={6}
+                className="bg-background"
+              />
             </div>
           )}
         </div>
 
+        {/* footer */}
         <div className="mt-6 flex items-center justify-between">
           <Button variant="ghost" onClick={goBack} disabled={step === 1 || saving}>
             <ArrowLeft className="h-4 w-4" /> Back
@@ -385,7 +435,7 @@ export default function Onboarding() {
             </Button>
           ) : (
             <Button onClick={finish} disabled={saving}>
-              {saving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <Check className="h-4 w-4" />} Finish & go to profile
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Award className="h-4 w-4" />} Finish & go to profile
             </Button>
           )}
         </div>
