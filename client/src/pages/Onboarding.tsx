@@ -38,9 +38,10 @@ const WORK_OPTIONS = [
   { value: 'hybrid', label: 'Hybrid' },
 ]
 const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Agriculture', 'Education', 'E-commerce', 'Consulting', 'Nonprofit']
+const LISTING_TYPES = ['Internship', 'Fellowship', 'Part-time', 'Full-time', 'Graduate role', 'Volunteer']
 const COMPANY_SIZES = ['1-10', '11-50', '51-200', '201-1000', '1000+']
 
-type StepId = 'about' | 'location' | 'education' | 'school' | 'company' | 'skills' | 'resume'
+type StepId = 'about' | 'location' | 'education' | 'school' | 'company' | 'skills' | 'resume' | 'preferences'
 
 const STEP_META: Record<StepId, { label: string; icon: typeof User; blurb: string }> = {
   about: { label: 'About you', icon: User, blurb: 'Just the basics — refine anytime.' },
@@ -48,8 +49,9 @@ const STEP_META: Record<StepId, { label: string; icon: typeof User; blurb: strin
   education: { label: 'Education', icon: GraduationCap, blurb: 'So schools and employers can find you.' },
   school: { label: 'Your institution', icon: Building2, blurb: 'Help students recognize and trust you.' },
   company: { label: 'Your company', icon: Briefcase, blurb: 'So we can match you with the right talent.' },
-  skills: { label: 'Skills', icon: Sparkles, blurb: 'A few things you’re good at.' },
-  resume: { label: 'Résumé', icon: FileText, blurb: 'Upload or paste — editable later.' },
+   skills: { label: 'Skills', icon: Sparkles, blurb: 'A few things you’re good at.' },
+   resume: { label: 'Résumé', icon: FileText, blurb: 'Upload or paste — editable later.' },
+   preferences: { label: 'Preferences', icon: Sparkles, blurb: 'So we match you to the right roles.' },
 }
 
 export default function Onboarding() {
@@ -88,6 +90,12 @@ export default function Onboarding() {
   const [companySize, setCompanySize] = useState(user?.company_size ?? '')
   const [skills, setSkills] = useState<string[]>(user?.skills ?? [])
   const [skillInput, setSkillInput] = useState('')
+  const [desiredRoles, setDesiredRoles] = useState<string[]>(user?.desired_roles ?? [])
+  const [roleInput, setRoleInput] = useState('')
+  const [preferredIndustries, setPreferredIndustries] = useState<string[]>(user?.preferred_industries ?? [])
+  const [prefCountries, setPrefCountries] = useState<string[]>(user?.pref_countries ?? [])
+  const [countryInput, setCountryInput] = useState('')
+  const [prefListingTypes, setPrefListingTypes] = useState<string[]>(user?.pref_listing_types ?? [])
   const [cvUrl, setCvUrl] = useState<string | undefined>(user?.cv_url ?? undefined)
   const [cvText, setCvText] = useState(user?.cv_text ?? '')
   const [cvFilename, setCvFilename] = useState<string | null>(user?.cv_filename ?? null)
@@ -102,7 +110,12 @@ export default function Onboarding() {
   // signup, so there is no redundant "who you are" step.
   const steps: { id: StepId; label: string }[] = [{ id: 'about', label: 'About you' }]
   if (userType === 'student') {
-    steps.push({ id: 'education', label: 'Education' }, { id: 'skills', label: 'Skills' }, { id: 'resume', label: 'Résumé' })
+    steps.push(
+      { id: 'education', label: 'Education' },
+      { id: 'skills', label: 'Skills' },
+      { id: 'resume', label: 'Résumé' },
+      { id: 'preferences', label: 'Preferences' },
+    )
   } else if (userType === 'school') {
     steps.push({ id: 'school', label: 'Your institution' })
   } else if (userType === 'company') {
@@ -136,6 +149,23 @@ export default function Onboarding() {
   }
   function removeSkill(s: string) {
     setSkills(skills.filter((x) => x !== s))
+  }
+
+  function addRole() {
+    const s = roleInput.trim()
+    if (s && !desiredRoles.includes(s)) setDesiredRoles([...desiredRoles, s])
+    setRoleInput('')
+  }
+  function addCountry() {
+    const s = countryInput.trim()
+    if (s && !prefCountries.includes(s)) setPrefCountries([...prefCountries, s])
+    setCountryInput('')
+  }
+  function toggleIndustry(ind: string) {
+    setPreferredIndustries((prev) => (prev.includes(ind) ? prev.filter((x) => x !== ind) : [...prev, ind]))
+  }
+  function toggleListingType(t: string) {
+    setPrefListingTypes((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]))
   }
 
   async function handleNext() {
@@ -174,6 +204,21 @@ export default function Onboarding() {
       } else if (current.id === 'skills') {
         if (skills.length === 0) return toast({ title: 'Add at least one skill', tone: 'error' })
         await patchProfile({ skills })
+        goNext()
+      } else if (current.id === 'preferences') {
+        if (
+          desiredRoles.length === 0 &&
+          preferredIndustries.length === 0 &&
+          prefCountries.length === 0 &&
+          prefListingTypes.length === 0
+        )
+          return toast({ title: 'Pick at least one preference', tone: 'error' })
+        await patchProfile({
+          desired_roles: desiredRoles,
+          preferred_industries: preferredIndustries,
+          pref_countries: prefCountries,
+          pref_listing_types: prefListingTypes,
+        })
         goNext()
       }
     } catch (e) {
@@ -216,6 +261,14 @@ export default function Onboarding() {
             }
           : {}),
         ...(userType === 'company' ? { industry, company_size: companySize } : {}),
+        ...(userType === 'student'
+          ? {
+              desired_roles: desiredRoles,
+              preferred_industries: preferredIndustries,
+              pref_countries: prefCountries,
+              pref_listing_types: prefListingTypes,
+            }
+          : {}),
       })
       await onboardingApi.saveResume(cvText.trim() || undefined, cvUrl, cvFilename ?? undefined)
       // Refresh the cached profile so the completion gate sees the résumé and
@@ -519,6 +572,104 @@ export default function Onboarding() {
                 rows={6}
                 className="bg-background"
               />
+            </div>
+          )}
+
+          {current.id === 'preferences' && (
+            <div className="space-y-5">
+              <div>
+                <Label>Career direction — roles you want</Label>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {desiredRoles.map((r) => (
+                    <span key={r} className="flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm text-primary">
+                      {r}
+                      <button type="button" onClick={() => setDesiredRoles(desiredRoles.filter((x) => x !== r))}>
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <Input
+                  value={roleInput}
+                  onChange={(e) => setRoleInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      addRole()
+                    }
+                  }}
+                  placeholder="e.g. Data Analyst, Product Manager"
+                  className="mt-2 bg-background"
+                />
+              </div>
+
+              <div>
+                <Label>Preferred industries</Label>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {INDUSTRIES.map((ind) => {
+                    const active = preferredIndustries.includes(ind)
+                    return (
+                      <button
+                        key={ind}
+                        type="button"
+                        onClick={() => toggleIndustry(ind)}
+                        className={`rounded-xl border px-3 py-2 text-sm transition-colors active:scale-95 ${
+                          active ? 'border-primary bg-primary/10 text-primary' : 'border-input bg-background hover:border-primary/40'
+                        }`}
+                      >
+                        {ind}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <Label>Preferred countries</Label>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {prefCountries.map((c) => (
+                    <span key={c} className="flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm text-primary">
+                      {c}
+                      <button type="button" onClick={() => setPrefCountries(prefCountries.filter((x) => x !== c))}>
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <Input
+                  value={countryInput}
+                  onChange={(e) => setCountryInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      addCountry()
+                    }
+                  }}
+                  placeholder="Type a country and press Enter"
+                  className="mt-2 bg-background"
+                />
+              </div>
+
+              <div>
+                <Label>Opportunity types</Label>
+                <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                  {LISTING_TYPES.map((t) => {
+                    const active = prefListingTypes.includes(t)
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => toggleListingType(t)}
+                        className={`rounded-xl border px-3 py-2 text-sm transition-colors active:scale-95 ${
+                          active ? 'border-primary bg-primary/10 text-primary' : 'border-input bg-background hover:border-primary/40'
+                        }`}
+                      >
+                        {t}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
           )}
           </motion.div>
