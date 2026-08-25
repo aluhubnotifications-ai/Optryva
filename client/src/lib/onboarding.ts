@@ -1,13 +1,23 @@
 import type { Profile, UserType } from '@/types'
 
+// Onboarding is shown ONLY to accounts created in this session. The server flags
+// a brand-new account by redirecting to `/onboarding?new=1` (register, or a
+// first-time Google sign-in). Returning users never receive that flag, so the
+// router never forces them through the wizard — they land on their Profile and
+// complete optional fields at their leisure.
+export function isNewAccount(): boolean {
+  if (typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).get('new') === '1'
+}
+
 // ----------------------------------------------------------------------------
 // Unified onboarding / profile-completion model.
 //
-// The redesign sends every new user straight to their Profile after sign-in and
-// keeps them there (the router bounces them back) until the *important* steps
-// are done. We deliberately do NOT trap users forever: once the required steps
-// are complete they can explore the app, and a progress card keeps nudging them
-// to finish the optional fields up to 100%.
+// New accounts are held in the onboarding wizard (flagged via ?new=1) until the
+// *important* steps are done. Returning users skip onboarding entirely. We
+// deliberately do NOT trap users forever: once the required steps are complete
+// they can explore the app, and a progress card keeps nudging them to finish
+// the optional fields up to 100%.
 //
 // Required steps (gates the app — kept intentionally simple):
 //   1. Name            2. Who you are (user type)   3. First goal (onboarding_goal)

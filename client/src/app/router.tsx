@@ -3,7 +3,7 @@ import { createBrowserRouter, isRouteErrorResponse, Navigate, Outlet, useRouteEr
 import { AppShell } from '@/app/AppShell'
 import { useSession, useCurrentUser } from '@/lib/store'
 import { authApi } from '@/lib/api'
-import { requiresProfileCompletion } from '@/lib/onboarding'
+import { requiresProfileCompletion, isNewAccount } from '@/lib/onboarding'
 import { useLocation } from 'react-router-dom'
 
 import Landing from '@/pages/Landing'
@@ -50,11 +50,11 @@ function RequireAuth() {
     authApi.me().then((p) => { if (p) useSession.getState().setProfile(p) })
   }, [userId])
   if (!userId) return <Navigate to="/login" replace />
-  // Every new account (student, employer, university, or a Google sign-in that
-  // hasn't finished onboarding) is held on the onboarding wizard until the
-  // required steps — role, name, goal, country/location, work preference, and
-  // résumé — are complete. Once done they go to their Profile and can explore.
-  if (requiresProfileCompletion(profile) && location.pathname !== '/onboarding') {
+  // Only accounts created in this session (flagged with ?new=1) are held in the
+  // onboarding wizard until the required steps are complete. Returning users who
+  // haven't finished their profile are NOT bounced — they land on their Profile
+  // and fill optional fields at their leisure.
+  if (requiresProfileCompletion(profile) && isNewAccount() && location.pathname !== '/onboarding') {
     return <Navigate to="/onboarding" replace />
   }
   return (

@@ -54,11 +54,11 @@ async function postJson(path: string, body: unknown) {
 }
 
 export const authApi = {
-  async login(email: string, password: string): Promise<{ accessToken: string; user: Profile }> {
-    return postJson('/auth/login', { email, password }) as Promise<{ accessToken: string; user: Profile }>
+  async login(email: string, password: string): Promise<{ accessToken: string; user: Profile; isNew: boolean }> {
+    return postJson('/auth/login', { email, password }) as Promise<{ accessToken: string; user: Profile; isNew: boolean }>
   },
-  async register(payload: { full_name: string; email: string; password: string; user_type?: Profile['user_type'] }): Promise<{ accessToken: string; user: Profile }> {
-    return postJson('/auth/register', payload) as Promise<{ accessToken: string; user: Profile }>
+  async register(payload: { full_name: string; email: string; password: string; user_type?: Profile['user_type'] }): Promise<{ accessToken: string; user: Profile; isNew: boolean }> {
+    return postJson('/auth/register', payload) as Promise<{ accessToken: string; user: Profile; isNew: boolean }>
   },
   async logout(): Promise<void> {
     try {

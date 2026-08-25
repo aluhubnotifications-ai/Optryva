@@ -54,8 +54,9 @@ export default function Register() {
         user_type: form.user_type,
       })
       login(user, accessToken)
-      // After email/password signup, go straight to the profile to finish setup.
-      navigate('/app/profile')
+      // New accounts go to the onboarding wizard (flagged ?new=1 so the router
+      // holds them there until the required steps are done).
+      navigate('/onboarding?new=1')
     } catch (err) {
       const code = err instanceof Error ? err.message : 'register_failed'
       setError(ERRORS[code] ?? 'Could not create your account. Is the server running?')
@@ -68,7 +69,7 @@ export default function Register() {
     setError(null)
     setGoogleLoading(true)
     try {
-      const { url } = await authApi.googleAuthUrl('/app/profile')
+      const { url } = await authApi.googleAuthUrl('/app')
       window.location.href = url
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google sign-up failed')

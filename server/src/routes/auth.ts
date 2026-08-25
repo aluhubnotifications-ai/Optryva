@@ -63,7 +63,7 @@ auth.post('/register', async (req, res) => {
   const profile = await fullProfile(id)
   const user = await authUserFromRow(profile)
   res.cookie(REFRESH_COOKIE, signRefresh(user), authCookieOptions(req))
-  res.json({ accessToken: signAccess(user), user: rowToProfile(profile, true) })
+  res.json({ accessToken: signAccess(user), user: rowToProfile(profile, true), isNew: true })
 })
 
 auth.post('/login', async (req, res) => {
@@ -78,7 +78,7 @@ auth.post('/login', async (req, res) => {
   const profile = await fullProfile(u.id)
   const user = await authUserFromRow(profile)
   res.cookie(REFRESH_COOKIE, signRefresh(user), authCookieOptions(req))
-  res.json({ accessToken: signAccess(user), user: rowToProfile(profile, true) })
+  res.json({ accessToken: signAccess(user), user: rowToProfile(profile, true), isNew: false })
 })
 
 auth.post('/refresh', async (req, res) => {

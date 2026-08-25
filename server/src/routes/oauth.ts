@@ -217,13 +217,14 @@ oauth.get('/google/callback', async (req, res) => {
       .maybeSingle())
     
     let profile: any
-    
+    let isNew = false
+
     if (existingProvider) {
-      // Existing Google user — log them in
+      // Existing Google user — log them in (returning)
       const user = existingProvider as any
       const p = must(await sb.from('profiles').select('*').eq('id', user.id).maybeSingle())
       profile = p
-      
+
       // Update provider metadata (new tokens)
       must(await sb
         .from('app_users')
@@ -259,53 +260,54 @@ oauth.get('/google/callback', async (req, res) => {
           email_verified: 1,
         }).eq('id', existingEmail.id))
         profile = must(await sb.from('profiles').select('*').eq('id', existingEmail.id).maybeSingle())
-      }
-      
-      // Brand new user — create account with Google, but DON'T assign role yet
-      // They will choose role on the next screen
-      const id = uid('u')
-      const ts = now()
-      
-      must(await sb.from('app_users').insert({
-        id,
-        email: googleUser.email,
-        password_hash: null, // No password for Google-only accounts
-        email_verified: 1,
-        auth_provider: 'google',
-        provider_subject: googleUser.sub,
-        provider_metadata: JSON.stringify({
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
+      } else {
+        // Brand new user — create account with Google (this is account creation,
+        // so they get the onboarding wizard). Role is chosen in the wizard.
+        isNew = true
+        const id = uid('u')
+        const ts = now()
+
+        must(await sb.from('app_users').insert({
+          id,
+          email: googleUser.email,
+          password_hash: null, // No password for Google-only accounts
+          email_verified: 1,
+          auth_provider: 'google',
+          provider_subject: googleUser.sub,
+          provider_metadata: JSON.stringify({
+            access_token: tokens.access_token,
+            refresh_token: tokens.refresh_token,
+            created_at: ts,
+          }),
           created_at: ts,
-        }),
-        created_at: ts,
-      }))
-      
-      // Create a minimal profile. user_type is intentionally left empty ('')
-      // so the onboarding flow explicitly asks "company or student?" — we no
-      // longer silently default Google users to 'student'. '' satisfies the
-      // NOT NULL column and reads as "not chosen yet" in the gating logic.
-      must(await sb.from('profiles').insert({
-        id,
-        user_type: '',
-        full_name: googleUser.name ?? googleUser.email.split('@')[0],
-        email: googleUser.email,
-        avatar_url: googleUser.picture,
-        plan: 'free',
-        created_at: ts,
-      }))
-      
-      // Initialize onboarding progress
-      must(await sb.from('onboarding_progress').insert({
-        account_id: id,
-        role: 'student', // will be updated after role selection
-        current_step: 1,
-        completed_steps: 0,
-        skipped_steps: '[]',
-        updated_at: ts,
-      }))
-      
-      profile = must(await sb.from('profiles').select('*').eq('id', id).maybeSingle())
+        }))
+
+        // Create a minimal profile. user_type is intentionally left empty ('')
+        // so the onboarding flow explicitly asks "company or student?" — we no
+        // longer silently default Google users to 'student'. '' satisfies the
+        // NOT NULL column and reads as "not chosen yet" in the gating logic.
+        must(await sb.from('profiles').insert({
+          id,
+          user_type: '',
+          full_name: googleUser.name ?? googleUser.email.split('@')[0],
+          email: googleUser.email,
+          avatar_url: googleUser.picture,
+          plan: 'free',
+          created_at: ts,
+        }))
+
+        // Initialize onboarding progress
+        must(await sb.from('onboarding_progress').insert({
+          account_id: id,
+          role: 'student', // will be updated after role selection
+          current_step: 1,
+          completed_steps: 0,
+          skipped_steps: '[]',
+          updated_at: ts,
+        }))
+
+        profile = must(await sb.from('profiles').select('*').eq('id', id).maybeSingle())
+      }
     }
     
     // Check if onboarding is complete for this user
@@ -322,12 +324,13 @@ oauth.get('/google/callback', async (req, res) => {
     
     res.cookie('optryva_rt', refreshToken, authCookieOptions(req))
     
-    // Redirect to the Profile hub. The client keeps a new student on their
-    // Profile (with a progress card) until the important onboarding steps are
-    // done, so we always land there after Google sign-in. `returnTo` is still
-    // honoured for users who already finished onboarding.
-    const redirectUrl =
-      progress && progress.completed_steps > 0 && progress.current_step <= progress.completed_steps
+    // New accounts (just created here) go to the onboarding wizard, flagged
+    // with ?new=1 so the client knows to hold them there. Returning users
+    // (existing Google or auto-linked email accounts) skip onboarding and go
+    // to their intended destination / profile.
+    const redirectUrl = isNew
+      ? `${clientOrigin}/onboarding?new=1`
+      : progress && progress.completed_steps > 0 && progress.current_step <= progress.completed_steps
         ? `${clientOrigin}${returnTo}`
         : `${clientOrigin}/app/profile`
     return res.redirect(redirectUrl)

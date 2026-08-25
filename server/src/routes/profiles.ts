@@ -16,7 +16,7 @@ profiles.use(requireAuth)
 // keeps the payload small and the parse fast. Full rows are still served by the
 // single-profile PATCH/GET-by-id paths.
 const LIST_COLUMNS =
-  'id,user_type,full_name,email,avatar_url,cover_url,bio,school,major,year,graduated,location,country,linkedin,github,twitter,website,desired_roles,preferred_industries,work_type,location_pref,open_to_internship,open_to_fulltime,pref_listing_types,pref_countries,monitoring_consent,skills,company_name,industry,company_size,student_domains,is_private,posted_by_role,plan,plan_activated_at,created_at'
+  'id,user_type,full_name,onboarding_goal,email,avatar_url,cover_url,bio,school,major,gpa,year,graduated,location,country,linkedin,github,twitter,website,desired_roles,preferred_industries,work_type,location_pref,open_to_internship,open_to_fulltime,pref_listing_types,pref_countries,monitoring_consent,skills,company_name,industry,company_size,student_domains,is_private,posted_by_role,plan,plan_activated_at,created_at'
 
 profiles.get('/', async (req, res) => {
   const type = req.query.type as string | undefined

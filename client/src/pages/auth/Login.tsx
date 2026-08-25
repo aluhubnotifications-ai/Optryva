@@ -31,7 +31,7 @@ export default function Login() {
     try {
       const { accessToken, user } = await authApi.login(email.trim(), password)
       login(user, accessToken)
-      navigate('/app/profile')
+      navigate('/app')
     } catch (err) {
       const code = err instanceof Error ? err.message : 'login_failed'
       setError(ERRORS[code] ?? 'Could not sign in. Is the server running?')
@@ -44,7 +44,7 @@ export default function Login() {
     setError(null)
     setGoogleLoading(true)
     try {
-      const { url } = await authApi.googleAuthUrl('/app/profile')
+      const { url } = await authApi.googleAuthUrl('/app')
       window.location.href = url
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google sign-in failed')
