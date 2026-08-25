@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft,
   ArrowRight,
@@ -194,8 +194,11 @@ export default function Onboarding() {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/[0.07]">
       <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col px-4 py-8 sm:px-6">
         <header className="flex items-center justify-between">
-          <Logo />
-          <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">Step {step} of {steps.length}</span>
+          <Link to="/" className="flex items-center gap-2.5">
+            <Logo className="h-11 w-11" />
+            <span className="text-2xl font-bold tracking-tight">Optryva</span>
+          </Link>
+          <span className="rounded-full bg-muted px-3.5 py-1.5 text-sm font-medium text-muted-foreground">Step {step} of {steps.length}</span>
         </header>
 
         {/* progress */}
@@ -213,7 +216,7 @@ export default function Onboarding() {
             return (
               <div key={s.id} className="flex flex-1 items-center gap-2">
                 <div
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
                     done
                       ? 'bg-primary text-primary-foreground'
                       : active
@@ -221,9 +224,9 @@ export default function Onboarding() {
                         : 'bg-muted text-muted-foreground'
                   }`}
                 >
-                  {done ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+                  {done ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
                 </div>
-                <span className={`hidden text-xs font-medium sm:block ${active ? 'text-foreground' : 'text-muted-foreground'}`}>{s.label}</span>
+                <span className={`hidden text-sm font-medium sm:block ${active ? 'text-foreground' : 'text-muted-foreground'}`}>{s.label}</span>
                 {n < steps.length && <div className={`h-0.5 flex-1 rounded ${done ? 'bg-primary' : 'bg-muted'}`} />}
               </div>
             )
@@ -231,19 +234,19 @@ export default function Onboarding() {
         </div>
 
         {/* card */}
-        <div className="mt-6 flex-1 rounded-3xl border border-border bg-card p-6 shadow-xl shadow-black/5 sm:p-9">
-          <div className="mb-6 flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <StepIcon className="h-5 w-5" />
+        <div className="mt-6 flex-1 rounded-3xl border border-border bg-card p-8 shadow-xl shadow-black/5 sm:p-10">
+          <div className="mb-7 flex items-center gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <StepIcon className="h-7 w-7" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">{current.id === 'role' ? 'Welcome to Optryva' : meta.label}</h1>
-              <p className="text-sm text-muted-foreground">{meta.blurb}</p>
+              <h1 className="text-3xl font-bold tracking-tight">{current.id === 'role' ? 'Welcome to Optryva' : meta.label}</h1>
+              <p className="mt-0.5 text-base text-muted-foreground">{meta.blurb}</p>
             </div>
           </div>
 
           {current.id === 'role' && (
-            <div className="grid gap-3">
+            <div className="grid gap-4">
               {ROLE_OPTIONS.map((r) => {
                 const Icon = ROLE_ICONS[r.value]
                 return (
@@ -251,20 +254,20 @@ export default function Onboarding() {
                     key={r.value}
                     type="button"
                     onClick={() => setUserType(r.value)}
-                    className={`group flex items-center gap-4 rounded-2xl border p-4 text-left transition-all ${
+                    className={`group flex items-center gap-5 rounded-2xl border p-5 text-left transition-all ${
                       userType === r.value
                         ? 'border-primary bg-primary/5 ring-2 ring-primary/30'
                         : 'border-border hover:border-primary/40 hover:bg-muted/50'
                     }`}
                   >
-                    <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-colors ${
+                    <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-xl transition-colors ${
                       userType === r.value ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground group-hover:text-foreground'
                     }`}>
-                      <Icon className="h-6 w-6" />
+                      <Icon className="h-7 w-7" />
                     </div>
                     <div>
-                      <span className="block font-semibold">{r.label}</span>
-                      <span className="text-sm text-muted-foreground">{r.hint}</span>
+                      <span className="block text-lg font-semibold">{r.label}</span>
+                      <span className="text-base text-muted-foreground">{r.hint}</span>
                     </div>
                   </button>
                 )
@@ -273,25 +276,25 @@ export default function Onboarding() {
           )}
 
           {current.id === 'about' && (
-            <div className="space-y-5">
+            <div className="space-y-6">
               <div>
-                <Label htmlFor="name">Your name</Label>
-                <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Alex Rivera" className="mt-1.5 bg-background" />
+                <Label htmlFor="name" className="text-base">Your name</Label>
+                <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Alex Rivera" className="mt-2 h-12 bg-background text-base" />
               </div>
               <div>
-                <Label>What brings you here?</Label>
-                <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
+                <Label className="text-base">What brings you here?</Label>
+                <div className="mt-2 grid gap-3 sm:grid-cols-3">
                   {GOAL_OPTIONS.map((g) => (
                     <button
                       key={g.value}
                       type="button"
                       onClick={() => setGoal(g.value)}
-                      className={`rounded-xl border p-3 text-left text-sm transition-colors ${
+                      className={`rounded-xl border p-4 text-left transition-colors ${
                         goal === g.value ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border hover:border-primary/40 hover:bg-muted/50'
                       }`}
                     >
                       <span className="block font-semibold">{g.label}</span>
-                      <span className="text-xs text-muted-foreground">{g.hint}</span>
+                      <span className="text-sm text-muted-foreground">{g.hint}</span>
                     </button>
                   ))}
                 </div>
@@ -300,20 +303,20 @@ export default function Onboarding() {
           )}
 
           {current.id === 'location' && (
-            <div className="space-y-5">
+            <div className="space-y-6">
               <div>
-                <Label htmlFor="country">Country</Label>
-                <CountryCombobox id="country" value={country} onChange={setCountry} placeholder="Search countries…" className="mt-1.5 bg-background" />
+                <Label htmlFor="country" className="text-base">Country</Label>
+                <CountryCombobox id="country" value={country} onChange={setCountry} placeholder="Search countries…" className="mt-2 h-12 bg-background text-base" />
               </div>
               <div>
-                <Label>Work preference</Label>
-                <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
+                <Label className="text-base">Work preference</Label>
+                <div className="mt-2 grid gap-3 sm:grid-cols-3">
                   {WORK_OPTIONS.map((w) => (
                     <button
                       key={w.value}
                       type="button"
                       onClick={() => setWorkType(w.value)}
-                      className={`rounded-xl border p-3 text-sm font-medium transition-colors ${
+                      className={`rounded-xl border p-4 text-base font-medium transition-colors ${
                         workType === w.value ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border hover:border-primary/40 hover:bg-muted/50'
                       }`}
                     >
@@ -326,23 +329,23 @@ export default function Onboarding() {
           )}
 
           {current.id === 'education' && (
-            <div className="space-y-5">
+            <div className="space-y-6">
               <div>
-                <Label htmlFor="school">School / University</Label>
-                <Input id="school" value={school} onChange={(e) => setSchool(e.target.value)} placeholder="e.g. University of Nairobi" className="mt-1.5 bg-background" />
+                <Label htmlFor="school" className="text-base">School / University</Label>
+                <Input id="school" value={school} onChange={(e) => setSchool(e.target.value)} placeholder="e.g. University of Nairobi" className="mt-2 h-12 bg-background text-base" />
               </div>
               <div>
-                <Label htmlFor="major">Major / field of study</Label>
-                <Input id="major" value={major} onChange={(e) => setMajor(e.target.value)} placeholder="e.g. Computer Science" className="mt-1.5 bg-background" />
+                <Label htmlFor="major" className="text-base">Major / field of study</Label>
+                <Input id="major" value={major} onChange={(e) => setMajor(e.target.value)} placeholder="e.g. Computer Science" className="mt-2 h-12 bg-background text-base" />
               </div>
               <div>
-                <Label htmlFor="gpa">GPA / grades</Label>
+                <Label htmlFor="gpa" className="text-base">GPA / grades</Label>
                 <Input
                   id="gpa"
                   value={gpa}
                   onChange={(e) => setGpa(e.target.value)}
                   placeholder="e.g. 3.8/4.0 or Second Class Upper"
-                  className="mt-1.5 bg-background"
+                  className="mt-2 h-12 bg-background text-base"
                 />
               </div>
             </div>
@@ -350,58 +353,58 @@ export default function Onboarding() {
 
           {current.id === 'skills' && (
             <div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2.5">
                 {skills.map((s) => (
-                  <span key={s} className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
+                  <span key={s} className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-4 py-2 text-base font-medium text-primary">
                     {s}
                     <button type="button" onClick={() => removeSkill(s)} aria-label={`Remove ${s}`} className="rounded-full p-0.5 hover:bg-primary/15">
-                      <X className="h-3.5 w-3.5" />
+                      <X className="h-4 w-4" />
                     </button>
                   </span>
                 ))}
-                {skills.length === 0 && <p className="text-sm text-muted-foreground">No skills yet — add a few below.</p>}
+                {skills.length === 0 && <p className="text-base text-muted-foreground">No skills yet — add a few below.</p>}
               </div>
               <form
                 onSubmit={(e) => {
                   e.preventDefault()
                   addSkill()
                 }}
-                className="mt-4 flex gap-2"
+                className="mt-5 flex gap-2"
               >
                 <Input
                   value={skillInput}
                   onChange={(e) => setSkillInput(e.target.value)}
                   placeholder="e.g. Python, Design, Public Speaking"
-                  className="bg-background"
+                  className="h-12 bg-background text-base"
                 />
-                <Button type="submit" variant="outline" size="icon" aria-label="Add skill">
-                  <Plus className="h-4 w-4" />
+                <Button type="submit" variant="outline" size="icon" className="h-12 w-12" aria-label="Add skill">
+                  <Plus className="h-5 w-5" />
                 </Button>
               </form>
             </div>
           )}
 
           {current.id === 'resume' && (
-            <div className="space-y-4">
-              <label className="flex cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-input bg-muted/30 p-8 text-center transition-colors hover:border-primary/50 hover:bg-primary/5">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                  <Upload className="h-6 w-6" />
+            <div className="space-y-5">
+              <label className="flex cursor-pointer flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-input bg-muted/30 p-10 text-center transition-colors hover:border-primary/50 hover:bg-primary/5">
+                <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Upload className="h-7 w-7" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium">Upload your résumé</p>
-                  <p className="text-xs text-muted-foreground">PDF or Word</p>
+                  <p className="text-base font-medium">Upload your résumé</p>
+                  <p className="text-sm text-muted-foreground">PDF or Word</p>
                 </div>
                 <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => attachCv(e.target.files?.[0])} />
               </label>
 
               {cvFilename && cvUrl && (
-                <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 p-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/15 text-success">
-                    <FileText className="h-5 w-5" />
+                <div className="flex items-center gap-4 rounded-xl border border-success/30 bg-success/5 p-5">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-success/15 text-success">
+                    <FileText className="h-6 w-6" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{cvFilename}</p>
-                    <p className="text-xs text-muted-foreground">Attached</p>
+                    <p className="truncate text-base font-medium">{cvFilename}</p>
+                    <p className="text-sm text-muted-foreground">Attached</p>
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => { setCvUrl(undefined); setCvFilename(null) }}>Remove</Button>
                 </div>
@@ -425,16 +428,16 @@ export default function Onboarding() {
         </div>
 
         {/* footer */}
-        <div className="mt-6 flex items-center justify-between">
-          <Button variant="ghost" onClick={goBack} disabled={step === 1 || saving}>
+        <div className="mt-8 flex items-center justify-between">
+          <Button variant="ghost" size="lg" onClick={goBack} disabled={step === 1 || saving}>
             <ArrowLeft className="h-4 w-4" /> Back
           </Button>
           {!isLast ? (
-            <Button onClick={handleNext}>
+            <Button size="lg" onClick={handleNext}>
               Continue <ArrowRight className="h-4 w-4" />
             </Button>
           ) : (
-            <Button onClick={finish} disabled={saving}>
+            <Button size="lg" onClick={finish} disabled={saving}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Award className="h-4 w-4" />} Finish & go to profile
             </Button>
           )}
