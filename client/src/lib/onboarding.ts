@@ -163,10 +163,10 @@ export const GOAL_OPTIONS: { value: string; label: string; hint: string }[] = [
 
 // Role choices shown on the onboarding "What brings you here?" step. Each maps
 // to a user_type and a default onboarding_goal.
-export const ROLE_CHOICES: { value: UserType; label: string; hint: string; goal: string }[] = [
-  { value: 'student', label: 'Student', hint: 'Find roles and build evidence', goal: 'find_opportunities' },
-  { value: 'school', label: 'University', hint: 'Support students and track outcomes', goal: 'manage_university' },
-  { value: 'company', label: 'Company', hint: 'Post roles and review candidates', goal: 'hire_talent' },
+export const ROLE_CHOICES: { value: UserType; label: string; hint: string; goal: string; icon: string }[] = [
+  { value: 'student', label: 'Student', hint: 'Find roles and build evidence', goal: 'find_opportunities', icon: '🎓' },
+  { value: 'school', label: 'University', hint: 'Support students and track outcomes', goal: 'manage_university', icon: '🏛️' },
+  { value: 'company', label: 'Company', hint: 'Post roles and review candidates', goal: 'hire_talent', icon: '🏢' },
 ]
 
 export const ROLE_OPTIONS: { value: UserType; label: string; hint: string }[] = [

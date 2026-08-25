@@ -29,6 +29,7 @@ import { useCurrentUser, useSession } from '@/lib/store'
 import { profilesApi, onboardingApi, authApi } from '@/lib/api'
 import { fileToDataUrl } from '@/lib/utils'
 import { requiresProfileCompletion, ROLE_CHOICES } from '@/lib/onboarding'
+import { playStep, playSuccess } from '@/lib/sound'
 import type { UserType } from '@/types'
 
 const WORK_OPTIONS = [
@@ -112,6 +113,7 @@ export default function Onboarding() {
   }
 
   function goNext() {
+    playStep()
     setStep((s) => Math.min(steps.length, s + 1))
   }
   function goBack() {
@@ -212,6 +214,7 @@ export default function Onboarding() {
       const refreshed = await authApi.me()
       if (refreshed) useSession.getState().setProfile(refreshed)
       setCelebrating(true)
+      playSuccess()
       toast({ title: "You're all set!", description: 'Taking you to your profile…', tone: 'success' })
       setTimeout(() => navigate('/app/profile', { replace: true }), 1500)
     } catch (e) {
@@ -299,6 +302,7 @@ export default function Onboarding() {
                         userType === r.value ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border hover:border-primary/40 hover:bg-muted/50'
                       }`}
                     >
+                      <span className="mb-1 block text-2xl leading-none">{r.icon}</span>
                       <span className="block font-semibold">{r.label}</span>
                       <span className="text-xs text-muted-foreground">{r.hint}</span>
                     </button>
