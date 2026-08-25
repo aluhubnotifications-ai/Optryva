@@ -14,7 +14,9 @@ const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI // e.g. https://api.
 // Cookies are only marked `secure` in production (or when cross-site), so the
 // OAuth state cookie actually gets stored on http://localhost during dev.
 // (Mirrors the refresh-cookie handling lower down.)
-const secureCookie = process.env.COOKIE_SAMESITE === 'none' || process.env.NODE_ENV === 'production'
+const crossSite = process.env.COOKIE_SAMESITE === 'none'
+const secureCookie = crossSite || process.env.NODE_ENV === 'production'
+const stateSameSite = crossSite ? 'none' : 'lax'
 
 // Generate Google OAuth authorization URL with PKCE
 function generateAuthUrl(state: string, codeChallenge: string, codeChallengeMethod = 'S256'): string {
@@ -149,8 +151,8 @@ oauth.get('/google', async (req, res) => {
   res.cookie('oauth_state', state, {
     httpOnly: true,
     secure: secureCookie,
-    sameSite: 'lax',
-    maxAge: 600, // 10 minutes
+    sameSite: stateSameSite,
+    maxAge: 10 * 60 * 1000, // 10 minutes (shim converts ms -> seconds)
     path: '/',
   })
   
@@ -251,8 +253,8 @@ oauth.get('/google/callback', async (req, res) => {
         }), {
           httpOnly: true,
           secure: secureCookie,
-          sameSite: 'lax',
-          maxAge: 600,
+          sameSite: stateSameSite,
+          maxAge: 10 * 60 * 1000, // 10 minutes (shim converts ms -> seconds)
           path: '/',
         })
         return res.redirect('/link-account?provider=google')
