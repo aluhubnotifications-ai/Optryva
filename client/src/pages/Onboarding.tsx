@@ -206,7 +206,7 @@ export default function Onboarding() {
           <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${progress}%` }} />
         </div>
 
-        {/* step pills */}
+        {/* step indicators (compact — the current step name shows in the card) */}
         <div className="mt-5 flex items-center gap-2">
           {steps.map((s, i) => {
             const n = i + 1
@@ -216,7 +216,7 @@ export default function Onboarding() {
             return (
               <div key={s.id} className="flex flex-1 items-center gap-2">
                 <div
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-colors ${
                     done
                       ? 'bg-primary text-primary-foreground'
                       : active
@@ -224,9 +224,8 @@ export default function Onboarding() {
                         : 'bg-muted text-muted-foreground'
                   }`}
                 >
-                  {done ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+                  {done ? <Check className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}
                 </div>
-                <span className={`hidden text-xs font-medium sm:block ${active ? 'text-foreground' : 'text-muted-foreground'}`}>{s.label}</span>
                 {n < steps.length && <div className={`h-0.5 flex-1 rounded ${done ? 'bg-primary' : 'bg-muted'}`} />}
               </div>
             )
