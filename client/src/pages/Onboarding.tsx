@@ -10,7 +10,6 @@ import {
   Check,
   FileText,
   GraduationCap,
-  Landmark,
   Loader2,
   MapPin,
   Plus,
@@ -29,7 +28,7 @@ import { useToast } from '@/components/ui/toast'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { profilesApi, onboardingApi, authApi } from '@/lib/api'
 import { fileToDataUrl } from '@/lib/utils'
-import { requiresProfileCompletion, ROLE_OPTIONS, GOAL_OPTIONS } from '@/lib/onboarding'
+import { requiresProfileCompletion, GOAL_OPTIONS } from '@/lib/onboarding'
 import type { UserType } from '@/types'
 
 const WORK_OPTIONS = [
@@ -40,16 +39,9 @@ const WORK_OPTIONS = [
 const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Agriculture', 'Education', 'E-commerce', 'Consulting', 'Nonprofit']
 const COMPANY_SIZES = ['1-10', '11-50', '51-200', '201-1000', '1000+']
 
-const ROLE_ICONS: Record<UserType, typeof GraduationCap> = {
-  student: GraduationCap,
-  company: Briefcase,
-  school: Landmark,
-}
-
-type StepId = 'role' | 'about' | 'location' | 'education' | 'school' | 'company' | 'skills' | 'resume'
+type StepId = 'about' | 'location' | 'education' | 'school' | 'company' | 'skills' | 'resume'
 
 const STEP_META: Record<StepId, { label: string; icon: typeof User; blurb: string }> = {
-  role: { label: 'Who you are', icon: User, blurb: 'This shapes your experience.' },
   about: { label: 'About you', icon: User, blurb: 'Just the basics — refine anytime.' },
   location: { label: 'Location & work', icon: MapPin, blurb: 'So we can match you to the right places.' },
   education: { label: 'Education', icon: GraduationCap, blurb: 'So schools and employers can find you.' },
@@ -70,7 +62,7 @@ export default function Onboarding() {
   if (user && !requiresProfileCompletion(user)) return <Navigate to="/app/profile" replace />
 
   const [step, setStep] = useState(1)
-  const [userType, setUserType] = useState<UserType | ''>(user?.user_type ?? '')
+  const [userType] = useState<UserType | ''>(user?.user_type ?? '')
   const [name, setName] = useState(user?.full_name ?? '')
   const [goal, setGoal] = useState(user?.onboarding_goal ?? '')
   const [country, setCountry] = useState(user?.country ?? user?.location ?? '')
@@ -94,18 +86,19 @@ export default function Onboarding() {
 
   const hasResume = !!(cvUrl || cvText.trim())
 
-  // Steps adapt to the chosen role — students get education, schools get an
-  // institution step, companies get a company step; everyone else shares the
-  // generic flow otherwise.
-  const steps: { id: StepId; label: string }[] = [
-    { id: 'role', label: 'Who you are' },
-    { id: 'about', label: 'About you' },
-    { id: 'location', label: 'Location & work' },
-  ]
-  if (userType === 'student') steps.push({ id: 'education', label: 'Education' })
-  else if (userType === 'school') steps.push({ id: 'school', label: 'Your institution' })
-  else if (userType === 'company') steps.push({ id: 'company', label: 'Your company' })
-  steps.push({ id: 'skills', label: 'Skills' }, { id: 'resume', label: 'Résumé' })
+  // Each role gets a tailored flow — students build a candidate profile
+  // (education, skills, résumé); employers and institutions skip the
+  // résumé/applicant-skills steps entirely. The role is already known from
+  // signup, so there is no redundant "who you are" step.
+  const steps: { id: StepId; label: string }[] = [{ id: 'about', label: 'About you' }]
+  if (userType === 'student') {
+    steps.push({ id: 'education', label: 'Education' }, { id: 'skills', label: 'Skills' }, { id: 'resume', label: 'Résumé' })
+  } else if (userType === 'school') {
+    steps.push({ id: 'school', label: 'Your institution' })
+  } else if (userType === 'company') {
+    steps.push({ id: 'company', label: 'Your company' })
+  }
+  steps.push({ id: 'location', label: 'Location & work' })
 
   const current = steps[Math.min(step, steps.length) - 1]
   const isLast = step === steps.length
@@ -136,11 +129,7 @@ export default function Onboarding() {
 
   async function handleNext() {
     try {
-      if (current.id === 'role') {
-        if (!userType) return toast({ title: 'Pick who you are', tone: 'error' })
-        await patchProfile({ user_type: userType })
-        goNext()
-      } else if (current.id === 'about') {
+      if (current.id === 'about') {
         if (!name.trim()) return toast({ title: 'Add your name', tone: 'error' })
         if (!goal) return toast({ title: 'Choose a goal', tone: 'error' })
         await patchProfile({ full_name: name.trim(), onboarding_goal: goal })
@@ -281,7 +270,7 @@ export default function Onboarding() {
         <div className="mt-6 flex-1 rounded-2xl border border-border bg-card p-6 shadow-card sm:p-8">
           <div className="mb-6 flex flex-col items-center text-center">
             <OnboardingMascot key={step} celebrating={celebrating} className="mb-3 h-16 w-16" />
-            <h1 className="text-xl font-bold tracking-tight">{current.id === 'role' ? 'Welcome to Optryva' : meta.label}</h1>
+            <h1 className="text-xl font-bold tracking-tight">{step === 1 ? 'Welcome to Optryva' : meta.label}</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">{meta.blurb}</p>
           </div>
 
@@ -293,36 +282,6 @@ export default function Onboarding() {
               exit={{ opacity: 0, x: -24 }}
               transition={{ duration: 0.22, ease: 'easeOut' }}
             >
-          {current.id === 'role' && (
-            <div className="grid gap-3">
-              {ROLE_OPTIONS.map((r) => {
-                const Icon = ROLE_ICONS[r.value]
-                return (
-                  <button
-                    key={r.value}
-                    type="button"
-                    onClick={() => setUserType(r.value)}
-                    className={`group flex items-center gap-4 rounded-2xl border p-4 text-left transition-all ${
-                      userType === r.value
-                        ? 'border-primary bg-primary/5 ring-2 ring-primary/30'
-                        : 'border-border hover:border-primary/40 hover:bg-muted/50'
-                    }`}
-                  >
-                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors ${
-                      userType === r.value ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground group-hover:text-foreground'
-                    }`}>
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <span className="block text-sm font-semibold">{r.label}</span>
-                      <span className="text-xs text-muted-foreground">{r.hint}</span>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-
           {current.id === 'about' && (
             <div className="space-y-5">
               <div>

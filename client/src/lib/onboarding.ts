@@ -66,7 +66,7 @@ export function profileCompletion(p: Profile | null | undefined, resumeCount = 0
     { key: 'goal', label: 'Your first goal', done: !!p.onboarding_goal?.trim(), required: true, section: 'intro' },
     { key: 'country', label: 'Country', done: !!(p.country?.trim() || p.location?.trim()), required: true, section: 'about' },
     { key: 'work', label: 'Work preferences', done: !!p.work_type && p.work_type !== 'any', required: true, section: 'about' },
-    { key: 'skills', label: 'Your skills', done: (p.skills?.length ?? 0) > 0, required: true, section: 'about' },
+    { key: 'skills', label: 'Your skills', done: p.user_type === 'student' ? (p.skills?.length ?? 0) > 0 : true, required: true, section: 'about' },
     {
       key: 'education',
       label: 'School, major & GPA',
@@ -88,7 +88,7 @@ export function profileCompletion(p: Profile | null | undefined, resumeCount = 0
       required: true,
       section: 'about',
     },
-    { key: 'resume', label: 'Résumé or basic profile', done: hasCv, required: true, section: 'resumes' },
+    { key: 'resume', label: 'Résumé or basic profile', done: p.user_type === 'student' ? hasCv : true, required: true, section: 'resumes' },
     { key: 'evidence', label: 'Evidence of your work', done: hasEvidence, required: true, section: 'evidence' },
   ]
 
