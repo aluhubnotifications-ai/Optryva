@@ -45,7 +45,7 @@ function iconForTags(tags: string[]) {
 }
 
 function StatusPill({ status }: { status: EvidenceStatus }) {
-  const m = STATUS_META[status]
+  const m = STATUS_META[status] ?? STATUS_META.self_reported
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
       m.tone === 'success' ? 'bg-success/12 text-success' : m.tone === 'accent' ? 'bg-accent/12 text-accent' : 'bg-muted text-muted-foreground'

@@ -30,6 +30,16 @@ type EvidenceRow = {
   created_at: string
 }
 
+// Older rows may still carry verification-era statuses that the current UI no
+// longer produces. Map any legacy / unexpected value to a valid status so the
+// client's status maps never miss a key (which would crash the renderer).
+const LEGACY_STATUSES = new Set(['supervisor_verified', 'employer_verified', 'verified'])
+function normalizeStatus(s: unknown): EvidenceRow['status'] {
+  if (s === 'self_reported' || s === 'ai_analyzed' || s === 'student_approved') return s
+  if (typeof s === 'string' && LEGACY_STATUSES.has(s)) return 'student_approved'
+  return 'self_reported'
+}
+
 function bytesToBase64(bytes: Uint8Array): string {
   let bin = ''
   const chunk = 0x8000
@@ -99,14 +109,14 @@ evidence.get('/', async (req, res) => {
   const rows = must(
     await sb.from('evidence_items').select('*').eq('student_id', req.user!.id).order('created_at', { ascending: false }),
   ) as EvidenceRow[]
-  res.json(rows)
+  res.json(rows.map((r) => ({ ...r, status: normalizeStatus(r.status) })))
 })
 
 evidence.get('/student/:studentId', async (req, res) => {
   const rows = must(
     await sb.from('evidence_items').select('*').eq('student_id', req.params.studentId).order('created_at', { ascending: false }),
   ) as EvidenceRow[]
-  res.json(rows)
+  res.json(rows.map((r) => ({ ...r, status: normalizeStatus(r.status) })))
 })
 
 // Candidate-level AI summary for employers. When a `jobDescription` is supplied

@@ -35,7 +35,6 @@ import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { AvatarEditor } from '@/components/AvatarEditor'
 import { useToast } from '@/components/ui/toast'
-import { Spinner } from '@/components/ui/Spinner'
 import { formatDate, cn, fileToDataUrl } from '@/lib/utils'
 import { ResumeWorkspace } from '@/components/ResumeWorkspace'
 import { EvidenceGallery } from '@/components/EvidenceGallery'
@@ -49,16 +48,6 @@ const COUNTRIES = GEO_COUNTRIES.filter((c) => c.code !== 'all' && c.code !== 're
 export default function Profile() {
   const user = useCurrentUser()!
   const { toast } = useToast()
-  // The session profile may be null for a brief moment on first load (before the
-  // server round-trip resolves). Render a loader instead of throwing, which would
-  // otherwise flash the route error before the profile appears.
-  if (!user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Spinner label="Loading your profile…" />
-      </div>
-    )
-  }
   const cvRef = useRef<HTMLInputElement>(null)
   const [, force] = useState(0)
   const [saving, setSaving] = useState(false)
