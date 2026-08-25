@@ -27,6 +27,7 @@ import { CountryCombobox } from '@/components/ui/CountryCombobox'
 import { COUNTRIES } from '@/lib/geo'
 import { useToast } from '@/components/ui/toast'
 import { useCurrentUser, useSession } from '@/lib/store'
+import { Spinner } from '@/components/ui/Spinner'
 import { profilesApi, onboardingApi, authApi } from '@/lib/api'
 import { fileToDataUrlWithProgress } from '@/lib/utils'
 import { requiresProfileCompletion, ROLE_CHOICES } from '@/lib/onboarding'
@@ -930,20 +931,35 @@ export default function Onboarding() {
         </div>
       )}
       {celebrating && (
-        <div className="pointer-events-none fixed inset-0 z-[60] flex flex-col items-center justify-center gap-4">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="pointer-events-none fixed inset-0 z-[60] flex flex-col items-center justify-center gap-5 bg-background/85 backdrop-blur-sm"
+        >
           <motion.div
-            initial={{ scale: 0.6, opacity: 0, y: 12 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            transition={{ type: 'spring', stiffness: 260, damping: 18 }}
-            className="rounded-2xl bg-card/90 px-6 py-4 text-center shadow-card backdrop-blur"
+            initial={{ scale: 0.4, rotate: -10, opacity: 0 }}
+            animate={{ scale: 1, rotate: 0, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 220, damping: 13 }}
+            className="flex flex-col items-center gap-2"
           >
-            <div className="text-3xl">🎉</div>
-            <div className="mt-1 text-lg font-bold">You're all set!</div>
-            <div className="text-sm text-muted-foreground">Taking you to your profile…</div>
+            <Logo className="h-20 w-20 drop-shadow-lg" />
+            <OnboardingMascot celebrating className="h-20 w-20" />
           </motion.div>
-          <Confetti count={60} />
-          <Confetti count={60} />
-        </div>
+          <motion.h1
+            initial={{ y: 14, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.12, type: 'spring', stiffness: 240, damping: 18 }}
+            className="text-center text-3xl font-extrabold tracking-tight"
+          >
+            Welcome to Optryva! <span className="inline-block animate-bounce">🎉</span>
+          </motion.h1>
+          <p className="text-center text-sm text-muted-foreground">Your profile is ready — taking you there…</p>
+          <div className="mt-1">
+            <Spinner label="Loading your profile…" />
+          </div>
+          <Confetti count={70} />
+          <Confetti count={70} />
+        </motion.div>
       )}
     </div>
   )

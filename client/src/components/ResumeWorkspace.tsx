@@ -21,10 +21,10 @@ const blank = (base?: ResumeProfile): Omit<ResumeProfile, 'id' | 'student_id' | 
   cv_filename: base?.cv_filename, cv_url: base?.cv_url, active: true,
 })
 
-export function ResumeWorkspace() {
+export function ResumeWorkspace({ initialResumes }: { initialResumes?: ResumeProfile[] }) {
   const { toast } = useToast()
-  const [resumes, setResumes] = useState<ResumeProfile[]>([])
-  const [loading, setLoading] = useState(true)
+  const [resumes, setResumes] = useState<ResumeProfile[]>(initialResumes ?? [])
+  const [loading, setLoading] = useState(!initialResumes)
   const [saving, setSaving] = useState<string | null>(null)
   const [pendingResumeId, setPendingResumeId] = useState<string | null>(null)
   const [skillInputs, setSkillInputs] = useState<Record<string, string>>({})
@@ -33,9 +33,30 @@ export function ResumeWorkspace() {
   const [previewDocumentLoading, setPreviewDocumentLoading] = useState(false)
   const [previewExpanded, setPreviewExpanded] = useState(false)
 
+  // Render instantly from parent-provided data when available; in all cases,
+  // refresh in the background so the list stays fresh (e.g. after creating one).
   useEffect(() => {
-    resumesApi.list().then(setResumes).catch(() => toast({ title: 'Could not load résumé profiles', tone: 'error' })).finally(() => setLoading(false))
-  }, [toast])
+    let active = true
+    resumesApi
+      .list()
+      .then((r) => {
+        if (active) setResumes(r)
+      })
+      .catch(() => {
+        if (active && !initialResumes) toast({ title: 'Could not load résumé profiles', tone: 'error' })
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [toast, initialResumes])
+
+  // Seed from parent data immediately (before the background fetch resolves).
+  useEffect(() => {
+    if (initialResumes) setResumes(initialResumes)
+  }, [initialResumes])
 
   async function create() {
     if (pendingResumeId) return

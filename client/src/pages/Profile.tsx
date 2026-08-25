@@ -28,13 +28,14 @@ import { useCurrentUser, useSession } from '@/lib/store'
 import { useMatchRun } from '@/lib/matchRun'
 import { fetchProtectedDocument, profilesApi, resumesApi, evidenceApi, authApi } from '@/lib/api'
 import { profileCompletion, GOAL_OPTIONS, ROLE_OPTIONS, setEvidenceDeclined, isEvidenceDeclined, type OnboardingStep } from '@/lib/onboarding'
-import type { Profile as ProfileT, UserType, WorkType, ListingType } from '@/types'
+import type { Profile as ProfileT, UserType, WorkType, ListingType, ResumeProfile } from '@/types'
 import { Card, CardBody, Badge, Avatar, Input, Label, Textarea, Select } from '@/components/ui/primitives'
 import { CountryCombobox } from '@/components/ui/CountryCombobox'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { AvatarEditor } from '@/components/AvatarEditor'
 import { useToast } from '@/components/ui/toast'
+import { Spinner } from '@/components/ui/Spinner'
 import { formatDate, cn, fileToDataUrl } from '@/lib/utils'
 import { ResumeWorkspace } from '@/components/ResumeWorkspace'
 import { EvidenceGallery } from '@/components/EvidenceGallery'
@@ -48,6 +49,16 @@ const COUNTRIES = GEO_COUNTRIES.filter((c) => c.code !== 'all' && c.code !== 're
 export default function Profile() {
   const user = useCurrentUser()!
   const { toast } = useToast()
+  // The session profile may be null for a brief moment on first load (before the
+  // server round-trip resolves). Render a loader instead of throwing, which would
+  // otherwise flash the route error before the profile appears.
+  if (!user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner label="Loading your profile…" />
+      </div>
+    )
+  }
   const cvRef = useRef<HTMLInputElement>(null)
   const [, force] = useState(0)
   const [saving, setSaving] = useState(false)
@@ -58,14 +69,22 @@ export default function Profile() {
   const TABS = [
     { id: 'profile', label: 'Profile', Icon: User },
     { id: 'resumes', label: 'Résumés', Icon: FileText },
-    { id: 'gallery', label: 'Gallery', Icon: Images },
+    { id: 'gallery', label: 'Portfolio', Icon: Images },
   ] as const
 
-  // How many résumé directions the student has — feeds the "Résumé" onboarding step.
+  // Résumé directions the student has — feeds the "Résumé" onboarding step and
+  // is passed to <ResumeWorkspace /> so the tab renders instantly (no refetch).
   const [resumeCount, setResumeCount] = useState(0)
+  const [resumeList, setResumeList] = useState<ResumeProfile[]>([])
   useEffect(() => {
     if (user.user_type === 'student') {
-      resumesApi.list().then((r) => setResumeCount(r.length)).catch(() => {})
+      resumesApi
+        .list()
+        .then((r) => {
+          setResumeList(r)
+          setResumeCount(r.length)
+        })
+        .catch(() => {})
     }
   }, [user.id, user.user_type])
 
@@ -300,6 +319,25 @@ export default function Profile() {
               style={{ width: `${showGate ? completion.requiredPercent : completion.overallPercent}%` }}
             />
           </div>
+        </div>
+      )}
+
+      {isStudent && evidenceCount === 0 && (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-500/40 dark:bg-amber-500/10">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="mt-0.5 rounded-full bg-amber-100 p-2 text-amber-600 dark:bg-amber-500/20 dark:text-amber-300">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-semibold text-amber-900 dark:text-amber-100">Build your portfolio</p>
+              <p className="mt-0.5 text-sm text-amber-800 dark:text-amber-200/90">
+                Add evidence of your work — projects, certificates, research, links — so employers can see the proof behind your skills. It only takes a minute.
+              </p>
+            </div>
+          </div>
+          <Button onClick={() => setTab('gallery')} className="shrink-0 gap-1.5">
+            <Plus className="h-4 w-4" /> Add to portfolio
+          </Button>
         </div>
       )}
 
@@ -591,7 +629,7 @@ export default function Profile() {
       </div>
       )}
 
-      {tab === 'resumes' && <ResumeWorkspace />}
+      {tab === 'resumes' && <ResumeWorkspace initialResumes={resumeList} />}
       {tab === 'gallery' && (
         <div>
           {evidenceCount === 0 && !isEvidenceDeclined(user.id) && (

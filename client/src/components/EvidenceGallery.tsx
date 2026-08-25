@@ -113,8 +113,8 @@ export function EvidenceGallery({ studentId, mode }: { studentId: string; mode: 
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold tracking-tight">Evidence Library</h2>
-          <p className="text-sm text-muted-foreground">Real work you've done, with the skills you demonstrated.</p>
+          <h2 className="text-lg font-bold tracking-tight">Portfolio</h2>
+          <p className="text-sm text-muted-foreground">Your portfolio of real work — with the skills you demonstrated. Add evidence so employers can see the proof.</p>
         </div>
         {owner && (
           <Button onClick={() => setShowAdd(true)} className="gap-1.5"><Plus className="h-4 w-4" /> Add evidence</Button>
@@ -194,14 +194,11 @@ export function EvidenceGallery({ studentId, mode }: { studentId: string; mode: 
           <div className="grid gap-4 md:grid-cols-3">
             <Step Icon={Brain} title="AI finds possible skills" />
             <Step Icon={User} title="You confirm your contribution" />
-            <Step Icon={Eye} title="Employers see only what you share" last />
+            <Step Icon={Eye} title="Employers see it in your gallery" last />
           </div>
           <p className="text-sm text-muted-foreground">
-            We use AI to identify skills in your evidence. You review and confirm your role. You decide what appears on your résumés and what employers can see.
+            We use AI to identify skills in your evidence. You review and confirm what you actually did. Your gallery is shared with employers when you apply, so they can see the proof behind your skills.
           </p>
-          <a href="#" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
-            Learn more about AI and privacy <ArrowRight className="h-3.5 w-3.5" />
-          </a>
         </CardBody>
       </Card>
 

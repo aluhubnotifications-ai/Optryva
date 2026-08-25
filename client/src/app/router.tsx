@@ -5,6 +5,7 @@ import { useSession, useCurrentUser } from '@/lib/store'
 import { authApi } from '@/lib/api'
 import { requiresProfileCompletion, isNewAccount } from '@/lib/onboarding'
 import { useLocation } from 'react-router-dom'
+import { Spinner } from '@/components/ui/Spinner'
 
 import Landing from '@/pages/Landing'
 import Login from '@/pages/auth/Login'
@@ -49,6 +50,16 @@ function RequireAuth() {
     authApi.me().then((p) => { if (p) useSession.getState().setProfile(p) })
   }, [userId])
   if (!userId) return <Navigate to="/login" replace />
+  // Wait for the session profile to load before rendering — otherwise `Profile`
+  // (and this guard's own completion check) can briefly see a null user and throw,
+  // which surfaces as a flash of the route error before the real profile appears.
+  if (!profile) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner label="Loading your profile…" />
+      </div>
+    )
+  }
   // Only accounts created in this session are held in the onboarding wizard. The
   // "new" marker comes from the `?new=1` flag the server/register sets (and the
   // OAuth callback sets for brand-new Google accounts). Returning users — even
