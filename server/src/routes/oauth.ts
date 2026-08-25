@@ -3,6 +3,7 @@ import { sb, must } from '@/db'
 import { uid, now } from '@/lib/util'
 import { signAccess, signRefresh, type AuthUser } from '@/lib/auth'
 import { rowToProfile } from '@/lib/serialize'
+import { authCookieOptions } from '@/lib/cookies'
 
 export const oauth = Router()
 
@@ -10,13 +11,6 @@ export const oauth = Router()
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET
 const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI // e.g. https://api.optryva.workers.dev/api/oauth/google/callback
-
-// Cookies are only marked `secure` in production (or when cross-site), so the
-// OAuth state cookie actually gets stored on http://localhost during dev.
-// (Mirrors the refresh-cookie handling lower down.)
-const crossSite = process.env.COOKIE_SAMESITE === 'none'
-const secureCookie = crossSite || process.env.NODE_ENV === 'production'
-const stateSameSite = crossSite ? 'none' : 'lax'
 
 // Generate Google OAuth authorization URL with PKCE
 function generateAuthUrl(state: string, codeChallenge: string, codeChallengeMethod = 'S256'): string {
@@ -159,11 +153,8 @@ oauth.get('/google', async (req, res) => {
   
   // Store state in a short-lived cookie (validated in callback)
   res.cookie('oauth_state', state, {
-    httpOnly: true,
-    secure: secureCookie,
-    sameSite: stateSameSite,
+    ...authCookieOptions(req),
     maxAge: 10 * 60 * 1000, // 10 minutes (shim converts ms -> seconds)
-    path: '/',
   })
   
   const authUrl = generateAuthUrl(state, codeChallenge)
@@ -176,13 +167,17 @@ oauth.get('/google/callback', async (req, res) => {
     return res.status(500).json({ error: 'oauth_not_configured' })
   }
   
+  // Where to send the browser. All redirects go to the client, never the API
+  // root (which would 404 / look like "nothing happened").
+  const clientOrigin = process.env.CLIENT_ORIGIN ?? 'http://localhost:5173'
+  
   const { code, state, error } = req.query
   
   if (error) {
-    return res.redirect(`/?oauth_error=${encodeURIComponent(error)}`)
+    return res.redirect(`${clientOrigin}/?oauth_error=${encodeURIComponent(error)}`)
   }
   if (!code || !state) {
-    return res.redirect('/?oauth_error=missing_params')
+    return res.redirect(`${clientOrigin}/?oauth_error=missing_params`)
   }
   
   // Retrieve and validate state cookie
@@ -190,14 +185,14 @@ oauth.get('/google/callback', async (req, res) => {
   res.clearCookie('oauth_state', { path: '/' })
   
   if (!stateCookie || stateCookie !== state) {
-    return res.redirect('/?oauth_error=invalid_state')
+    return res.redirect(`${clientOrigin}/?oauth_error=invalid_state`)
   }
   
   let statePayload: { r: string; cv: string; cs: string }
   try {
     statePayload = JSON.parse(b64urlDecode(stateCookie))
   } catch {
-    return res.redirect('/?oauth_error=invalid_state_payload')
+    return res.redirect(`${clientOrigin}/?oauth_error=invalid_state_payload`)
   }
   
   const { r: returnTo, cv: codeVerifier, cs: codeChallengeMethod } = statePayload
@@ -210,7 +205,7 @@ oauth.get('/google/callback', async (req, res) => {
     const googleUser = await verifyIdToken(tokens.id_token)
     
     if (!googleUser.email_verified) {
-      return res.redirect('/?oauth_error=email_not_verified')
+      return res.redirect(`${clientOrigin}/?oauth_error=email_not_verified`)
     }
     
     // Check if user exists by provider identity
@@ -249,25 +244,21 @@ oauth.get('/google/callback', async (req, res) => {
         .maybeSingle()) as any
       
       if (existingEmail) {
-        // Email exists but not linked to Google — require linking flow
-        // For now, store pending link info and redirect to link page
-        // This implements the account-linking rule from spec
-        res.cookie('pending_google_link', JSON.stringify({
-          email: googleUser.email,
-          google_sub: googleUser.sub,
-          google_name: googleUser.name,
-          google_picture: googleUser.picture,
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
-          returnTo,
-        }), {
-          httpOnly: true,
-          secure: secureCookie,
-          sameSite: stateSameSite,
-          maxAge: 10 * 60 * 1000, // 10 minutes (shim converts ms -> seconds)
-          path: '/',
-        })
-        return res.redirect('/link-account?provider=google')
+        // Email/password account exists for this Google email. Because Google
+        // has verified ownership of the address (checked above), safely attach
+        // the Google identity to the existing account and log the user in
+        // (auto-link) instead of dropping them on a dead /link-account page.
+        must(await sb.from('app_users').update({
+          auth_provider: 'google',
+          provider_subject: googleUser.sub,
+          provider_metadata: JSON.stringify({
+            access_token: tokens.access_token,
+            refresh_token: tokens.refresh_token,
+            updated_at: now(),
+          }),
+          email_verified: 1,
+        }).eq('id', existingEmail.id))
+        profile = must(await sb.from('profiles').select('*').eq('id', existingEmail.id).maybeSingle())
       }
       
       // Brand new user — create account with Google, but DON'T assign role yet
@@ -290,11 +281,13 @@ oauth.get('/google/callback', async (req, res) => {
         created_at: ts,
       }))
       
-      // Create a minimal profile — user_type will be set after role selection
-      // Default to 'student' but mark onboarding incomplete
+      // Create a minimal profile. user_type is intentionally left empty ('')
+      // so the onboarding flow explicitly asks "company or student?" — we no
+      // longer silently default Google users to 'student'. '' satisfies the
+      // NOT NULL column and reads as "not chosen yet" in the gating logic.
       must(await sb.from('profiles').insert({
         id,
-        user_type: 'student', // temporary, will update after role selection
+        user_type: '',
         full_name: googleUser.name ?? googleUser.email.split('@')[0],
         email: googleUser.email,
         avatar_url: googleUser.picture,
@@ -327,22 +320,12 @@ oauth.get('/google/callback', async (req, res) => {
     const accessToken = signAccess(user)
     const refreshToken = signRefresh(user)
     
-    const CROSS_SITE = process.env.COOKIE_SAMESITE === 'none'
-    const cookieOpts = {
-      httpOnly: true,
-      sameSite: CROSS_SITE ? ('none' as const) : ('lax' as const),
-      secure: CROSS_SITE || process.env.NODE_ENV === 'production',
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      path: '/',
-    }
-    
-    res.cookie('optryva_rt', refreshToken, cookieOpts)
+    res.cookie('optryva_rt', refreshToken, authCookieOptions(req))
     
     // Redirect to the Profile hub. The client keeps a new student on their
     // Profile (with a progress card) until the important onboarding steps are
     // done, so we always land there after Google sign-in. `returnTo` is still
     // honoured for users who already finished onboarding.
-    const clientOrigin = process.env.CLIENT_ORIGIN ?? 'http://localhost:5173'
     const redirectUrl =
       progress && progress.completed_steps > 0 && progress.current_step <= progress.completed_steps
         ? `${clientOrigin}${returnTo}`
@@ -351,7 +334,7 @@ oauth.get('/google/callback', async (req, res) => {
   } catch (err) {
     console.error('Google OAuth callback error:', err)
     const detail = err instanceof Error ? err.message : String(err)
-    return res.redirect('/?oauth_error=callback_failed&detail=' + encodeURIComponent(detail))
+    return res.redirect(`${clientOrigin}/?oauth_error=callback_failed&detail=` + encodeURIComponent(detail))
   }
 })
 

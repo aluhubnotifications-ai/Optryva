@@ -78,8 +78,10 @@ export default function Profile() {
 
   const completion = profileCompletion(user, resumeCount)
   const isStudent = user.user_type === 'student'
-  const showGate = isStudent && !completion.requiredComplete
-  const showReminder = isStudent && completion.requiredComplete && completion.overallPercent < 100
+  // Guidance shows for EVERY incomplete account — student, company, school, or a
+  // Google sign-in that hasn't picked a role yet — not only students.
+  const showGate = !completion.requiredComplete
+  const showReminder = completion.requiredComplete && completion.overallPercent < 100
 
   async function changePicture(avatar_url: string) {
     const updated = await profilesApi.update(user.id, { avatar_url })
@@ -249,28 +251,28 @@ export default function Profile() {
           showGate ? 'border-primary/30 bg-primary/5' : 'border-border bg-muted/40',
         )}>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
+            <div className="min-w-0">
               {showGate ? (
                 <>
-                  <p className="font-semibold">Complete your profile to unlock better matches.</p>
-                  <p className="text-sm text-muted-foreground">
-                    {completion.requiredTotal - completion.requiredDone} important {completion.requiredTotal - completion.requiredDone === 1 ? 'step' : 'steps'} remaining.
+                  <p className="font-semibold">A few quick details and you&apos;re in:</p>
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    Still needed &mdash; {completion.required.filter((s) => !s.done).map((s) => s.label).join(', ')}.
                   </p>
                 </>
               ) : (
                 <>
                   <p className="font-semibold">Your profile is {completion.overallPercent}% complete.</p>
-                  <p className="text-sm text-muted-foreground">
-                    {completion.optionalRemaining > 0
-                      ? `Add ${completion.optionalRemaining > 1 ? 'a few more details' : 'one more detail'} to improve your matches.`
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    {completion.optional.filter((s) => !s.done).length > 0
+                      ? `Optional to add: ${completion.optional.filter((s) => !s.done).map((s) => s.label).join(', ')}.`
                       : 'Nicely done — your profile is complete.'}
                   </p>
                 </>
               )}
             </div>
-            {showGate && completion.nextStep && (
+            {completion.nextStep && (
               <Button onClick={() => focusStep(completion.nextStep!)} className="gap-1.5">
-                Continue setup <ArrowRight className="h-4 w-4" />
+                {showGate ? 'Finish setup' : 'Add more'} <ArrowRight className="h-4 w-4" />
               </Button>
             )}
           </div>
@@ -760,13 +762,17 @@ function OnboardingIntro({
   onSaved: () => void
 }) {
   const [name, setName] = useState(user.full_name ?? '')
-  const [userType, setUserType] = useState<UserType>(user.user_type ?? 'student')
+  const [userType, setUserType] = useState<UserType | ''>(user.user_type ?? '')
   const [goal, setGoal] = useState(user.onboarding_goal ?? '')
   const [saving, setSaving] = useState(false)
   const { toast } = useToast()
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    if (!userType) {
+      toast({ title: 'Pick who you are', description: 'Choose Student, Employer, or University to continue.', tone: 'error' })
+      return
+    }
     setSaving(true)
     try {
       const updated = await profilesApi.update(user.id, {

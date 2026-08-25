@@ -5,6 +5,7 @@ import { sb, must } from '@/db'
 import { uid, now } from '@/lib/util'
 import { requireAuth, signAccess, signRefresh, verifyRefresh, type AuthUser } from '@/lib/auth'
 import { rowToProfile } from '@/lib/serialize'
+import { authCookieOptions } from '@/lib/cookies'
 
 export const auth = Router()
 
@@ -13,18 +14,10 @@ export const auth = Router()
 const BCRYPT_COST = 10
 
 const REFRESH_COOKIE = 'optryva_rt'
-// Split deploy (client on Pages, API on a separate Worker) is cross-origin, so
-// the browser only sends the refresh cookie when it's SameSite=None; Secure.
-// Set COOKIE_SAMESITE=none on the API Worker for that. Same-origin deploys keep
-// the simpler Lax cookie. (Secure is implied by None and by production.)
-const CROSS_SITE = process.env.COOKIE_SAMESITE === 'none'
-const cookieOpts = {
-  httpOnly: true,
-  sameSite: CROSS_SITE ? ('none' as const) : ('lax' as const),
-  secure: CROSS_SITE || process.env.NODE_ENV === 'production',
-  maxAge: 30 * 24 * 60 * 60 * 1000,
-  path: '/',
-}
+// Cookie SameSite/Secure are derived per-request from the real client/API hosts
+// (see lib/cookies.ts) so they survive both local HTTP dev and cross-origin
+// production deploys. The old env-flag logic forced Secure cookies in local dev
+// and broke Google sign-in (bounced to /login).
 
 async function authUserFromRow(p: any): Promise<AuthUser> {
   return { id: p.id, email: p.email, user_type: p.user_type } as AuthUser
@@ -69,7 +62,7 @@ auth.post('/register', async (req, res) => {
 
   const profile = await fullProfile(id)
   const user = await authUserFromRow(profile)
-  res.cookie(REFRESH_COOKIE, signRefresh(user), cookieOpts)
+  res.cookie(REFRESH_COOKIE, signRefresh(user), authCookieOptions(req))
   res.json({ accessToken: signAccess(user), user: rowToProfile(profile, true) })
 })
 
@@ -84,7 +77,7 @@ auth.post('/login', async (req, res) => {
   if (!(await bcrypt.compare(password, u.password_hash))) return res.status(401).json({ error: 'bad_credentials' })
   const profile = await fullProfile(u.id)
   const user = await authUserFromRow(profile)
-  res.cookie(REFRESH_COOKIE, signRefresh(user), cookieOpts)
+  res.cookie(REFRESH_COOKIE, signRefresh(user), authCookieOptions(req))
   res.json({ accessToken: signAccess(user), user: rowToProfile(profile, true) })
 })
 
@@ -94,12 +87,12 @@ auth.post('/refresh', async (req, res) => {
   if (!payload) return res.status(401).json({ error: 'no_refresh' })
   const user = await authUserFrom(payload.id)
   if (!user) return res.status(401).json({ error: 'gone' })
-  res.cookie(REFRESH_COOKIE, signRefresh(user), cookieOpts)
+  res.cookie(REFRESH_COOKIE, signRefresh(user), authCookieOptions(req))
   res.json({ accessToken: signAccess(user) })
 })
 
 auth.post('/logout', (_req, res) => {
-  res.clearCookie(REFRESH_COOKIE, { path: '/' })
+  res.clearCookie(REFRESH_COOKIE, authCookieOptions(_req))
   res.json({ ok: true })
 })
 
@@ -121,7 +114,7 @@ auth.post('/change-password', requireAuth, async (req, res) => {
 auth.post('/delete-account', requireAuth, async (req, res) => {
   // Cascades via FK to profiles, jobs, applications, etc.
   must(await sb.from('app_users').delete().eq('id', req.user!.id))
-  res.clearCookie(REFRESH_COOKIE, { path: '/' })
+  res.clearCookie(REFRESH_COOKIE, authCookieOptions(req))
   res.json({ ok: true })
 })
 

@@ -9,11 +9,13 @@ import type { Profile, UserType } from '@/types'
 // are complete they can explore the app, and a progress card keeps nudging them
 // to finish the optional fields up to 100%.
 //
-// Required steps (gates the app):
+// Required steps (gates the app — kept intentionally simple):
 //   1. Name            2. Who you are (user type)   3. First goal (onboarding_goal)
-//   4. Career direction 5. Location                 6. Work preferences   7. Résumé
-// Optional steps (Skip for now available):
-//   bio, major, year, a link, skills
+//   4. Location        5. Work preferences
+// Optional steps (Skip for now available, and NOT required to leave Profile):
+//   bio, major, year, a link, skills, career direction, and résumé/evidence.
+// Résumé and evidence are deliberately optional — users add them in Profile if
+// they have them; they must never block onboarding.
 // ----------------------------------------------------------------------------
 
 export type StepSection = 'about' | 'resumes' | 'intro'
@@ -61,7 +63,6 @@ export function profileCompletion(p: Profile | null | undefined, resumeCount = 0
     { key: 'name', label: 'Your name', done: !!p.full_name?.trim(), required: true, section: 'about' },
     { key: 'role', label: 'Who you are — Student, Employer, or University', done: !!p.user_type, required: true, section: 'intro' },
     { key: 'goal', label: 'Your first goal', done: !!p.onboarding_goal?.trim(), required: true, section: 'intro' },
-    { key: 'career', label: 'First career direction or role', done: (p.desired_roles?.length ?? 0) > 0, required: true, section: 'about' },
     { key: 'location', label: 'Location', done: !!p.location?.trim(), required: true, section: 'about' },
     { key: 'work', label: 'Work preferences', done: !!p.work_type && p.work_type !== 'any', required: true, section: 'about' },
     { key: 'resume', label: 'Résumé or basic profile', done: hasCv, required: true, section: 'resumes' },
@@ -73,6 +74,7 @@ export function profileCompletion(p: Profile | null | undefined, resumeCount = 0
     { key: 'year', label: 'Year of study', done: !!(p.year || p.graduated), required: false, section: 'about' },
     { key: 'links', label: 'A link (LinkedIn or GitHub)', done: !!(p.linkedin?.trim() || p.github?.trim() || p.website?.trim()), required: false, section: 'about' },
     { key: 'skills', label: 'Add your skills', done: (p.skills?.length ?? 0) > 0, required: false, section: 'about' },
+    { key: 'career', label: 'First career direction or role', done: (p.desired_roles?.length ?? 0) > 0, required: false, section: 'about' },
   ]
 
   const requiredDone = required.filter((s) => s.done).length
@@ -96,12 +98,12 @@ export function profileCompletion(p: Profile | null | undefined, resumeCount = 0
 
 /**
  * Whether the router should keep the user on their Profile until the important
- * steps are complete. Only students are gated — companies and schools already
- * have a separate (lighter) setup and never hit this.
+ * steps are complete. Every new account — student, company, school, or a Google
+ * sign-in that hasn't picked a role yet — is held on Profile until the required
+ * (simple) steps are done. Once complete they can explore freely.
  */
 export function requiresProfileCompletion(p: Profile | null | undefined): boolean {
   if (!p) return false
-  if (p.user_type !== 'student') return false
   return !profileCompletion(p).requiredComplete
 }
 

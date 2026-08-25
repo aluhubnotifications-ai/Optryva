@@ -126,8 +126,8 @@ function buildRes(c: Context): ShimRes {
       })
       return this
     },
-    clearCookie(name: string, opts: { path?: string } = {}) {
-      deleteCookie(c, name, { path: opts.path })
+    clearCookie(name: string, opts: { path?: string; secure?: boolean; sameSite?: 'lax' | 'strict' | 'none' } = {}) {
+      deleteCookie(c, name, { path: opts.path, secure: opts.secure, sameSite: normSameSite(opts.sameSite) })
       return this
     },
   }
