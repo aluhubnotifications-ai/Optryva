@@ -42,7 +42,6 @@ const ApplicantView = lazy(() => import('@/pages/company/ApplicantView'))
 function RequireAuth() {
   const userId = useSession((s) => s.userId)
   const profile = useSession((s) => s.profile)
-  const needsOnboarding = useSession((s) => (profile ? s.needsOnboarding[profile.id] : false))
   const location = useLocation()
   // Refresh the persisted profile from the server on load, so changes made since
   // last login (is_admin, plan, …) take effect without a re-login.
@@ -51,13 +50,14 @@ function RequireAuth() {
     authApi.me().then((p) => { if (p) useSession.getState().setProfile(p) })
   }, [userId])
   if (!userId) return <Navigate to="/login" replace />
-  // Accounts created in this session are held in the onboarding wizard until the
-  // required steps are complete. The "new" marker comes from the `?new=1` flag
-  // the server/register sets AND is mirrored into the persisted `needsOnboarding`
-  // flag so a refresh or navigation away can't let a new user skip it. Returning
-  // users who haven't finished optional profile fields are NOT bounced — they
-  // land on their Profile and fill them in at their leisure.
-  if (requiresProfileCompletion(profile) && (isNewAccount() || needsOnboarding) && location.pathname !== '/onboarding') {
+  // Only accounts created in this session are held in the onboarding wizard. The
+  // "new" marker comes from the `?new=1` flag the server/register sets (and the
+  // OAuth callback sets for brand-new Google accounts). Returning users — even
+  // ones who haven't filled every optional profile field, or who aren't yet
+  // match-ready — are NEVER bounced to onboarding; they land on their Profile and
+  // complete things at their leisure. (Using `needsOnboarding` here would loop
+  // companies/schools, which have no résumé/skills steps in their flow.)
+  if (requiresProfileCompletion(profile) && isNewAccount() && location.pathname !== '/onboarding') {
     return <Navigate to="/onboarding" replace />
   }
   return (
