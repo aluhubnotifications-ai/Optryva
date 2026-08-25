@@ -62,7 +62,14 @@ export default function Onboarding() {
   if (user && !requiresProfileCompletion(user)) return <Navigate to="/app/profile" replace />
 
   const [step, setStep] = useState(1)
-  const [userType] = useState<UserType | ''>(user?.user_type ?? '')
+  const [userType, setUserType] = useState<UserType | ''>(user?.user_type ?? '')
+
+  // The "What brings you here?" choice maps 1:1 to a role.
+  const GOAL_TO_ROLE: Record<string, UserType> = {
+    find_opportunities: 'student',
+    hire_talent: 'company',
+    manage_university: 'school',
+  }
   const [name, setName] = useState(user?.full_name ?? '')
   const [goal, setGoal] = useState(user?.onboarding_goal ?? '')
   const [country, setCountry] = useState(user?.country ?? user?.location ?? '')
@@ -132,7 +139,7 @@ export default function Onboarding() {
       if (current.id === 'about') {
         if (!name.trim()) return toast({ title: 'Add your name', tone: 'error' })
         if (!goal) return toast({ title: 'Choose a goal', tone: 'error' })
-        await patchProfile({ full_name: name.trim(), onboarding_goal: goal })
+        await patchProfile({ full_name: name.trim(), onboarding_goal: goal, user_type: userType })
         goNext()
       } else if (current.id === 'education') {
         if (!school.trim()) return toast({ title: 'Add your school', tone: 'error' })
@@ -270,8 +277,8 @@ export default function Onboarding() {
         <div className="mt-6 flex-1 rounded-2xl border border-border bg-card p-6 shadow-card sm:p-8">
           <div className="mb-6 flex flex-col items-center text-center">
             <OnboardingMascot key={step} celebrating={celebrating} className="mb-3 h-16 w-16" />
-            <h1 className="text-xl font-bold tracking-tight">{step === 1 ? 'Welcome to Optryva' : meta.label}</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">{meta.blurb}</p>
+            <h1 className="text-xl font-bold tracking-tight">{step === 1 ? 'What brings you here?' : meta.label}</h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">{step === 1 ? 'Pick the option that fits you best.' : meta.blurb}</p>
           </div>
 
           <AnimatePresence mode="wait">
@@ -285,17 +292,16 @@ export default function Onboarding() {
           {current.id === 'about' && (
             <div className="space-y-5">
               <div>
-                <Label htmlFor="name">Your name</Label>
-                <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Alex Rivera" className="mt-1.5 bg-background" />
-              </div>
-              <div>
                 <Label>What brings you here?</Label>
                 <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
                   {GOAL_OPTIONS.map((g) => (
                     <button
                       key={g.value}
                       type="button"
-                      onClick={() => setGoal(g.value)}
+                      onClick={() => {
+                        setGoal(g.value)
+                        setUserType(GOAL_TO_ROLE[g.value])
+                      }}
                       className={`rounded-xl border p-3 text-left text-sm transition-colors ${
                         goal === g.value ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border hover:border-primary/40 hover:bg-muted/50'
                       }`}
@@ -305,6 +311,10 @@ export default function Onboarding() {
                     </button>
                   ))}
                 </div>
+              </div>
+              <div>
+                <Label htmlFor="name">{userType === 'company' ? 'Company name' : userType === 'school' ? 'Institution name' : 'Your name'}</Label>
+                <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder={userType === 'company' ? 'e.g. Acme Labs' : userType === 'school' ? 'e.g. University of Nairobi' : 'e.g. Alex Rivera'} className="mt-1.5 bg-background" />
               </div>
             </div>
           )}
