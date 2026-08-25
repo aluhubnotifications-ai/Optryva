@@ -99,7 +99,7 @@ export function profileCompletion(p: Profile | null | undefined, resumeCount = 0
       section: 'about',
     },
     { key: 'resume', label: 'Résumé or basic profile', done: p.user_type === 'student' ? hasCv : true, required: true, section: 'resumes' },
-    { key: 'evidence', label: 'Evidence of your work', done: hasEvidence, required: true, section: 'evidence' },
+    { key: 'evidence', label: 'Evidence of your work (required)', done: hasEvidence, required: true, section: 'evidence' },
   ]
 
   const optional: OnboardingStep[] = [

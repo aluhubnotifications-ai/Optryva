@@ -27,7 +27,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { useMatchRun } from '@/lib/matchRun'
 import { fetchProtectedDocument, profilesApi, resumesApi, evidenceApi } from '@/lib/api'
-import { profileCompletion, GOAL_OPTIONS, ROLE_OPTIONS, setEvidenceDeclined, type OnboardingStep } from '@/lib/onboarding'
+import { profileCompletion, GOAL_OPTIONS, ROLE_OPTIONS, setEvidenceDeclined, isEvidenceDeclined, type OnboardingStep } from '@/lib/onboarding'
 import type { Profile as ProfileT, UserType, WorkType, ListingType } from '@/types'
 import { Card, CardBody, Badge, Avatar, Input, Label, Textarea, Select } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
@@ -556,6 +556,11 @@ export default function Profile() {
               skipped={skipped}
               onFocus={focusStep}
               onSkip={(k) => setSkipped((s) => new Set(s).add(k))}
+              onSkipEvidence={() => {
+                setEvidenceDeclined(user.id, true)
+                setEvidenceTick((t) => t + 1)
+                toast({ title: "Got it — evidence skipped for now", tone: 'success' })
+              }}
             />
           )}
 
@@ -582,10 +587,10 @@ export default function Profile() {
       {tab === 'resumes' && <ResumeWorkspace />}
       {tab === 'gallery' && (
         <div>
-          {evidenceCount === 0 && (
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-muted/40 p-4">
-              <p className="text-sm text-muted-foreground">
-                Evidence proves your skills — projects, certs, awards, writing. Add what you have.
+          {evidenceCount === 0 && !isEvidenceDeclined(user.id) && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-4">
+              <p className="text-sm text-foreground">
+                <span className="font-semibold">Evidence is required.</span> Add projects, certificates, awards or writing to prove your skills and strengthen your applications.
               </p>
               <Button
                 variant="outline"
@@ -593,10 +598,10 @@ export default function Profile() {
                 onClick={() => {
                   setEvidenceDeclined(user.id, true)
                   setEvidenceTick((t) => t + 1)
-                  toast({ title: "Got it — we'll skip evidence for now", tone: 'success' })
+                  toast({ title: "Got it — evidence skipped for now", tone: 'success' })
                 }}
               >
-                I don't have any evidence yet
+                Skip for now
               </Button>
             </div>
           )}
@@ -705,11 +710,13 @@ function ProfileCompletionCard({
   skipped,
   onFocus,
   onSkip,
+  onSkipEvidence,
 }: {
   completion: ReturnType<typeof profileCompletion>
   skipped: Set<string>
   onFocus: (step: OnboardingStep) => void
   onSkip: (key: string) => void
+  onSkipEvidence?: () => void
 }) {
   const visibleOptional = completion.optional.filter((s) => !(skipped.has(s.key) || s.done))
   return (
@@ -732,26 +739,54 @@ function ProfileCompletionCard({
         )}
 
         <ul className="space-y-1.5 text-sm">
-          {completion.required.map((s) => (
-            <li key={s.key}>
-              <button
-                type="button"
-                onClick={() => onFocus(s)}
-                className={cn(
-                  'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors',
-                  s.done ? 'text-foreground hover:bg-muted/40' : 'text-muted-foreground hover:bg-primary/5',
-                )}
-              >
-                {s.done ? (
-                  <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-accent" />
-                ) : (
-                  <Circle className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                )}
-                <span className={cn('flex-1', !s.done && 'font-medium')}>{s.label}</span>
-                {!s.done && <span className="text-[11px] text-primary">Complete</span>}
-              </button>
-            </li>
-          ))}
+          {completion.required.map((s) => {
+            if (s.key === 'evidence' && !s.done) {
+              return (
+                <li key={s.key}>
+                  <div className="flex items-center gap-2 rounded-lg px-2 py-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onFocus(s)}
+                      className="flex flex-1 items-center gap-2 text-left transition-colors text-muted-foreground hover:bg-primary/5"
+                    >
+                      <Circle className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                      <span className="flex-1 font-medium">{s.label}</span>
+                      <span className="text-[11px] text-primary">Complete</span>
+                    </button>
+                    {onSkipEvidence && (
+                      <button
+                        type="button"
+                        onClick={onSkipEvidence}
+                        className="text-[11px] text-muted-foreground underline hover:text-foreground"
+                      >
+                        Skip
+                      </button>
+                    )}
+                  </div>
+                </li>
+              )
+            }
+            return (
+              <li key={s.key}>
+                <button
+                  type="button"
+                  onClick={() => onFocus(s)}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors',
+                    s.done ? 'text-foreground hover:bg-muted/40' : 'text-muted-foreground hover:bg-primary/5',
+                  )}
+                >
+                  {s.done ? (
+                    <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-accent" />
+                  ) : (
+                    <Circle className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                  )}
+                  <span className={cn('flex-1', !s.done && 'font-medium')}>{s.label}</span>
+                  {!s.done && <span className="text-[11px] text-primary">Complete</span>}
+                </button>
+              </li>
+            )
+          })}
 
           {visibleOptional.map((s) => (
             <li key={s.key}>
