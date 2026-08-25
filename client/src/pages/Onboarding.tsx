@@ -369,17 +369,18 @@ export default function Onboarding() {
             <div className="space-y-5">
               <div>
                 <Label htmlFor="bio">About your institution</Label>
+                <p className="mb-1.5 text-xs text-muted-foreground">A short description students will see on your page. This is required.</p>
                 <Textarea
                   id="bio"
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
                   placeholder="e.g. A public research university focused on engineering and agriculture…"
                   rows={4}
-                  className="mt-1.5 bg-background"
+                  className="bg-background"
                 />
               </div>
               <div>
-                <Label htmlFor="domains">Student email domains</Label>
+                <Label htmlFor="domains">Student email domains <span className="text-muted-foreground">(optional)</span></Label>
                 <Input
                   id="domains"
                   value={studentDomains}
@@ -387,7 +388,10 @@ export default function Onboarding() {
                   placeholder="e.g. student.example.edu, example.ac.ug"
                   className="mt-1.5 bg-background"
                 />
-                <p className="mt-1 text-xs text-muted-foreground">Comma-separated. Used to verify and privately match your students.</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Optional. List the email domains your students use (e.g. student.ALU.edu, alu.ac.rw). We use them to privately verify and match
+                  your students — your institution stays visible to everyone either way. You can add this later from your profile.
+                </p>
               </div>
             </div>
           )}
