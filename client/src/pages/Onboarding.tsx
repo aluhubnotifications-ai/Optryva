@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   ArrowLeft,
   ArrowRight,
@@ -18,6 +19,8 @@ import {
   X,
 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
+import { OnboardingMascot } from '@/components/OnboardingMascot'
+import { Confetti } from '@/components/Confetti'
 import { Button } from '@/components/ui/Button'
 import { Input, Label, Textarea } from '@/components/ui/primitives'
 import { CountryCombobox } from '@/components/ui/CountryCombobox'
@@ -76,6 +79,7 @@ export default function Onboarding() {
   const [cvText, setCvText] = useState(user?.cv_text ?? '')
   const [cvFilename, setCvFilename] = useState<string | null>(user?.cv_filename ?? null)
   const [saving, setSaving] = useState(false)
+  const [celebrating, setCelebrating] = useState(false)
 
   const hasResume = !!(cvUrl || cvText.trim())
 
@@ -91,7 +95,6 @@ export default function Onboarding() {
   const current = steps[Math.min(step, steps.length) - 1]
   const isLast = step === steps.length
   const meta = STEP_META[current.id]
-  const StepIcon = meta.icon
   const progress = Math.round((step / steps.length) * 100)
 
   async function patchProfile(patch: Record<string, unknown>) {
@@ -182,8 +185,9 @@ export default function Onboarding() {
       // doesn't bounce us straight back to onboarding.
       const refreshed = await authApi.me()
       if (refreshed) useSession.getState().setProfile(refreshed)
-      toast({ title: "You're all set", description: 'Finish the rest anytime from your profile.', tone: 'success' })
-      navigate('/app/profile', { replace: true })
+      setCelebrating(true)
+      toast({ title: "You're all set!", description: 'Taking you to your profile…', tone: 'success' })
+      setTimeout(() => navigate('/app/profile', { replace: true }), 1500)
     } catch (e) {
       toast({ title: "Couldn't finish", description: e instanceof Error ? e.message : undefined, tone: 'error' })
       setSaving(false)
@@ -191,7 +195,7 @@ export default function Onboarding() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/[0.07]">
+    <div className="mesh-bg min-h-screen">
       <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col px-4 py-10 sm:px-6">
         <header className="flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
@@ -203,7 +207,11 @@ export default function Onboarding() {
 
         {/* progress */}
         <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${progress}%` }} />
+          <motion.div
+            className="h-full rounded-full bg-primary"
+            animate={{ width: `${progress}%` }}
+            transition={{ type: 'spring', stiffness: 120, damping: 20 }}
+          />
         </div>
 
         {/* step indicators (compact — the current step name shows in the card) */}
@@ -234,16 +242,20 @@ export default function Onboarding() {
 
         {/* card */}
         <div className="mt-6 flex-1 rounded-2xl border border-border bg-card p-6 shadow-card sm:p-8">
-          <div className="mb-6 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <StepIcon className="h-5 w-5" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight">{current.id === 'role' ? 'Welcome to Optryva' : meta.label}</h1>
-              <p className="mt-0.5 text-sm text-muted-foreground">{meta.blurb}</p>
-            </div>
+          <div className="mb-6 flex flex-col items-center text-center">
+            <OnboardingMascot key={step} celebrating={celebrating} className="mb-3 h-16 w-16" />
+            <h1 className="text-xl font-bold tracking-tight">{current.id === 'role' ? 'Welcome to Optryva' : meta.label}</h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">{meta.blurb}</p>
           </div>
 
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={current.id}
+              initial={{ opacity: 0, x: 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }}
+              transition={{ duration: 0.22, ease: 'easeOut' }}
+            >
           {current.id === 'role' && (
             <div className="grid gap-3">
               {ROLE_OPTIONS.map((r) => {
@@ -424,24 +436,31 @@ export default function Onboarding() {
               />
             </div>
           )}
+          </motion.div>
+        </AnimatePresence>
         </div>
 
         {/* footer */}
         <div className="mt-6 flex items-center justify-between">
-          <Button variant="ghost" onClick={goBack} disabled={step === 1 || saving}>
+          <Button variant="ghost" onClick={goBack} disabled={step === 1 || saving} className="active:scale-95 transition-transform">
             <ArrowLeft className="h-4 w-4" /> Back
           </Button>
           {!isLast ? (
-            <Button onClick={handleNext}>
+            <Button onClick={handleNext} className="active:scale-95 transition-transform">
               Continue <ArrowRight className="h-4 w-4" />
             </Button>
           ) : (
-            <Button onClick={finish} disabled={saving}>
+            <Button onClick={finish} disabled={saving} className="active:scale-95 transition-transform">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Award className="h-4 w-4" />} Finish & go to profile
             </Button>
           )}
         </div>
       </div>
+      {celebrating && (
+        <div className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center">
+          <Confetti />
+        </div>
+      )}
     </div>
   )
 }
