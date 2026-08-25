@@ -28,7 +28,7 @@ import { useToast } from '@/components/ui/toast'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { profilesApi, onboardingApi, authApi } from '@/lib/api'
 import { fileToDataUrl } from '@/lib/utils'
-import { requiresProfileCompletion, GOAL_OPTIONS } from '@/lib/onboarding'
+import { requiresProfileCompletion, ROLE_CHOICES } from '@/lib/onboarding'
 import type { UserType } from '@/types'
 
 const WORK_OPTIONS = [
@@ -63,13 +63,6 @@ export default function Onboarding() {
 
   const [step, setStep] = useState(1)
   const [userType, setUserType] = useState<UserType | ''>(user?.user_type ?? '')
-
-  // The "What brings you here?" choice maps 1:1 to a role.
-  const GOAL_TO_ROLE: Record<string, UserType> = {
-    find_opportunities: 'student',
-    hire_talent: 'company',
-    manage_university: 'school',
-  }
   const [name, setName] = useState(user?.full_name ?? '')
   const [goal, setGoal] = useState(user?.onboarding_goal ?? '')
   const [country, setCountry] = useState(user?.country ?? user?.location ?? '')
@@ -294,26 +287,26 @@ export default function Onboarding() {
               <div>
                 <Label>What brings you here?</Label>
                 <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
-                  {GOAL_OPTIONS.map((g) => (
+                  {ROLE_CHOICES.map((r) => (
                     <button
-                      key={g.value}
+                      key={r.value}
                       type="button"
                       onClick={() => {
-                        setGoal(g.value)
-                        setUserType(GOAL_TO_ROLE[g.value])
+                        setUserType(r.value)
+                        setGoal(r.goal)
                       }}
                       className={`rounded-xl border p-3 text-left text-sm transition-colors ${
-                        goal === g.value ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border hover:border-primary/40 hover:bg-muted/50'
+                        userType === r.value ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border hover:border-primary/40 hover:bg-muted/50'
                       }`}
                     >
-                      <span className="block font-semibold">{g.label}</span>
-                      <span className="text-xs text-muted-foreground">{g.hint}</span>
+                      <span className="block font-semibold">{r.label}</span>
+                      <span className="text-xs text-muted-foreground">{r.hint}</span>
                     </button>
                   ))}
                 </div>
               </div>
               <div>
-                <Label htmlFor="name">{userType === 'company' ? 'Company name' : userType === 'school' ? 'Institution name' : 'Your name'}</Label>
+                <Label htmlFor="name">{userType === 'company' ? 'Company name' : userType === 'school' ? 'University name' : 'Your name'}</Label>
                 <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder={userType === 'company' ? 'e.g. Acme Labs' : userType === 'school' ? 'e.g. University of Nairobi' : 'e.g. Alex Rivera'} className="mt-1.5 bg-background" />
               </div>
             </div>
