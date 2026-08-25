@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useParams } from 'react-router'
+import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import { ArrowLeft } from 'lucide-react'
 import { ApplyForm } from '@/components/ApplyModal'
 import { jobsApi } from '@/lib/api'
@@ -10,7 +11,7 @@ import type { JobListing } from '@/types'
 
 export default function Apply() {
   const { jobId } = useParams<{ jobId: string }>()
-  const navigate = useNavigate()
+  const navigate = useTransitionNavigate()
   const user = useCurrentUser()
   const [job, setJob] = useState<JobListing | null>(null)
   const [loading, setLoading] = useState(true)

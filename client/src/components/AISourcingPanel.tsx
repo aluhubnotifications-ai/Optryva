@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import { Sparkles, Send, ArrowRight, Rocket, ExternalLink } from 'lucide-react'
 import { Drawer } from '@/components/ui/Drawer'
 import { Badge, Avatar, Skeleton } from '@/components/ui/primitives'
@@ -16,7 +16,7 @@ type Turn = { query: string; result?: SourceResult }
 export function AISourcingPanel() {
   const { open, query, close } = useSourcing()
   const user = useCurrentUser()
-  const navigate = useNavigate()
+  const navigate = useTransitionNavigate()
 
   const [jobs, setJobs] = useState<JobListing[]>([])
   const [companies, setCompanies] = useState<Record<string, Profile>>({})

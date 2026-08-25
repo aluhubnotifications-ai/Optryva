@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import {
   ArrowLeft,
   Briefcase,
@@ -250,7 +251,7 @@ function monogramAvatar(name?: string): string {
 
 export default function ApplicantView() {
   const { id } = useParams()
-  const navigate = useNavigate()
+  const navigate = useTransitionNavigate()
   const { toast } = useToast()
   const user = useCurrentUser()!
   const [app, setApp] = useState<Application | null>(null)

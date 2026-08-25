@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
+import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import { ArrowLeft, Users, MapPin, Globe, Bell, BellOff, Briefcase, ArrowRight, Star, MessageSquare } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
 import { followsApi, jobsApi, profilesApi, ratingsApi, messagesApi } from '@/lib/api'
@@ -12,7 +13,7 @@ import { cn, daysUntil } from '@/lib/utils'
 
 export default function CompanyPublic() {
   const { id } = useParams()
-  const navigate = useNavigate()
+  const navigate = useTransitionNavigate()
   const user = useCurrentUser()!
   const { toast } = useToast()
   const [company, setCompany] = useState<Profile | null>(null)

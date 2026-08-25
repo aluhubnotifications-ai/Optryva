@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import {
   Briefcase,
   Eye,
@@ -37,7 +38,7 @@ export default function Listings() {
   const { id: routeListingId } = useParams()
   const [params] = useSearchParams()
   const user = useCurrentUser()!
-  const navigate = useNavigate()
+  const navigate = useTransitionNavigate()
   const { toast } = useToast()
 
   const [tab, setTab] = useState<PanelTab>(params.get('tab') === 'details' ? 'details' : 'applicants')

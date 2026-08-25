@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useLocation } from 'react-router-dom'
+import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Briefcase,
@@ -210,9 +211,6 @@ function CountryFlag({ c }: { c: Country }) {
 
 function CountrySelect() {
   const user = useCurrentUser()
-  // Employers (companies + schools) don't browse by country — the picker is a
-  // student-only discovery control, so hide it for them.
-  if (user && (user.user_type === 'company' || user.user_type === 'school')) return null
   const { country, setCountry } = useGeo()
   const stats = useCountryStats((s) => s.stats)
   const [open, setOpen] = useState(false)
@@ -220,6 +218,10 @@ function CountrySelect() {
   const [highlight, setHighlight] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
+  // Employers (companies + schools) don't browse by country — the picker is a
+  // student-only discovery control, so hide it for them. All hooks above must
+  // run on every render so the hook count stays stable (avoids React #300).
+  if (user && (user.user_type === 'company' || user.user_type === 'school')) return null
   // Merge the fixed country list with any custom country a company/school typed
   // on a listing — so students can still research those jobs by country.
   const customCountries = Object.keys(stats)
@@ -367,7 +369,7 @@ function CountrySelect() {
 function Topbar() {
   const { theme, toggle } = useTheme()
   const user = useCurrentUser()
-  const navigate = useNavigate()
+  const navigate = useTransitionNavigate()
   const logout = useSession((s) => s.logout)
   const [menuOpen, setMenuOpen] = useState(false)
   const [search, setSearch] = useState('')

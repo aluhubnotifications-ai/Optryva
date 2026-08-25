@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
+import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import { GraduationCap, Building2, School, ArrowRight, Loader2 } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/Button'
@@ -29,7 +30,7 @@ const ROLES = [
 ] as const
 
 export default function RoleSelection() {
-  const navigate = useNavigate()
+  const navigate = useTransitionNavigate()
   const [searchParams] = useSearchParams()
   const returnTo = searchParams.get('returnTo') ?? '/app'
   const login = useSession((s) => s.login)

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import { Sparkles, AlertTriangle, FileText, SlidersHorizontal } from 'lucide-react'
 import { Card, CardBody, Progress } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
@@ -31,7 +31,7 @@ export function MatchRunner({
 }) {
   const { phase, done, total, label, missing } = useMatchProgress()
   const user = useCurrentUser()
-  const navigate = useNavigate()
+  const navigate = useTransitionNavigate()
   const pct = total > 0 ? Math.round((done / total) * 100) : 0
 
   // Advance the page once the run completes.

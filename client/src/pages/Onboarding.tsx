@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
+import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -169,7 +170,7 @@ const STEP_META: Record<StepId, { label: string; icon: typeof User; blurb: strin
 }
 
 export default function Onboarding() {
-  const navigate = useNavigate()
+  const navigate = useTransitionNavigate()
   const user = useCurrentUser()
   const { toast } = useToast()
 

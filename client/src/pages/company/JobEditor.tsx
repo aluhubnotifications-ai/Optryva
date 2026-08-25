@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams, useLocation } from 'react-router-dom'
+import { useParams, useLocation } from 'react-router-dom'
+import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import { ArrowLeft, ArrowRight, Building2, Check, ClipboardCheck, Clock, Eye, ImagePlus, Lock, Plus, Settings2, Sparkles, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { fileToDataUrl, imageFileToDataUrl, cn } from '@/lib/utils'
@@ -32,7 +33,7 @@ type AssignmentDraft = {
 export default function JobEditor() {
   const { id } = useParams()
   const location = useLocation()
-  const navigate = useNavigate()
+  const navigate = useTransitionNavigate()
   const [job, setJob] = useState<JobListing | null | undefined>(undefined)
 
   useEffect(() => {
@@ -80,7 +81,7 @@ export default function JobEditor() {
 function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | null; onSaved: (saved?: JobListing) => void; onCancel: () => void }) {
   const user = useCurrentUser()!
   const { toast } = useToast()
-  const navigate = useNavigate()
+  const navigate = useTransitionNavigate()
   const isSchool = user.user_type === 'school'
   const isCompany = user.user_type === 'company'
   const [saving, setSaving] = useState(false)

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
+import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search,
@@ -76,7 +77,7 @@ function isTrending(job: JobListing) {
 
 export default function Jobs() {
   const user = useCurrentUser()!
-  const navigate = useNavigate()
+  const navigate = useTransitionNavigate()
   const { country } = useGeo()
   const [jobs, setJobs] = useState<JobListing[]>([])
   const [companies, setCompanies] = useState<Record<string, Profile>>({})

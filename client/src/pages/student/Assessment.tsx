@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
+import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import { ArrowLeft, Check, ClipboardCheck } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
 import { applicationsApi, jobsApi, profilesApi } from '@/lib/api'
@@ -46,7 +47,7 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 export default function AssessmentPage() {
   const { id } = useParams()
-  const navigate = useNavigate()
+  const navigate = useTransitionNavigate()
   const user = useCurrentUser()!
   const [app, setApp] = useState<Application | null>(null)
   const [job, setJob] = useState<JobListing | null>(null)

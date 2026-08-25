@@ -23,7 +23,8 @@ import {
   Circle,
   ArrowRight,
 } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
+import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { useMatchRun } from '@/lib/matchRun'
 import { fetchProtectedDocument, profilesApi, resumesApi, evidenceApi, authApi } from '@/lib/api'
@@ -679,7 +680,7 @@ function ChipGroup({ options, selected, onToggle }: { options: string[]; selecte
 /* ---------- Account & Security (shared component) ---------- */
 function AccountSecurity() {
   const { toast } = useToast()
-  const navigate = useNavigate()
+  const navigate = useTransitionNavigate()
   const logout = useSession((s) => s.logout)
   const [modal, setModal] = useState<null | 'email' | 'password' | 'delete'>(null)
   const [busy, setBusy] = useState(false)

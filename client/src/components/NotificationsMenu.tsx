@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
+import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Bell,
@@ -49,7 +50,7 @@ function routeFor(n: AppNotification, isCompany: boolean): string {
 export function NotificationsMenu() {
   const user = useCurrentUser()
   const isCompany = user?.user_type === 'company' || user?.user_type === 'school'
-  const navigate = useNavigate()
+  const navigate = useTransitionNavigate()
   const location = useLocation()
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState<AppNotification[]>([])

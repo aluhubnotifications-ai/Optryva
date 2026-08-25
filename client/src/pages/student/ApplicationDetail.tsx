@@ -11,7 +11,8 @@ import {
 	Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
+import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import { AIResearchPanel } from "@/components/AIResearchPanel";
 import { AppProgressSteps } from "@/components/AppProgressSteps";
 import { GradeSummary, SubmittedAnswers } from "@/components/AssignmentReview";
@@ -39,7 +40,7 @@ const statusTone = {
 
 export default function ApplicationDetail() {
 	const { id } = useParams();
-	const navigate = useNavigate();
+	const navigate = useTransitionNavigate();
 	const user = useCurrentUser()!;
 	const { toast } = useToast();
 	const [app, setApp] = useState<Application | null>(null);

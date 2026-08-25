@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
+import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import { Loader2, Mail, Lock, AlertCircle } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/Button'
@@ -16,7 +17,7 @@ const ERRORS: Record<string, string> = {
 }
 
 export default function Login() {
-  const navigate = useNavigate()
+  const navigate = useTransitionNavigate()
   const login = useSession((s) => s.login)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')

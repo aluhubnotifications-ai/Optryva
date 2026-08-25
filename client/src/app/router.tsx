@@ -7,37 +7,60 @@ import { requiresProfileCompletion, isNewAccount } from '@/lib/onboarding'
 import { useLocation } from 'react-router-dom'
 import { Spinner } from '@/components/ui/Spinner'
 
+import { type ComponentType } from 'react'
 import Landing from '@/pages/Landing'
 import Login from '@/pages/auth/Login'
 import Register from '@/pages/auth/Register'
 import VerifyEmail from '@/pages/auth/VerifyEmail'
 import ForgotPassword from '@/pages/auth/ForgotPassword'
-const Dashboard = lazy(() => import('@/pages/Dashboard'))
-const Research = lazy(() => import('@/pages/Research'))
-const Jobs = lazy(() => import('@/pages/student/Jobs'))
-const JobDetail = lazy(() => import('@/pages/student/JobDetail'))
-const Apply = lazy(() => import('@/pages/student/Apply'))
-const Applications = lazy(() => import('@/pages/student/Applications'))
-const ApplicationDetail = lazy(() => import('@/pages/student/ApplicationDetail'))
-const Assessment = lazy(() => import('@/pages/student/Assessment'))
-const Insights = lazy(() => import('@/pages/student/Insights'))
-const Compass = lazy(() => import('@/pages/student/Compass'))
-const Companies = lazy(() => import('@/pages/student/Companies'))
-const CompanyPublic = lazy(() => import('@/pages/student/CompanyPublic'))
-const Profile = lazy(() => import('@/pages/Profile'))
+const Dashboard = lazyRoute(() => import('@/pages/Dashboard'))
+const Research = lazyRoute(() => import('@/pages/Research'))
+const Jobs = lazyRoute(() => import('@/pages/student/Jobs'))
+const JobDetail = lazyRoute(() => import('@/pages/student/JobDetail'))
+const Apply = lazyRoute(() => import('@/pages/student/Apply'))
+const Applications = lazyRoute(() => import('@/pages/student/Applications'))
+const ApplicationDetail = lazyRoute(() => import('@/pages/student/ApplicationDetail'))
+const Assessment = lazyRoute(() => import('@/pages/student/Assessment'))
+const Insights = lazyRoute(() => import('@/pages/student/Insights'))
+const Compass = lazyRoute(() => import('@/pages/student/Compass'))
+const Companies = lazyRoute(() => import('@/pages/student/Companies'))
+const CompanyPublic = lazyRoute(() => import('@/pages/student/CompanyPublic'))
+const Profile = lazyRoute(() => import('@/pages/Profile'))
 
-const Messages = lazy(() => import('@/pages/Messages'))
-const Usage = lazy(() => import('@/pages/Usage'))
-const Admin = lazy(() => import('@/pages/Admin'))
-const UserProfile = lazy(() => import('@/pages/UserProfile'))
+const Messages = lazyRoute(() => import('@/pages/Messages'))
+const Usage = lazyRoute(() => import('@/pages/Usage'))
+const Admin = lazyRoute(() => import('@/pages/Admin'))
+const UserProfile = lazyRoute(() => import('@/pages/UserProfile'))
 
-const Listings = lazy(() => import('@/pages/company/Listings'))
-const JobEditor = lazy(() => import('@/pages/company/JobEditor'))
-const CompanyProfile = lazy(() => import('@/pages/company/CompanyProfile'))
-const ApplicantView = lazy(() => import('@/pages/company/ApplicantView'))
-const Onboarding = lazy(() => import('@/pages/Onboarding'))
+const Listings = lazyRoute(() => import('@/pages/company/Listings'))
+const JobEditor = lazyRoute(() => import('@/pages/company/JobEditor'))
+const CompanyProfile = lazyRoute(() => import('@/pages/company/CompanyProfile'))
+const ApplicantView = lazyRoute(() => import('@/pages/company/ApplicantView'))
+const Onboarding = lazyRoute(() => import('@/pages/Onboarding'))
 // Note: company Analytics is shown inline on the Dashboard, so there is no
 // separate /app/analytics route.
+
+function RouteFallback() {
+  return (
+    <div className="mesh-bg flex min-h-[60vh] items-center justify-center">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+    </div>
+  )
+}
+
+/** Wrap a `lazy()` import in its own <Suspense> so every route has a boundary
+ *  directly around the suspending chunk. This — combined with transition-based
+ *  navigation — prevents React error #300 when a not-yet-loaded page mounts. */
+function lazyRoute(factory: () => Promise<{ default: ComponentType }>) {
+  const Component = lazy(factory)
+  return function LazyRoute() {
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <Component />
+      </Suspense>
+    )
+  }
+}
 
 function RequireAuth() {
   const userId = useSession((s) => s.userId)

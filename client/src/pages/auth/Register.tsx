@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
+import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import { Loader2, Mail, Lock, User, Building2, School, AlertCircle } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/Button'
@@ -28,7 +29,7 @@ const NAME_FIELD: Record<UserType, { label: string; placeholder: string }> = {
 }
 
 export default function Register() {
-  const navigate = useNavigate()
+  const navigate = useTransitionNavigate()
   const login = useSession((s) => s.login)
   const [form, setForm] = useState<{ name: string; email: string; password: string; user_type: UserType }>({
     name: '',
