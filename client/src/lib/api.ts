@@ -1463,22 +1463,19 @@ export const evidenceApi = {
   async confirm(id: string, confirmed: string[]): Promise<EvidenceItem> {
     return (await apiFetch(`/evidence/${id}/confirm`, { method: 'POST', body: JSON.stringify({ confirmed }) })) as EvidenceItem
   },
-  async verify(id: string, verified = true): Promise<EvidenceItem> {
-    return (await apiFetch(`/evidence/${id}/verify`, { method: 'POST', body: JSON.stringify({ verified }) })) as EvidenceItem
+  async summary(studentId: string, jobDescription?: string): Promise<{ summary: string }> {
+    return (await apiFetch(`/evidence/student/${studentId}/summary`, {
+      method: 'POST',
+      body: JSON.stringify({ jobDescription: jobDescription ?? '' }),
+    })) as { summary: string }
   },
-  async requestVerification(id: string): Promise<EvidenceItem> {
-    return (await apiFetch(`/evidence/${id}/request-verification`, { method: 'POST' })) as EvidenceItem
+  async listChat(studentId: string): Promise<Array<{ id: string; role: 'employer' | 'ai'; content: string; created_at: string }>> {
+    return (await apiFetch(`/evidence/student/${studentId}/chat`)) as Array<{ id: string; role: 'employer' | 'ai'; content: string; created_at: string }>
   },
-  async setUsedIn(id: string, usedIn: string[]): Promise<EvidenceItem> {
-    return (await apiFetch(`/evidence/${id}/used-in`, { method: 'POST', body: JSON.stringify({ used_in: usedIn }) })) as EvidenceItem
-  },
-  async summary(studentId: string): Promise<{ summary: string }> {
-    return (await apiFetch(`/evidence/student/${studentId}/summary`)) as { summary: string }
-  },
-  async listComments(evidenceId: string): Promise<Array<{ id: string; user_id: string | null; content: string; created_at: string }>> {
-    return (await apiFetch(`/evidence/${evidenceId}/comments`)) as Array<{ id: string; user_id: string | null; content: string; created_at: string }>
-  },
-  async addComment(evidenceId: string, content: string): Promise<{ id: string }> {
-    return (await apiFetch(`/evidence/${evidenceId}/comments`, { method: 'POST', body: JSON.stringify({ content }) })) as { id: string }
+  async askChat(studentId: string, content: string): Promise<Array<{ id: string; role: 'employer' | 'ai'; content: string; created_at: string }>> {
+    return (await apiFetch(`/evidence/student/${studentId}/chat`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    })) as Array<{ id: string; role: 'employer' | 'ai'; content: string; created_at: string }>
   },
 }

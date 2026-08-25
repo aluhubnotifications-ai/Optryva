@@ -260,9 +260,6 @@ export type EvidenceStatus =
   | 'self_reported'
   | 'ai_analyzed'
   | 'student_approved'
-  | 'supervisor_verified'
-  | 'employer_verified'
-  | 'verified'
 
 export interface EvidenceItem {
   id: string

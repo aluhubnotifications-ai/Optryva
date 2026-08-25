@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Plus, Eye, ArrowRight, Sparkles, Brain, User, ShieldCheck, BadgeCheck, CheckCircle2, Circle,
+  Plus, Eye, ArrowRight, Sparkles, Brain, User, CheckCircle2, Circle,
   FileText, ExternalLink, BarChart3, Users, Rocket, Palette, Search, FolderOpen, Presentation,
 } from 'lucide-react'
-import { evidenceApi, fetchProtectedDocument, resumesApi } from '@/lib/api'
-import type { EvidenceItem, EvidenceStatus, ResumeProfile } from '@/types'
+import { evidenceApi, fetchProtectedDocument } from '@/lib/api'
+import type { EvidenceItem, EvidenceStatus } from '@/types'
 import { Card, CardBody, Badge } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -12,16 +12,12 @@ import { useToast } from '@/components/ui/toast'
 import { EvidenceAddForm } from '@/components/EvidenceAddForm'
 
 const isImage = (name: string) => /\.(png|jpe?g|gif|webp|svg)$/i.test(name)
-const isVerified = (s: EvidenceStatus) => s === 'verified' || s === 'supervisor_verified' || s === 'employer_verified'
 
 type StatusMeta = { label: string; tone: 'default' | 'accent' | 'success'; Icon: typeof Circle }
 const STATUS_META: Record<EvidenceStatus, StatusMeta> = {
   self_reported: { label: 'Self-reported', tone: 'default', Icon: Circle },
   ai_analyzed: { label: 'AI analyzed', tone: 'accent', Icon: Sparkles },
-  student_approved: { label: 'Student approved', tone: 'accent', Icon: CheckCircle2 },
-  supervisor_verified: { label: 'Supervisor verified', tone: 'success', Icon: ShieldCheck },
-  employer_verified: { label: 'Employer verified', tone: 'success', Icon: BadgeCheck },
-  verified: { label: 'Verified', tone: 'success', Icon: BadgeCheck },
+  student_approved: { label: 'Confirmed', tone: 'success', Icon: CheckCircle2 },
 }
 
 const GRADIENTS = [
@@ -86,10 +82,8 @@ const EVIDENCE_TYPES = [
 export function EvidenceGallery({ studentId, mode }: { studentId: string; mode: 'owner' | 'viewer' }) {
   const { toast } = useToast()
   const [items, setItems] = useState<EvidenceItem[] | null>(null)
-  const [resumes, setResumes] = useState<ResumeProfile[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [view, setView] = useState<EvidenceItem | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)
 
   const owner = mode === 'owner'
 
@@ -100,57 +94,18 @@ export function EvidenceGallery({ studentId, mode }: { studentId: string; mode: 
     } catch {
       setItems([])
     }
-    if (owner) {
-      try { setResumes(await resumesApi.list()) } catch { /* ignore */ }
-    }
   }
   useEffect(() => {
     reload()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentId, mode])
 
-  const resumeName = (id: string) => resumes.find((r) => r.id === id)?.name ?? 'Résumé'
-
   const stats = useMemo(() => {
     const list = items ?? []
     const skills = new Set<string>()
-    let approved = 0
-    let pending = 0
-    for (const it of list) {
-      it.confirmed_skills.forEach((s) => skills.add(s))
-      if (['student_approved', 'supervisor_verified', 'employer_verified', 'verified'].includes(it.status)) approved++
-      if (it.verification_requested && !isVerified(it.status)) pending++
-    }
-    return { skills: skills.size, approved, pending }
+    for (const it of list) it.confirmed_skills.forEach((s) => skills.add(s))
+    return { skills: skills.size, count: list.length }
   }, [items])
-
-  async function verify(id: string, v: boolean) {
-    setBusy('verify')
-    try {
-      const updated = await evidenceApi.verify(id, v)
-      setItems((prev) => (prev ?? []).map((i) => (i.id === id ? updated : i)))
-      setView(updated)
-      toast({ title: v ? 'Evidence verified' : 'Verification removed', tone: 'success' })
-    } catch {
-      toast({ title: 'Could not verify', tone: 'error' })
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  async function saveUsedIn(id: string, usedIn: string[]) {
-    setBusy('usedin')
-    try {
-      const updated = await evidenceApi.setUsedIn(id, usedIn)
-      setItems((prev) => (prev ?? []).map((i) => (i.id === id ? updated : i)))
-      setView(updated)
-      toast({ title: 'Résumé links updated', tone: 'success' })
-    } catch {
-      toast({ title: 'Could not update', tone: 'error' })
-    } finally {
-      setBusy(null)
-    }
-  }
 
   if (items === null) return <p className="text-sm text-muted-foreground">Loading evidence…</p>
 
@@ -159,7 +114,7 @@ export function EvidenceGallery({ studentId, mode }: { studentId: string; mode: 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold tracking-tight">Evidence Library</h2>
-          <p className="text-sm text-muted-foreground">Real work you've done, with the skills you demonstrated and who has verified it.</p>
+          <p className="text-sm text-muted-foreground">Real work you've done, with the skills you demonstrated.</p>
         </div>
         {owner && (
           <Button onClick={() => setShowAdd(true)} className="gap-1.5"><Plus className="h-4 w-4" /> Add evidence</Button>
@@ -184,11 +139,6 @@ export function EvidenceGallery({ studentId, mode }: { studentId: string; mode: 
                     ))}
                   </div>
                 )}
-                <p className="text-xs text-muted-foreground">
-                  {ev.used_in.length
-                    ? `Used in: ${ev.used_in.map(resumeName).map((n) => `${n} résumé`).join(', ')}`
-                    : owner ? 'Not attached to a résumé yet' : 'Not shared to a résumé'}
-                </p>
                 <Button variant="outline" size="sm" className="w-full gap-1.5" onClick={() => setView(ev)}>
                   <Eye className="h-4 w-4" /> View evidence
                 </Button>
@@ -217,9 +167,8 @@ export function EvidenceGallery({ studentId, mode }: { studentId: string; mode: 
           <Card>
             <CardBody className="space-y-3">
               <h3 className="font-semibold">AI evidence summary</h3>
-              <SummaryRow Icon={Sparkles} value={stats.skills} label="skills supported" />
-              <SummaryRow Icon={CheckCircle2} value={stats.approved} label="evidence items approved" />
-              <SummaryRow Icon={ShieldCheck} value={stats.pending} label="verification requests pending" />
+              <SummaryRow Icon={Sparkles} value={stats.skills} label="skills demonstrated" />
+              <SummaryRow Icon={CheckCircle2} value={stats.count} label="evidence items" />
             </CardBody>
           </Card>
 
@@ -230,7 +179,7 @@ export function EvidenceGallery({ studentId, mode }: { studentId: string; mode: 
             >
               <div className="flex-1">
                 <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">Recommendation</p>
-                <p className="text-sm font-medium text-amber-900 dark:text-amber-200">Add your strongest project to your Operations résumé.</p>
+                <p className="text-sm font-medium text-amber-900 dark:text-amber-200">Add your strongest project to build out your evidence.</p>
               </div>
               <ArrowRight className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-300" />
             </button>
@@ -279,11 +228,7 @@ export function EvidenceGallery({ studentId, mode }: { studentId: string; mode: 
         <EvidenceDetail
           item={view}
           owner={owner}
-          resumes={resumes}
-          busy={busy}
           onClose={() => setView(null)}
-          onVerify={verify}
-          onSaveUsedIn={saveUsedIn}
         />
       )}
     </div>
@@ -317,27 +262,18 @@ function Step({ Icon, title, last }: { Icon: typeof Brain; title: string; last?:
 }
 
 function EvidenceDetail({
-  item, owner, resumes, busy, onClose, onVerify, onSaveUsedIn,
+  item, owner, onClose,
 }: {
   item: EvidenceItem
   owner: boolean
-  resumes: ResumeProfile[]
-  busy: string | null
   onClose: () => void
-  onVerify: (id: string, v: boolean) => void
-  onSaveUsedIn: (id: string, usedIn: string[]) => void
 }) {
-  const [sel, setSel] = useState<string[]>(item.used_in ?? [])
-  const verified = isVerified(item.status)
   return (
     <Modal open onClose={onClose} title={item.title} size="lg">
       <div className="space-y-4">
         <PreviewThumb item={item} />
         <div className="flex items-center justify-between gap-2">
           <StatusPill status={item.status} />
-          {owner && (
-            <Button variant="outline" size="sm" onClick={() => onSaveUsedIn(item.id, sel)} loading={busy === 'usedin'}>Save résumé links</Button>
-          )}
         </div>
         {item.description && <p className="text-sm text-muted-foreground">{item.description}</p>}
 
@@ -376,31 +312,13 @@ function EvidenceDetail({
           <div>
             <p className="mb-1 text-xs font-semibold text-muted-foreground">SKILLS DEMONSTRATED</p>
             <div className="flex flex-wrap gap-1.5">
-              {item.confirmed_skills.map((s) => <Badge key={s} tone={verified ? 'success' : 'accent'}>{s}</Badge>)}
+              {item.confirmed_skills.map((s) => <Badge key={s} tone="accent">{s}</Badge>)}
             </div>
           </div>
         )}
 
-        {owner ? (
-          <div>
-            <p className="mb-1 text-xs font-semibold text-muted-foreground">ATTACHED TO RÉSUMÉS</p>
-            {resumes.length === 0 ? (
-              <p className="text-sm text-muted-foreground">You haven't created any résumés yet.</p>
-            ) : (
-              <div className="space-y-1.5">
-                {resumes.map((r) => (
-                  <label key={r.id} className="flex cursor-pointer items-center gap-2 text-sm">
-                    <input type="checkbox" checked={sel.includes(r.id)} onChange={(e) => setSel(e.target.checked ? [...sel, r.id] : sel.filter((x) => x !== r.id))} className="h-4 w-4 accent-primary" />
-                    {r.name} résumé
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          <Button onClick={() => onVerify(item.id, !verified)} loading={busy === 'verify'} variant={verified ? 'outline' : 'default'} className="w-full gap-1.5">
-            <ShieldCheck className="h-4 w-4" /> {verified ? 'Remove verification' : 'Verify as reviewer'}
-          </Button>
+        {owner && (
+          <p className="text-xs text-muted-foreground">This evidence is part of your public gallery and is shared with employers you apply to.</p>
         )}
       </div>
     </Modal>

@@ -30,6 +30,7 @@ import { fetchProtectedDocument, profilesApi, resumesApi, evidenceApi, authApi }
 import { profileCompletion, GOAL_OPTIONS, ROLE_OPTIONS, setEvidenceDeclined, isEvidenceDeclined, type OnboardingStep } from '@/lib/onboarding'
 import type { Profile as ProfileT, UserType, WorkType, ListingType } from '@/types'
 import { Card, CardBody, Badge, Avatar, Input, Label, Textarea, Select } from '@/components/ui/primitives'
+import { CountryCombobox } from '@/components/ui/CountryCombobox'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { AvatarEditor } from '@/components/AvatarEditor'
@@ -123,6 +124,7 @@ export default function Profile() {
     major: user.major ?? '',
     year: user.year ? String(user.year) : '',
     graduated: user.graduated ?? false,
+    country: user.country ?? '',
     location: user.location ?? '',
     gpa: user.gpa ?? '',
     linkedin: user.linkedin ?? '',
@@ -169,6 +171,7 @@ export default function Profile() {
       major: form.major,
       year: form.year ? Number(form.year) : undefined,
       graduated: form.graduated,
+      country: form.country || undefined,
       location: form.location,
       gpa: form.gpa.trim() || undefined,
       linkedin: form.linkedin,
@@ -369,6 +372,10 @@ export default function Profile() {
                 {[1, 2, 3, 4].map((y) => <option key={y} value={y}>Year {y}</option>)}
                 <option value="grad">Graduate</option>
               </Select>
+            </div>
+            <div>
+              <Label>Country</Label>
+              <CountryCombobox value={form.country} onChange={(v) => setForm({ ...form, country: v })} placeholder="Select your country" />
             </div>
             <div><Label>Location</Label><Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="City, Country" /></div>
             <div><Label>GPA</Label><Input value={form.gpa} onChange={(e) => setForm({ ...form, gpa: e.target.value })} placeholder="e.g. 3.8/4.0 or Second Class Upper" /></div>

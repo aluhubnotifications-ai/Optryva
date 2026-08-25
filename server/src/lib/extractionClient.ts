@@ -44,8 +44,8 @@ export const extractionClient = {
   analyze(text: string) {
     return call<{ skills: string[]; summary: string | null }>('/analyze', { text })
   },
-  candidateSummary(items: CandidateEvidenceItem[]) {
-    return call<{ summary: string | null }>('/candidate-summary', { items }).then((x) => x?.summary ?? null)
+  candidateSummary(items: CandidateEvidenceItem[], jobDescription?: string) {
+    return call<{ summary: string | null }>('/candidate-summary', { items, jobDescription: jobDescription ?? '' }).then((x) => x?.summary ?? null)
   },
   ask(question: string, items: CandidateEvidenceItem[]) {
     return call<{ answer: string | null }>('/ask', { question, items }).then((x) => x?.answer ?? null)

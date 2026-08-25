@@ -135,7 +135,10 @@ export type CandidateEvidenceItem = {
   status: string
 }
 
-export async function buildCandidateSummary(items: CandidateEvidenceItem[]): Promise<string | null> {
+export async function buildCandidateSummary(
+  items: CandidateEvidenceItem[],
+  jobDescription = '',
+): Promise<string | null> {
   if (!hasMistral()) return null
   if (!items || items.length === 0) return 'No evidence submitted yet.'
   const bullets = items
@@ -145,16 +148,30 @@ export async function buildCandidateSummary(items: CandidateEvidenceItem[]): Pro
       return `${i + 1}. ${it.title} [${it.status}]${skills ? ` — skills: ${skills}` : ''}\n   ${detail}`
     })
     .join('\n')
+
+  const jobFocus = jobDescription.trim()
+    ? 'A specific job description is provided below. Write the summary for the ' +
+      'recruiter evaluating this candidate FOR THAT ROLE. Lead with a short ' +
+      'overview of fit, then only surface the evidence items that are genuinely ' +
+      'relevant to the role — and for each, state specifically why it matters ' +
+      'for this job. If the candidate\'s evidence does NOT clearly support the ' +
+      'role, say so plainly and note what is missing (e.g. "no evidence of ' +
+      'client-facing experience for this account-management role"). Do NOT list ' +
+      'every item; ignore evidence irrelevant to the posting.\n\n' +
+      `JOB DESCRIPTION:\n${jobDescription.trim()}\n\n`
+    : 'Write a general, recruiter-ready summary of everything the candidate has ' +
+      'actually done (no specific job in context).\n\n'
+
   const sys =
     'You are writing an evidence summary for an employer reviewing a student ' +
-    'candidate on a hiring platform. Write a polished, recruiter-ready summary ' +
-    'of what the candidate has actually done.\n\n' +
+    'candidate on a hiring platform.\n\n' +
+    jobFocus +
     'Structure:\n' +
     '1. A 2-3 sentence overview in active voice that captures the candidate\'s ' +
     'main strengths, domains, and the tangible outcomes they deliver.\n' +
-    '2. A short "Evidence highlights" section where each evidence item is one ' +
-    'bullet: lead with the item title in bold, then a crisp sentence on what ' +
-    'they did and the impact or skill it demonstrates.\n\n' +
+    '2. A short "Evidence highlights" section where each relevant evidence item ' +
+    'is one bullet: lead with the item title in bold, then a crisp sentence on ' +
+    'what they did and the impact or skill it demonstrates.\n\n' +
     'Tone: confident and professional. Prefer specific, concrete language over ' +
     'vague claims. Use active voice. Do not invent details not present. Use ' +
     'Markdown: bold for titles (**Title:**), "- " for bullets. Keep concise.'
@@ -177,20 +194,20 @@ export async function answerQuestion(
           const detail = it.ai_summary || it.description || ''
           const links = (it as { links?: string[] }).links ?? []
           const linkLine = links.length ? `\n   Links provided by student: ${links.join(', ')}` : ''
-          return `${i + 1}. "${it.title}" [verification status: ${it.status}]${skills ? ` — skills: ${skills}` : ''}\n   What the AI extracted from the source: ${detail || '(no extractable content)'}${linkLine}`
+          return `${i + 1}. "${it.title}" [status: ${it.status}]${skills ? ` — skills: ${skills}` : ''}\n   What the AI extracted from the source: ${detail || '(no extractable content)'}${linkLine}`
         })
         .join('\n\n')
     : '(No evidence items found.)'
   const sys =
-    'You are Optryva\'s evidence-verification assistant helping an employer ' +
-    'interview a student candidate\'s portfolio. The employer asks questions ' +
-    'like "Is this true?", "Where is the proof?", "What exactly did they do?", ' +
-    '"Does anything look inconsistent?".\n\n' +
+    'You are Optryva\'s evidence assistant helping an employer ask questions ' +
+    'about a student candidate\'s portfolio of work. The employer asks things ' +
+    'like "What exactly did they do?", "Where is the proof?", "Does this match ' +
+    'the role?", "What is missing?".\n\n' +
     'Rules:\n' +
     '- Ground EVERY answer strictly in the evidence context below (what AI ' +
     'extracted from their files and linked pages). Never invent facts.\n' +
-    '- Be honest about limits of verification: self-reported or unverified ' +
-    'items are claims, not proof. Say so plainly when relevant.\n' +
+    '- Be clear about what is directly evidenced versus what the student merely ' +
+    'asserts. Say plainly when something is a claim without supporting source.\n' +
     '- If the evidence does NOT answer the question, say what is missing and ' +
     'which specific link, file, or document the employer should request (e.g. ' +
     '"ask for the live dashboard URL" or "request the published policy brief PDF").\n' +

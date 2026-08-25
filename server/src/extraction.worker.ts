@@ -64,9 +64,9 @@ app.post('/analyze', async (req, res) => {
 })
 
 app.post('/candidate-summary', async (req, res) => {
-  const { items } = req.body ?? {}
+  const { items, jobDescription } = req.body ?? {}
   if (!Array.isArray(items)) return res.status(400).json({ error: 'items array required' })
-  const summary = await buildCandidateSummary(items as CandidateEvidenceItem[])
+  const summary = await buildCandidateSummary(items as CandidateEvidenceItem[], typeof jobDescription === 'string' ? jobDescription : '')
   res.json({ summary: summary ?? null })
 })
 

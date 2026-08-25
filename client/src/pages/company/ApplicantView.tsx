@@ -691,7 +691,7 @@ export default function ApplicantView() {
 
            {/* Evidence — employers see an AI summary, with a path to the full gallery */}
            <TabsContent value="evidence" className="space-y-5">
-             <EmployerEvidenceSummary studentId={app.student_id} />
+              <EmployerEvidenceSummary studentId={app.student_id} job={job} />
            </TabsContent>
 
         {/* Assessment */}

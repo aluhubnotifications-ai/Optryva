@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Sparkles, ShieldCheck, FileText, Link2, BadgeCheck, RefreshCw, CheckCircle2, ExternalLink, Eye, Download } from 'lucide-react'
+import { Sparkles, FileText, Link2, CheckCircle2, ExternalLink, Eye, Download } from 'lucide-react'
 import { evidenceApi, fetchProtectedDocument } from '@/lib/api'
 import type { EvidenceItem, EvidenceStatus } from '@/types'
 import { Card, CardBody, Badge } from '@/components/ui/primitives'
@@ -11,18 +11,13 @@ import { EvidenceAddForm } from '@/components/EvidenceAddForm'
 const STATUS: Record<EvidenceStatus, { label: string; tone: 'default' | 'accent' | 'success' }> = {
   self_reported: { label: 'Self-reported', tone: 'default' },
   ai_analyzed: { label: 'AI analyzed', tone: 'accent' },
-  student_approved: { label: 'Student approved', tone: 'accent' },
-  supervisor_verified: { label: 'Supervisor verified', tone: 'success' },
-  employer_verified: { label: 'Employer verified', tone: 'success' },
-  verified: { label: 'Verified', tone: 'success' },
+  student_approved: { label: 'Confirmed', tone: 'success' },
 }
-
-const isVerified = (s: EvidenceStatus) => s === 'verified' || s === 'supervisor_verified' || s === 'employer_verified'
 
 const isImage = (name: string) => /\.(png|jpe?g|gif|webp|svg)$/i.test(name)
 
 function StatusBadge({ status }: { status: EvidenceStatus }) {
-  const s = STATUS[status]
+  const s = STATUS[status] ?? { label: status, tone: 'default' as const }
   return <Badge tone={s.tone}>{s.label}</Badge>
 }
 
@@ -138,27 +133,6 @@ export function EvidenceLibrary({ studentId, mode }: { studentId: string; mode: 
       setBusy(null)
     }
   }
-  async function requestVerification(id: string) {
-    setBusy(id + ':req')
-    try {
-      await evidenceApi.requestVerification(id)
-      toast({ title: 'Verification requested', tone: 'success' })
-      await load()
-    } finally {
-      setBusy(null)
-    }
-  }
-  async function verify(id: string, v: boolean) {
-    setBusy(id + ':verify')
-    try {
-      await evidenceApi.verify(id, v)
-      toast({ title: v ? 'Evidence verified' : 'Verification removed', tone: 'success' })
-      await load()
-    } finally {
-      setBusy(null)
-    }
-  }
-
   if (items === null) return <p className="text-sm text-muted-foreground">Loading evidence…</p>
 
   return (
@@ -174,7 +148,6 @@ export function EvidenceLibrary({ studentId, mode }: { studentId: string; mode: 
       )}
 
       {items.map((ev) => {
-        const verified = isVerified(ev.status)
         return (
           <Card key={ev.id}>
             <CardBody className="space-y-2.5">
@@ -210,19 +183,13 @@ export function EvidenceLibrary({ studentId, mode }: { studentId: string; mode: 
                 </div>
               )}
 
-              {/* Confirmed / verified skills */}
+              {/* Confirmed skills */}
               {ev.confirmed_skills.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {ev.confirmed_skills.map((s) => (
-                    <Badge key={s} tone={verified ? 'success' : 'accent'}>{s}</Badge>
+                    <Badge key={s} tone="accent">{s}</Badge>
                   ))}
                 </div>
-              )}
-
-              {verified && ev.verified_at && (
-                <p className="flex items-center gap-1 text-xs text-success">
-                  <BadgeCheck className="h-3.5 w-3.5" /> {STATUS[ev.status].label}
-                </p>
               )}
 
               {/* Owner: extract + confirm flow */}
@@ -233,11 +200,6 @@ export function EvidenceLibrary({ studentId, mode }: { studentId: string; mode: 
                       <Button size="sm" variant="outline" type="button" onClick={() => doExtract(ev.id)} loading={busy === ev.id + ':extract'}>
                         <Sparkles className="h-4 w-4" /> Extract skills (AI)
                       </Button>
-                      {!verified && (
-                        <Button size="sm" variant="ghost" type="button" onClick={() => requestVerification(ev.id)} loading={busy === ev.id + ':req'}>
-                          <RefreshCw className="h-4 w-4" /> Request verification
-                        </Button>
-                      )}
                     </div>
                   ) : (
                     <div className="space-y-2 rounded-lg border border-border p-3">
@@ -265,21 +227,6 @@ export function EvidenceLibrary({ studentId, mode }: { studentId: string; mode: 
                       </Button>
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* Viewer (employer/supervisor): verify */}
-              {mode === 'viewer' && (
-                <div className="pt-1">
-                  <Button
-                    size="sm"
-                    variant={verified ? 'outline' : 'default'}
-                    type="button"
-                    onClick={() => verify(ev.id, !verified)}
-                    loading={busy === ev.id + ':verify'}
-                  >
-                    <ShieldCheck className="h-4 w-4" /> {verified ? 'Remove verification' : 'Verify as reviewer'}
-                  </Button>
                 </div>
               )}
             </CardBody>

@@ -109,19 +109,29 @@ evidence.get('/student/:studentId', async (req, res) => {
   res.json(rows)
 })
 
-// Candidate-level AI summary for employers. Returns the cached profile summary,
-// generating + storing it on first request if missing.
-evidence.get('/student/:studentId/summary', async (req, res) => {
+// Candidate-level AI summary for employers. When a `jobDescription` is supplied
+// the summary is built on the fly and scoped to what's relevant to THAT role
+// (not a generic dump of everything). Without one, it returns the cached
+// profile-wide summary, generating + storing it on first request if missing.
+evidence.post('/student/:studentId/summary', async (req, res) => {
   const studentId = req.params.studentId
+  const jobDescription = typeof req.body?.jobDescription === 'string' ? req.body.jobDescription.trim() : ''
+  const items = (await sb.from('evidence_items')
+    .select('title,description,ai_summary,confirmed_skills,status')
+    .eq('student_id', studentId)
+    .order('created_at', { ascending: false })).data as CandidateEvidenceItem[] | null
+
+  if (jobDescription) {
+    const summary = await extractionClient.candidateSummary(items ?? [], jobDescription)
+    res.json({ summary: summary ?? 'No evidence submitted yet.' })
+    return
+  }
+
   const profile = (await sb.from('profiles').select('evidence_summary').eq('id', studentId).maybeSingle()).data as
     | { evidence_summary: string | null }
     | null
   let summary = profile?.evidence_summary ?? null
   if (!summary) {
-    const items = (await sb.from('evidence_items')
-      .select('title,description,ai_summary,confirmed_skills,status')
-      .eq('student_id', studentId)
-      .order('created_at', { ascending: false })).data as CandidateEvidenceItem[] | null
     summary = await extractionClient.candidateSummary(items ?? [])
     if (summary) await sb.from('profiles').update({ evidence_summary: summary }).eq('id', studentId)
   }

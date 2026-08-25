@@ -1,9 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Sparkles, ExternalLink, ImageIcon, Loader2 } from 'lucide-react'
+import { Sparkles, ExternalLink, ImageIcon, Loader2, MessageSquare } from 'lucide-react'
 import { evidenceApi } from '@/lib/api'
+import type { JobListing } from '@/types'
 import { Card, CardBody, Badge } from '@/components/ui/primitives'
-import { EvidenceComments } from '@/components/evidence/Comments'
+import { EvidenceChat } from '@/components/EvidenceChat'
 
 // Minimal Markdown renderer for the AI summary: handles **bold**, "- " bullets,
 // and short **Heading** lines. Avoids pulling in a full Markdown dependency for
@@ -72,25 +73,33 @@ function SummaryMarkdown({ text }: { text: string }) {
  * evidence item). Reviewers who want the primary sources can open the candidate's
  * public profile, where the full evidence gallery lives.
  */
-export function EmployerEvidenceSummary({ studentId }: { studentId: string }) {
+export function EmployerEvidenceSummary({ studentId, job }: { studentId: string; job?: JobListing | null }) {
   const [summary, setSummary] = useState<string | null>(null)
   const [count, setCount] = useState<number | null>(null)
-  const [items, setItems] = useState<Array<{ id: string; title: string }> | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // Build a single job-role context string so the summary only surfaces what's
+  // relevant to THIS posting (not a generic dump of everything).
+  const jobDescription = useMemo(() => {
+    if (!job) return ''
+    const parts = [job.title, job.description]
+    if (job.responsibilities?.length) parts.push('Responsibilities: ' + job.responsibilities.join('; '))
+    if (job.qualifications?.length) parts.push('Qualifications: ' + job.qualifications.join('; '))
+    return parts.filter(Boolean).join('\n\n')
+  }, [job])
 
   useEffect(() => {
     let active = true
     setLoading(true)
-    Promise.all([evidenceApi.summary(studentId), evidenceApi.listForStudent(studentId)])
+    Promise.all([evidenceApi.summary(studentId, jobDescription), evidenceApi.listForStudent(studentId)])
       .then(([s, fetchedItems]) => {
         if (!active) return
         setSummary(s.summary)
         setCount(fetchedItems.length)
-        setItems(fetchedItems)
       })
       .catch(() => active && setSummary('Could not load the evidence summary.'))
       .finally(() => active && setLoading(false))
-  }, [studentId])
+  }, [studentId, jobDescription])
 
   return (
     <Card>
@@ -98,7 +107,7 @@ export function EmployerEvidenceSummary({ studentId }: { studentId: string }) {
         <div className="mb-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
-            <h3 className="font-semibold">AI evidence summary</h3>
+            <h3 className="font-semibold">{job ? 'Evidence for this role' : 'AI evidence summary'}</h3>
             {count != null && <Badge tone="outline">{count} item{count === 1 ? '' : 's'}</Badge>}
           </div>
           <Link
@@ -122,12 +131,20 @@ export function EmployerEvidenceSummary({ studentId }: { studentId: string }) {
         )}
 
         <p className="mt-3 text-xs text-muted-foreground">
-          This summary is generated from the candidate's submitted evidence. Open the full gallery to review the original files, links, and verification status.
+          {job
+            ? 'This summary is scoped to what matters for the role you’re hiring for. Ask the assistant below if you want specifics or proof.'
+            : 'This summary is generated from the candidate’s submitted evidence. Open the full gallery to review the original files and links.'}
         </p>
 
-                {items != null && items.length > 0 ? (
-          <EvidenceComments evidenceId={items[0].id} />
-        ) : null}
+        <div className="mt-4 rounded-xl border border-border">
+          <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+            <MessageSquare className="h-4 w-4 text-primary" />
+            <p className="text-sm font-medium">Ask about this evidence</p>
+          </div>
+          <div className="p-3">
+            <EvidenceChat studentId={studentId} />
+          </div>
+        </div>
 
         <div className="mt-3">
           <Link

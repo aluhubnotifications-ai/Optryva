@@ -22,7 +22,7 @@ import { Logo } from '@/components/Logo'
 import { OnboardingMascot } from '@/components/OnboardingMascot'
 import { Confetti } from '@/components/Confetti'
 import { Button } from '@/components/ui/Button'
-import { Input, Label, Textarea } from '@/components/ui/primitives'
+import { Input, Label, Textarea, Select } from '@/components/ui/primitives'
 import { CountryCombobox } from '@/components/ui/CountryCombobox'
 import { COUNTRIES } from '@/lib/geo'
 import { useToast } from '@/components/ui/toast'
@@ -195,6 +195,7 @@ export default function Onboarding() {
   const [school, setSchool] = useState(user?.school ?? '')
   const [major, setMajor] = useState(user?.major ?? '')
   const [gpa, setGpa] = useState(user?.gpa ?? '')
+  const [year, setYear] = useState(user?.year ? String(user.year) : '')
   const [bio, setBio] = useState(user?.bio ?? '')
   const [studentDomains, setStudentDomains] = useState(
     Array.isArray(user?.student_domains) ? (user?.student_domains as string[]).join(', ') : '',
@@ -302,7 +303,17 @@ export default function Onboarding() {
         if (!school.trim()) return toast({ title: 'Add your school', tone: 'error' })
         if (!major.trim()) return toast({ title: 'Add your major', tone: 'error' })
         if (!gpa.trim()) return toast({ title: 'Add your GPA or grades', tone: 'error' })
-        await patchProfile({ school: school.trim(), major: major.trim(), gpa: gpa.trim() })
+        if (!country.trim()) return toast({ title: 'Pick your country', tone: 'error' })
+        if (!year) return toast({ title: 'Pick your year of study', tone: 'error' })
+        const graduated = year === 'grad'
+        await patchProfile({
+          school: school.trim(),
+          major: major.trim(),
+          gpa: gpa.trim(),
+          country: country.trim(),
+          location: country.trim(),
+          ...(graduated ? { graduated: true, year: '' } : { graduated: false, year }),
+        })
         goNext()
       } else if (current.id === 'school') {
         if (!bio.trim()) return toast({ title: 'Add a short description', tone: 'error' })
@@ -381,12 +392,10 @@ export default function Onboarding() {
       if (!workType) return toast({ title: 'Choose a work preference', tone: 'error' })
       if (prefListingTypes.length === 0) return toast({ title: 'Pick at least one opportunity type', tone: 'error' })
     }
-    // Students pick their geography via "preferred countries" in Preferences, so
-    // derive their base country from that (a non-Remote choice, else Remote).
-    const baseCountry =
-      userType === 'student'
-        ? prefCountries.find((c) => c !== 'Remote') ?? prefCountries[0] ?? ''
-        : country.trim()
+    // Students now pick their country in the Education step; schools/companies
+    // pick it in the Location step. Either way `country` holds the base country.
+    const baseCountry = country.trim()
+    const graduated = year === 'grad'
     setSaving(true)
     try {
       await patchProfile({
@@ -399,6 +408,8 @@ export default function Onboarding() {
         school: school.trim(),
         major: major.trim(),
         gpa: gpa.trim(),
+        year: graduated ? '' : year,
+        graduated,
         skills,
         ...(userType === 'school'
           ? {
@@ -572,6 +583,26 @@ export default function Onboarding() {
                   placeholder="e.g. 3.8/4.0 or Second Class Upper"
                   className="mt-1.5 bg-background"
                 />
+              </div>
+              <div>
+                <Label>Country</Label>
+                <CountryCombobox
+                  value={country}
+                  onChange={setCountry}
+                  placeholder="Select your country"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">We use this to match you to the right opportunities.</p>
+              </div>
+              <div>
+                <Label>Year of study</Label>
+                <Select value={year} onChange={(e) => setYear(e.target.value)} className="bg-background">
+                  <option value="">Select…</option>
+                  <option value="1">Year 1</option>
+                  <option value="2">Year 2</option>
+                  <option value="3">Year 3</option>
+                  <option value="4">Year 4</option>
+                  <option value="grad">Graduate</option>
+                </Select>
               </div>
             </div>
           )}
