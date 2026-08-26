@@ -331,7 +331,7 @@ export default function Jobs() {
         </div>
       </div>
 
-      {gateOpen ? (
+      {gateOpen && (
         <div className="mt-2">
           <MatchRunner
             userId={user.id}
@@ -342,7 +342,10 @@ export default function Jobs() {
             subtitle={`Welcome back, ${user.full_name.split(' ')[0]} — let's score today's opportunities against your profile and show your best fits first. You can switch tabs while it runs.`}
           />
         </div>
-      ) : (
+      )}
+
+      {/* The opportunities board is ALWAYS visible — matching runs above it, so a
+          slow or failed AI run never strands the student away from the listings. */}
       <>
       {/* Sticky tabs */}
       <div className="sticky top-16 z-20 -mx-4 mb-4 border-b border-border bg-background/95 px-4 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
@@ -446,9 +449,8 @@ export default function Jobs() {
             bare
           />
         )}
-      </Drawer>
+        </Drawer>
       </>
-      )}
 
       <AIResearchPanel
         open={!!researchJob}

@@ -159,6 +159,12 @@ export function MatchRunner({
                 {activity?.label ?? (total > 0 ? 'Scoring open roles…' : 'Reading your profile…')}
               </p>
             </div>
+            <button
+              onClick={() => (onError ?? onComplete)()}
+              className="ml-auto shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              Browse opportunities ↓
+            </button>
           </div>
 
           {/* Pipeline steps */}
@@ -229,9 +235,9 @@ export function MatchRunner({
             </div>
           </div>
 
-          {/* AI activity visualization — reflects the live step so the wait feels alive */}
+          {/* AI activity — a live heartbeat monitor that reflects the AI working */}
           <div className="mt-6 rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5 p-4">
-            <div className="mb-3 flex items-center justify-between">
+            <div className="mb-2 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="relative flex h-2.5 w-2.5">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent/70" />
@@ -243,16 +249,36 @@ export function MatchRunner({
                 {activity?.label ?? 'Thinking…'}
               </span>
             </div>
-            <div className="flex h-12 items-end justify-center gap-1">
-              {Array.from({ length: 20 }).map((_, i) => (
-                <motion.span
-                  key={i}
-                  className="w-1.5 rounded-full bg-gradient-to-t from-primary/40 via-accent to-primary"
-                  initial={{ height: 6 }}
-                  animate={{ height: [6, 40 - (i % 6) * 5, 14, 32 - (i % 5) * 4, 6] }}
-                  transition={{ duration: 0.7 + (i % 6) * 0.12, repeat: Infinity, ease: 'easeInOut' }}
-                />
-              ))}
+            <div className="relative h-16 w-full overflow-hidden rounded-lg bg-background/40">
+              <svg viewBox="0 0 200 56" preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
+                <defs>
+                  <linearGradient id="ecgGrad" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="hsl(var(--primary))" />
+                    <stop offset="100%" stopColor="hsl(var(--accent))" />
+                  </linearGradient>
+                  <filter id="ecgGlow" x="-20%" y="-50%" width="140%" height="200%">
+                    <feGaussianBlur stdDeviation="1.1" result="b" />
+                    <feMerge>
+                      <feMergeNode in="b" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                  </filter>
+                </defs>
+                <motion.g
+                  animate={{ x: [0, -100] }}
+                  transition={{ duration: 1.8, repeat: Infinity, ease: 'linear' }}
+                >
+                  <path
+                    d="M0 30 H28 l5 -3 l5 6 l7 -22 l7 40 l6 -18 l5 2 H100 M100 30 H128 l5 -3 l5 6 l7 -22 l7 40 l6 -18 l5 2 H200 M200 30 H228 l5 -3 l5 6 l7 -22 l7 40 l6 -18 l5 2 H300"
+                    fill="none"
+                    stroke="url(#ecgGrad)"
+                    strokeWidth={2}
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    filter="url(#ecgGlow)"
+                  />
+                </motion.g>
+              </svg>
             </div>
           </div>
         </div>
