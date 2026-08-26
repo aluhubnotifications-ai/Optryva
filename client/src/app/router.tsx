@@ -46,6 +46,17 @@ const Onboarding = lazyRoute(() => import('@/pages/Onboarding'))
 // Note: company Analytics is shown inline on the Dashboard, so there is no
 // separate /app/analytics route.
 
+// Account-aware profile route: students get the student editor while companies
+// and schools get the org profile — regardless of which link they clicked or any
+// stale cached user_type (the old "I see the student profile until I refresh").
+function ProfileRoute() {
+  const user = useCurrentUser()
+  if (user && (user.user_type === 'company' || user.user_type === 'school')) {
+    return <CompanyProfile />
+  }
+  return <Profile />
+}
+
 function RouteFallback() {
   return (
     <div className="mesh-bg flex min-h-[60vh] items-center justify-center">
@@ -296,7 +307,7 @@ export const router = createBrowserRouter([
       { path: 'companies', element: <Companies /> },
       { path: 'companies/:id', element: <CompanyPublic /> },
       { path: 'messages', element: <Messages /> },
-      { path: 'profile', element: <Profile /> },
+      { path: 'profile', element: <ProfileRoute /> },
       { path: 'usage', element: <Usage /> },
       { path: 'admin', element: <RequireAdmin />, children: [{ index: true, element: <Admin /> }] },
       { path: 'u/:id', element: <UserProfile /> },

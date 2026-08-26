@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect } from 'react'
+import { motion } from 'framer-motion'
 import {
   User,
   Briefcase,
@@ -260,7 +261,12 @@ export default function Profile() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <motion.div
+      className="mx-auto max-w-6xl"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: 'easeOut' }}
+    >
       {/* Onboarding gate / progress banner — always visible until the profile is
           complete. Keeps the student oriented on what to do next. */}
       {(showGate || showReminder) && (
@@ -623,7 +629,7 @@ export default function Profile() {
           <EvidenceGallery studentId={user.id} mode="owner" />
         </div>
       )}
-    </div>
+    </motion.div>
   )
 }
 

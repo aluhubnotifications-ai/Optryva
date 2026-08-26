@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { Building2, Save, Link2, Crown, Globe, ShieldCheck, Lock, Gauge, Briefcase, CheckCircle2, Circle } from 'lucide-react'
 import { useCurrentUser, useSession } from '@/lib/store'
@@ -79,7 +80,12 @@ export default function CompanyProfile() {
   const pct = Math.round((doneCount / checklist.length) * 100)
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <motion.div
+      className="mx-auto max-w-6xl"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: 'easeOut' }}
+    >
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="space-y-5">
       {/* Cover + identity */}
@@ -258,6 +264,6 @@ export default function CompanyProfile() {
           <AccountSecurity />
         </aside>
       </div>
-    </div>
+    </motion.div>
   )
 }
