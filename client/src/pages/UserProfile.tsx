@@ -41,7 +41,7 @@ export default function UserProfile() {
   return (
     <div className="mx-auto max-w-3xl">
       {p.cover_url && (
-        <div className="h-36 w-full overflow-hidden rounded-xl bg-gradient-to-r from-primary/30 to-accent/20">
+        <div className="h-44 w-full overflow-hidden rounded-xl bg-gradient-to-r from-primary/30 to-accent/20">
           <img src={p.cover_url} alt="Cover" className="h-full w-full object-cover" />
         </div>
       )}
@@ -49,22 +49,20 @@ export default function UserProfile() {
         <ArrowLeft className="h-4 w-4" /> Back to admin
       </Link>
 
-      <Card className={p.cover_url ? '-mt-10 relative z-10' : ''}>
-        <CardBody>
-          <div className="flex items-start gap-4">
-            <Avatar name={name} src={p.avatar_url} size={64} />
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl font-bold">{name}</h1>
-                <Badge tone={isOrg ? 'accent' : 'primary'} className="capitalize">{p.user_type}</Badge>
-              </div>
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-                <span className="inline-flex items-center gap-1"><Mail className="h-3.5 w-3.5" /> {p.email}</span>
-                {p.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {p.location}</span>}
-                <span>· joined {formatDate(p.created_at)}</span>
-              </div>
-              {p.bio && <p className="mt-3 text-sm text-muted-foreground">{p.bio}</p>}
+      <Card className={p.cover_url ? '-mt-12 relative z-10' : ''}>
+        <CardBody className="pt-0">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <Avatar name={name} src={p.avatar_url} size={88} className="rounded-2xl ring-4 ring-card" />
+            <Badge tone={isOrg ? 'accent' : 'primary'} className="mb-1 capitalize">{p.user_type}</Badge>
+          </div>
+          <div className="mt-3">
+            <h1 className="text-2xl font-bold tracking-tight">{name}</h1>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+              <span className="inline-flex items-center gap-1"><Mail className="h-3.5 w-3.5" /> {p.email}</span>
+              {p.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {p.location}</span>}
+              <span>· joined {formatDate(p.created_at)}</span>
             </div>
+            {p.bio && <p className="mt-3 text-sm text-muted-foreground">{p.bio}</p>}
           </div>
 
           {/* Student details */}

@@ -266,20 +266,18 @@ export default function Profile() {
           cover inside and the avatar overlapping, so nothing eats the upper area. */}
       <Card className="overflow-hidden">
         <CoverEditor src={user.cover_url} isSchool={false} onChange={changeCover} />
-        <CardBody className="-mt-10">
+        <CardBody className="-mt-12 pt-0">
           <div className="flex flex-wrap items-end justify-between gap-3">
-            <div className="flex items-end gap-3">
-              <AvatarEditor name={user.full_name} src={user.avatar_url} size={72} rounded="rounded-2xl" onChange={changePicture} />
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-bold tracking-tight">{user.full_name}</h1>
-                  {user.plan !== 'free' && <Badge tone="primary" className="gap-1"><Crown className="h-3 w-3" /> {user.plan.toUpperCase()}</Badge>}
-                </div>
-                <p className="text-sm text-muted-foreground">{user.major}{user.school ? ` · ${user.school}` : ''}</p>
-                <p className="text-xs text-muted-foreground">{user.email}</p>
-              </div>
+            <AvatarEditor name={user.full_name} src={user.avatar_url} size={96} rounded="rounded-2xl" className="ring-4 ring-card" onChange={changePicture} />
+            <Button onClick={save} loading={saving} className="mb-1 gap-1.5"><Save className="h-4 w-4" /> Save changes</Button>
+          </div>
+          <div className="mt-3 min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-bold tracking-tight">{user.full_name}</h1>
+              {user.plan !== 'free' && <Badge tone="primary" className="gap-1"><Crown className="h-3 w-3" /> {user.plan.toUpperCase()}</Badge>}
             </div>
-            <Button onClick={save} loading={saving} className="gap-1.5"><Save className="h-4 w-4" /> Save changes</Button>
+            <p className="text-sm text-muted-foreground">{user.major}{user.school ? ` · ${user.school}` : ''}</p>
+            <p className="text-xs text-muted-foreground">{user.email}</p>
           </div>
         </CardBody>
       </Card>

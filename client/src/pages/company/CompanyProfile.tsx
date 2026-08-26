@@ -91,19 +91,17 @@ export default function CompanyProfile() {
       {/* Cover + identity */}
       <Card className="overflow-hidden">
         <CoverEditor src={user.cover_url} isSchool={isSchool} onChange={changeCover} />
-        <CardBody className="-mt-10">
+        <CardBody className="-mt-12 pt-0">
           <div className="flex flex-wrap items-end justify-between gap-3">
-            <div className="flex items-end gap-3">
-              <AvatarEditor name={f.company_name} src={user.avatar_url} size={72} rounded="rounded-2xl" onChange={changeLogo} />
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-bold tracking-tight">{f.company_name || 'Your company'}</h1>
-                  {isSchool && <Badge tone="accent">School</Badge>}
-                </div>
-                <p className="text-sm text-muted-foreground">{f.industry} · {f.company_size} employees</p>
-              </div>
+            <AvatarEditor name={f.company_name} src={user.avatar_url} size={96} rounded="rounded-2xl" className="ring-4 ring-card" onChange={changeLogo} />
+            <Badge tone="primary" className="mb-1 gap-1"><Crown className="h-3 w-3" /> {PLAN_LABELS[user.plan] ?? user.plan} plan</Badge>
+          </div>
+          <div className="mt-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-bold tracking-tight">{f.company_name || 'Your company'}</h1>
+              {isSchool && <Badge tone="accent">School</Badge>}
             </div>
-            <Badge tone="primary" className="gap-1"><Crown className="h-3 w-3" /> {PLAN_LABELS[user.plan] ?? user.plan} plan</Badge>
+            <p className="text-sm text-muted-foreground">{f.industry} · {f.company_size} employees</p>
           </div>
         </CardBody>
       </Card>

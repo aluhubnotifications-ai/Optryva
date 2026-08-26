@@ -117,6 +117,21 @@
       radial-gradient(at 98% 10%, hsl(var(--accent) / 0.14) 0px, transparent 45%),
       radial-gradient(at 50% 100%, hsl(var(--primary) / 0.10) 0px, transparent 55%);
   }
+
+  /* Designed dark-mode backdrop: a deep charcoal base with two soft, branded
+     glows (warm accent top-right, faint white lift bottom-left) so the app
+     never reads as a flat, harsh black void. */
+  .app-bg {
+    background-color: hsl(var(--background));
+  }
+  .dark .app-bg,
+  .dark body {
+    background-color: hsl(var(--background));
+    background-image:
+      radial-gradient(50rem 50rem at 100% -10%, hsl(var(--accent) / 0.12), transparent 60%),
+      radial-gradient(44rem 44rem at -10% 110%, hsl(var(--primary) / 0.06), transparent 55%);
+    background-attachment: fixed;
+  }
 }
 
 /* Custom scrollbar */

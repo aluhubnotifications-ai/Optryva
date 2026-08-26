@@ -62,7 +62,7 @@ export function CoverEditor({
   return (
     <>
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
-      <div className="group relative h-28">
+      <div className="group relative h-44">
         <CoverImage src={src} isSchool={isSchool} />
         <button
           type="button"

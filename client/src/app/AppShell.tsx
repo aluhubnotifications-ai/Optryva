@@ -123,7 +123,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (isFocusMode) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="app-bg min-h-screen">
         <GlobalProgress />
         <Suspense fallback={<div className="py-24"><PageSpinner label="Loading…" /></div>}>
           {children}
@@ -133,7 +133,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="app-bg min-h-screen">
       <GlobalProgress />
       {/* Sidebar (desktop) */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-border bg-card/40 lg:flex">

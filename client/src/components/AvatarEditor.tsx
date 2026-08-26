@@ -4,7 +4,7 @@ import { Avatar, Input, Label } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/toast'
-import { imageFileToDataUrl } from '@/lib/utils'
+import { imageFileToDataUrl, cn } from '@/lib/utils'
 
 /**
  * Editable avatar: a small camera badge at the bottom-right corner opens a dialog
@@ -16,12 +16,14 @@ export function AvatarEditor({
   src,
   size = 72,
   rounded = 'rounded-full',
+  className,
   onChange,
 }: {
   name?: string
   src?: string
   size?: number
   rounded?: string
+  className?: string
   onChange: (avatarUrl: string) => Promise<void> | void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -65,7 +67,7 @@ export function AvatarEditor({
   return (
     <>
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
-      <div className={`group relative inline-block ${rounded}`}>
+      <div className={cn(`group relative inline-block ${rounded}`, className)}>
         <Avatar name={name} src={src} size={size} className={rounded} />
         <button
           type="button"
