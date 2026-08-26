@@ -1,4 +1,5 @@
 import type { Profile, UserType } from '@/types'
+import type { NudgeItem } from '@/components/NudgeModal'
 
 // Onboarding is shown ONLY to accounts created in this session. The server flags
 // a brand-new account by redirecting to `/onboarding?new=1` (register, or a
@@ -192,3 +193,23 @@ export const ROLE_OPTIONS: { value: UserType; label: string; hint: string }[] = 
   { value: 'company', label: 'Employer', hint: 'Hire talent' },
   { value: 'school', label: 'University', hint: 'Manage student careers' },
 ]
+
+/**
+ * Missing "important" organization-profile fields for companies and schools,
+ * surfaced as one-tap CTA nudge items (mirrors the student profileGaps list).
+ * Drives a completion reminder shown on the company/school Dashboard, so an org
+ * that finished onboarding still gets prompted to finish the rest — name, bio,
+ * industry & size, location/country, link, and logo.
+ */
+export function companyProfileGaps(p: Profile | null | undefined): NudgeItem[] {
+  if (!p) return []
+  const items: NudgeItem[] = []
+  const to = '/app/company-profile'
+  if (!p.company_name?.trim()) items.push({ key: 'name', label: 'Company / organization name', cta: 'Add', to })
+  if (!p.bio?.trim()) items.push({ key: 'bio', label: 'About — a short description', cta: 'Add', to })
+  if (!p.industry || !p.company_size) items.push({ key: 'industry', label: 'Industry & size', cta: 'Add', to })
+  if (!p.location?.trim() || !p.country?.trim()) items.push({ key: 'location', label: 'Location & country', cta: 'Add', to })
+  if (!p.website && !p.linkedin) items.push({ key: 'links', label: 'Website or LinkedIn', cta: 'Add', to })
+  if (!p.avatar_url) items.push({ key: 'logo', label: 'Upload a logo', cta: 'Add', to })
+  return items
+}

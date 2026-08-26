@@ -4,6 +4,8 @@ import { BarChart3, Briefcase, Users, Star, TrendingUp, UserCheck, Eye } from 'l
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
 import { useCurrentUser } from '@/lib/store'
 import { applicationsApi, followsApi, jobsApi } from '@/lib/api'
+import { companyProfileGaps } from '@/lib/onboarding'
+import { NudgeModal } from '@/components/NudgeModal'
 import type { Application, JobListing } from '@/types'
 import { Card, CardBody, Skeleton } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
@@ -16,6 +18,14 @@ export default function Analytics() {
   const [opens, setOpens] = useState<Record<string, number>>({})
   const [followers, setFollowers] = useState(0)
   const [loading, setLoading] = useState(true)
+
+  // Completion reminder: like the student dashboard, remind company/school users
+  // to finish the important parts of their org profile every time they open the
+  // dashboard (state resets on each mount, so it re-appears until the gaps are
+  // filled). `companyProfileGaps` mirrors the CompanyProfile checklist.
+  const nudgeItems = useMemo(() => companyProfileGaps(user), [user])
+  const [nudgeHidden, setNudgeHidden] = useState(false)
+  const showNudge = !nudgeHidden && nudgeItems.length > 0
 
   useEffect(() => {
     ;(async () => {
@@ -75,6 +85,7 @@ export default function Analytics() {
 
   return (
     <div className="space-y-5">
+      {showNudge && <NudgeModal items={nudgeItems} onClose={() => setNudgeHidden(true)} />}
       <div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
