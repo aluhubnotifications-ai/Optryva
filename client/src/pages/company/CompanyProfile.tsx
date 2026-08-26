@@ -33,6 +33,9 @@ export default function CompanyProfile() {
   const AUTOSAVE_DELAY = 600
   const saveTimers = useRef<Map<string, number>>(new Map())
   const [saved, setSaved] = useState<'idle' | 'saving' | 'saved'>('idle')
+  // The field key currently being saved, so the "Saving…/saved" line can render
+  // directly under the input being edited (not off in the Save button).
+  const [savingField, setSavingField] = useState<string | null>(null)
   function setField<K extends keyof typeof f>(key: K, value: (typeof f)[K]) {
     setF((prev) => ({ ...prev, [key]: value }))
     autoSave({ [key]: value } as Partial<ProfileT>)
@@ -40,6 +43,7 @@ export default function CompanyProfile() {
   function autoSave(patch: Partial<ProfileT>) {
     setSaved('saving')
     const k = Object.keys(patch)[0]!
+    setSavingField(k)
     clearTimeout(saveTimers.current.get(k))
     saveTimers.current.set(k, window.setTimeout(async () => {
       saveTimers.current.delete(k)
@@ -47,11 +51,20 @@ export default function CompanyProfile() {
         const updated = await profilesApi.update(user.id, patch)
         if (updated) useSession.getState().setProfile(updated)
         setSaved('saved')
-        setTimeout(() => setSaved('idle'), 2500)
+        setTimeout(() => { setSaved('idle'); setSavingField(null) }, 2500)
       } catch {
         setSaved('idle')
+        setSavingField(null)
       }
     }, AUTOSAVE_DELAY))
+  }
+  function FieldStatus({ field }: { field: string }) {
+    if (savingField !== field || saved === 'idle') return null
+    return (
+      <span className={`mt-1 text-xs ${saved === 'saving' ? 'text-muted-foreground' : 'text-foreground'}`}>
+        {saved === 'saving' ? 'Saving…' : 'All changes saved'}
+      </span>
+    )
   }
 
   async function changeLogo(avatar_url: string) {
@@ -138,15 +151,17 @@ export default function CompanyProfile() {
       <Card>
         <CardBody className="space-y-4">
           <div className="flex items-center gap-2"><Building2 className="h-5 w-5 text-primary" /><h2 className="font-semibold">{isSchool ? 'Organization' : 'Company'} details</h2></div>
-          <div><Label>{isSchool ? 'Organization' : 'Company'} name</Label><Input value={f.company_name} onChange={(e) => { const v = e.target.value; setF((p) => ({ ...p, company_name: v })); autoSave({ company_name: v, full_name: v }) }} /></div>
-          <div><Label>About</Label><Textarea value={f.bio} onChange={(e) => setField('bio', e.target.value)} placeholder="What you do, mission, culture…" /></div>
+          <div><Label>{isSchool ? 'Organization' : 'Company'} name</Label><Input value={f.company_name} onChange={(e) => { const v = e.target.value; setF((p) => ({ ...p, company_name: v })); autoSave({ company_name: v, full_name: v }); setSavingField('company_name') }} />
+            <FieldStatus field="company_name" /></div>
+          <div><Label>About</Label><Textarea value={f.bio} onChange={(e) => setField('bio', e.target.value)} placeholder="What you do, mission, culture…" />
+            <FieldStatus field="bio" /></div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div><Label>Industry</Label><Select value={f.industry} onChange={(e) => setField('industry', e.target.value)}>{INDUSTRIES.map((i) => <option key={i}>{i}</option>)}</Select></div>
-            <div><Label>Size</Label><Select value={f.company_size} onChange={(e) => setField('company_size', e.target.value)}>{SIZES.map((s) => <option key={s}>{s}</option>)}</Select></div>
-            <div><Label>Location</Label><Input value={f.location} onChange={(e) => setField('location', e.target.value)} placeholder="City / Remote" /></div>
+            <div><Label>Industry</Label><Select value={f.industry} onChange={(e) => setField('industry', e.target.value)}>{INDUSTRIES.map((i) => <option key={i}>{i}</option>)}</Select><FieldStatus field="industry" /></div>
+            <div><Label>Size</Label><Select value={f.company_size} onChange={(e) => setField('company_size', e.target.value)}>{SIZES.map((s) => <option key={s}>{s}</option>)}</Select><FieldStatus field="company_size" /></div>
+            <div><Label>Location</Label><Input value={f.location} onChange={(e) => setField('location', e.target.value)} placeholder="City / Remote" /><FieldStatus field="location" /></div>
             <div>
               <Label>Country</Label>
-              <CountryCombobox value={f.country} onChange={(v) => setField('country', v)} placeholder="Select or type a country" />
+              <CountryCombobox value={f.country} onChange={(v) => setField('country', v)} placeholder="Select or type a country" /><FieldStatus field="country" />
               <p className="mt-1 text-xs text-muted-foreground">Your listings use this country. Pick from the list or type your own — companies are locked to it when creating opportunities.</p>
             </div>
             <div><Label>Email</Label><Input value={f.email} disabled /></div>
@@ -159,6 +174,7 @@ export default function CompanyProfile() {
                   <option value="hybrid">Hybrid</option>
                   <option value="onsite">On-site</option>
                 </Select>
+                <FieldStatus field="work_type" />
                 <p className="mt-1 text-xs text-muted-foreground">How your team works — shown on your opportunities.</p>
               </div>
             )}
@@ -185,9 +201,10 @@ export default function CompanyProfile() {
                 }}
                 placeholder="e.g. alueducation.com, alustudent.com"
               />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Comma-separated. Anyone whose login email ends in one of these domains counts as your student — used for private access and “my students only” job postings.
-              </p>
+               <p className="mt-1 text-xs text-muted-foreground">
+                 Comma-separated. Anyone whose login email ends in one of these domains counts as your student — used for private access and “my students only” job postings.
+               </p>
+               <FieldStatus field="student_domains" />
             </div>
             <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border p-3">
               <input
@@ -201,9 +218,10 @@ export default function CompanyProfile() {
                     student_domains: f.student_domains.split(',').map((s) => s.trim().replace(/^@/, '').replace(/^www\./, '').toLowerCase()).filter(Boolean),
                   })
                 }}
-                className="mt-0.5 h-4 w-4 accent-primary"
-              />
-              <span>
+                 className="mt-0.5 h-4 w-4 accent-primary"
+               />
+               <FieldStatus field="is_private" />
+               <span>
                 <span className="flex items-center gap-1.5 font-medium"><Lock className="h-3.5 w-3.5 text-primary" /> Private school</span>
                 <span className="mt-0.5 block text-xs text-muted-foreground">
                   Only people with a matching student email domain can see your profile and your job listings. Leave off to stay public.
@@ -219,15 +237,13 @@ export default function CompanyProfile() {
         <CardBody className="space-y-4">
           <div className="flex items-center gap-2"><Link2 className="h-5 w-5 text-primary" /><h2 className="font-semibold">Links</h2></div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div><Label><Globe className="mr-1 inline h-3.5 w-3.5" />Website</Label><Input value={f.website} onChange={(e) => setField('website', e.target.value)} placeholder="https://…" /></div>
-            <div><Label>LinkedIn</Label><Input value={f.linkedin} onChange={(e) => setField('linkedin', e.target.value)} placeholder="https://linkedin.com/company/…" /></div>
+            <div><Label><Globe className="mr-1 inline h-3.5 w-3.5" />Website</Label><Input value={f.website} onChange={(e) => setField('website', e.target.value)} placeholder="https://…" /><FieldStatus field="website" /></div>
+            <div><Label>LinkedIn</Label><Input value={f.linkedin} onChange={(e) => setField('linkedin', e.target.value)} placeholder="https://linkedin.com/company/…" /><FieldStatus field="linkedin" /></div>
           </div>
         </CardBody>
       </Card>
 
       <div className="flex items-center justify-end gap-2">
-        {saved === 'saving' && <span className="text-xs text-muted-foreground">Saving…</span>}
-        {saved === 'saved' && <span className="text-xs text-foreground">All changes saved</span>}
         <Button onClick={save} loading={saving} className="gap-1.5"><Save className="h-4 w-4" /> Save changes</Button>
       </div>
         </div>
