@@ -361,8 +361,10 @@ export const resumesApi = {
 // visibility for the authenticated viewer, so `list()` ignores its argument
 // (kept for call-site compatibility).
 export const jobsApi = {
-  async list(_viewer?: Profile | null): Promise<JobListing[]> {
-    return cached('jobs:list', () => apiFetch('/jobs') as Promise<JobListing[]>)
+  async list(_viewer?: Profile | null, ids?: string[]): Promise<JobListing[]> {
+    const qs = ids ? `?ids=${encodeURIComponent(ids.join(','))}` : ''
+    const key = `jobs:list:${ids ? ids.join(',') : 'all'}`
+    return cached(key, () => apiFetch(`/jobs${qs}`) as Promise<JobListing[]>)
   },
   async get(id: string): Promise<JobListing | null> {
     try {

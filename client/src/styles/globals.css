@@ -31,16 +31,17 @@
   .dark {
     --background: 0 0% 0%;
     --foreground: 0 0% 96%;
-    /* Cards/surfaces sit slightly above the pure-black app bg so containers are
-     * clearly visible (not the same black "as fuck") while borders blend in. */
-    --card: 0 0% 6%;
+    /* Surfaces/containers sit just above the pure-black app bg so they're
+     * clearly visible (not the same black "as fuck") while borders blend in
+     * without creating a jarring gray inconsistency. */
+    --card: 0 0% 9%;
     --card-foreground: 0 0% 96%;
-    --muted: 0 0% 10%;
+    --muted: 0 0% 12%;
     --muted-foreground: 0 0% 62%;
     --primary: 0 0% 100%;
     --primary-foreground: 0 0% 7%;
-    --secondary: 240 10% 16%;
-    --secondary-foreground: 240 12% 92%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 92%;
     --accent: 24 100% 58%;
     --accent-foreground: 0 0% 100%;
     --success: 152 58% 48%;
@@ -49,10 +50,10 @@
     --warning-foreground: 40 100% 8%;
     --danger: 0 80% 62%;
     --danger-foreground: 0 0% 100%;
-    /* Borders/inputs blend into the background so there is no visible
-     * inconsistency between surfaces (no stray gray lines on black). */
-    --border: 0 0% 0%;
-    --input: 0 0% 0%;
+    /* Borders/inputs are a very dark gray so containers/inputs have a visible
+     * edge that reads as part of the black palette (no bright-gray mismatch). */
+    --border: 0 0% 12%;
+    --input: 0 0% 12%;
     --ring: 0 0% 88%;
   }
 

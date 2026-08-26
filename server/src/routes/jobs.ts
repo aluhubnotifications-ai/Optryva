@@ -117,12 +117,20 @@ jobs.post('/:id/open', async (req, res) => {
 
 jobs.get('/', async (req, res) => {
   const viewer = must(await sb.from('profiles').select('*').eq('id', req.user!.id).maybeSingle()) as any
+  // Optional `ids` lets callers fetch only the jobs they reference (e.g. the
+  // Applications page only needs the listings its applications point to,
+  // instead of the entire directory). Scope both the query and the cache key.
+  const idsRaw = req.query.ids as string | undefined
+  const ids = idsRaw ? idsRaw.split(',').filter(Boolean) : null
+  const scopeKey = ids ? `ids:${ids.join(',')}` : 'active'
   // The dashboard, nav badges, and the Jobs page all hit this; the full active
   // set changes rarely, so cache the visibility-filtered result per viewer.
-  const cacheKey = `jobs:active:${req.user!.id}`
+  const cacheKey = `jobs:${scopeKey}:${req.user!.id}`
   const cached = cacheGet<any[]>(cacheKey)
   if (cached) return res.json(cached)
-  const rows = must(await sb.from('job_listings').select(LIST_COLUMNS).eq('status', 'active').order('created_at', { ascending: false })) as any[]
+  let q = sb.from('job_listings').select(LIST_COLUMNS).eq('status', 'active')
+  if (ids) q = q.in('id', ids)
+  const rows = must(await q.order('created_at', { ascending: false })) as any[]
   const gates = await schoolGates(rows.map((r) => r.company_id))
   const visible = rows.filter((r) => jobVisibleTo(r, viewer, gates))
   // Attach the posting entity's display name + avatar once (single batched

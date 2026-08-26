@@ -41,19 +41,20 @@ export default function Applications() {
 
   useEffect(() => {
     ;(async () => {
-      const [a, allJobs, cs, sc] = await Promise.all([
-        applicationsApi.byStudent(user.id),
-        jobsApi.list(user),
-        profilesApi.list('company'),
-        profilesApi.list('school'),
-      ])
+      // Fetch only the user's applications, then the specific jobs those
+      // applications reference — NOT the entire jobs directory or company/school
+      // directories. Each job row already carries its company_name + avatar
+      // (the server attaches them in GET /jobs), so the two directory scans
+      // that used to run here are unnecessary and were the main cost of loading
+      // this tab.
+      const a = await applicationsApi.byStudent(user.id)
+      const jobIds = [...new Set(a.map((x) => x.job_id).filter(Boolean))]
+      const allJobs = jobIds.length ? await jobsApi.list(user, jobIds) : []
       const jmap: Record<string, JobListing> = {}
       allJobs.forEach((j) => (jmap[j.id] = j))
-      const cmap: Record<string, Profile> = {}
-      ;[...cs, ...sc].forEach((c) => (cmap[c.id] = c))
       setApps(a)
       setJobs(jmap)
-      setCompanies(cmap)
+      setCompanies({})
       setLoading(false)
     })()
   }, [user])
