@@ -14,35 +14,35 @@ import Register from '@/pages/auth/Register'
 import VerifyEmail from '@/pages/auth/VerifyEmail'
 import ForgotPassword from '@/pages/auth/ForgotPassword'
 
-// Collect every lazy route factory so the app can warm all route chunks
-// immediately after auth. Declared BEFORE the lazyRoute(...) calls below because
-// those run at module-init time and push into this array (a hoisted function
-// can be called early, but a `const` it closes over must already be initialized).
-const lazyFactories: Array<() => Promise<{ default: ComponentType }>> = []
-const Dashboard = lazyRoute(() => import('@/pages/Dashboard'))
-const Research = lazyRoute(() => import('@/pages/Research'))
-const Jobs = lazyRoute(() => import('@/pages/student/Jobs'))
-const JobDetail = lazyRoute(() => import('@/pages/student/JobDetail'))
-const Apply = lazyRoute(() => import('@/pages/student/Apply'))
-const Applications = lazyRoute(() => import('@/pages/student/Applications'))
-const ApplicationDetail = lazyRoute(() => import('@/pages/student/ApplicationDetail'))
-const Assessment = lazyRoute(() => import('@/pages/student/Assessment'))
-const Insights = lazyRoute(() => import('@/pages/student/Insights'))
-const Compass = lazyRoute(() => import('@/pages/student/Compass'))
-const Companies = lazyRoute(() => import('@/pages/student/Companies'))
-const CompanyPublic = lazyRoute(() => import('@/pages/student/CompanyPublic'))
-const Profile = lazyRoute(() => import('@/pages/Profile'))
+// Collect every lazy route factory so the app can warm a subset on boot.
+// Declared BEFORE the lazyRoute(...) calls below because those run at module-init
+// time and push into this array.
+type Factory = { name: string; fn: () => Promise<{ default: ComponentType }> }
+const lazyFactories: Factory[] = []
+const Dashboard = lazyRoute('Dashboard', () => import('@/pages/Dashboard'))
+const Research = lazyRoute('Research', () => import('@/pages/Research'))
+const Jobs = lazyRoute('Jobs', () => import('@/pages/student/Jobs'))
+const JobDetail = lazyRoute('JobDetail', () => import('@/pages/student/JobDetail'))
+const Apply = lazyRoute('Apply', () => import('@/pages/student/Apply'))
+const Applications = lazyRoute('Applications', () => import('@/pages/student/Applications'))
+const ApplicationDetail = lazyRoute('ApplicationDetail', () => import('@/pages/student/ApplicationDetail'))
+const Assessment = lazyRoute('Assessment', () => import('@/pages/student/Assessment'))
+const Insights = lazyRoute('Insights', () => import('@/pages/student/Insights'))
+const Compass = lazyRoute('Compass', () => import('@/pages/student/Compass'))
+const Companies = lazyRoute('Companies', () => import('@/pages/student/Companies'))
+const CompanyPublic = lazyRoute('CompanyPublic', () => import('@/pages/student/CompanyPublic'))
+const Profile = lazyRoute('Profile', () => import('@/pages/Profile'))
 
-const Messages = lazyRoute(() => import('@/pages/Messages'))
-const Usage = lazyRoute(() => import('@/pages/Usage'))
-const Admin = lazyRoute(() => import('@/pages/Admin'))
-const UserProfile = lazyRoute(() => import('@/pages/UserProfile'))
+const Messages = lazyRoute('Messages', () => import('@/pages/Messages'))
+const Usage = lazyRoute('Usage', () => import('@/pages/Usage'))
+const Admin = lazyRoute('Admin', () => import('@/pages/Admin'))
+const UserProfile = lazyRoute('UserProfile', () => import('@/pages/UserProfile'))
 
-const Listings = lazyRoute(() => import('@/pages/company/Listings'))
-const JobEditor = lazyRoute(() => import('@/pages/company/JobEditor'))
-const CompanyProfile = lazyRoute(() => import('@/pages/company/CompanyProfile'))
-const ApplicantView = lazyRoute(() => import('@/pages/company/ApplicantView'))
-const Onboarding = lazyRoute(() => import('@/pages/Onboarding'))
+const Listings = lazyRoute('Listings', () => import('@/pages/company/Listings'))
+const JobEditor = lazyRoute('JobEditor', () => import('@/pages/company/JobEditor'))
+const CompanyProfile = lazyRoute('CompanyProfile', () => import('@/pages/company/CompanyProfile'))
+const ApplicantView = lazyRoute('ApplicantView', () => import('@/pages/company/ApplicantView'))
+const Onboarding = lazyRoute('Onboarding', () => import('@/pages/Onboarding'))
 // Note: company Analytics is shown inline on the Dashboard, so there is no
 // separate /app/analytics route.
 
@@ -65,14 +65,31 @@ function RouteFallback() {
   )
 }
 
-/** Collect every lazy route factory so the app can warm all route chunks
- *  immediately after auth. Once a chunk is already loaded, React.lazy resolves
- *  synchronously on first render, so the post-onboarding navigation into
- *  /app/* never suspends — which is what previously threw React error #300. */
-export function preloadRoutes() {
-  for (const factory of lazyFactories) {
+// The most common "first route after login" pages — preloaded eagerly so the
+// first navigation into /app/* never has to lazy-load and suspend (React error
+// #300). Deliberately EXCLUDES the heavy-on-demand routes: Assessment
+// (-> @tensorflow/tfjs blazeface, ~590 KB) and Analytics/Dashboard-charts
+// (-> recharts, ~360 KB). Those stay truly lazy so the initial page load is
+// fast and the user only pays for a heavy module if they actually visit it.
+const PRELOAD_ROUTES = new Set([
+  'Dashboard',
+  'Profile',
+  'CompanyProfile',
+  'Listings',
+  'Applications',
+  'Jobs',
+  'Messages',
+])
+
+/** Preload only the lightweight first-navigation routes (default), or an
+ *  explicit subset by name. Heavy modules (tfjs, recharts) are never preloaded
+ *  here — they're fetched on actual navigation into their route. */
+export function preloadRoutes(names?: string[]) {
+  const allow = names ? new Set(names) : PRELOAD_ROUTES
+  for (const { name, fn } of lazyFactories) {
+    if (!allow.has(name)) continue
     try {
-      void factory()
+      void fn()
     } catch {
       /* preload is best-effort */
     }
@@ -83,8 +100,8 @@ export function preloadRoutes() {
  *  directly around the suspending chunk. This — combined with transition-based
  *  navigation and preloaded chunks — prevents React error #300 when a
  *  not-yet-loaded page mounts. */
-function lazyRoute(factory: () => Promise<{ default: ComponentType }>) {
-  lazyFactories.push(factory)
+function lazyRoute(name: string, factory: () => Promise<{ default: ComponentType }>) {
+  lazyFactories.push({ name, fn: factory })
   const Component = lazy(factory)
   return function LazyRoute() {
     return (

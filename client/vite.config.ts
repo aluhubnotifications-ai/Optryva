@@ -26,9 +26,13 @@ export default defineConfig({
         // default splitting, which keeps lazy routes (and tfjs) lazy.
         manualChunks(id) {
           if (!id.includes('node_modules')) return
-          if (id.includes('@tensorflow') || id.includes('blazeface')) return // keep lazy (proctor)
+          // @tensorflow / blazeface: keep lazy (proctor, ~590 KB) — do NOT assign
+          if (id.includes('@tensorflow') || id.includes('blazeface')) return
           if (id.includes('framer-motion') || id.includes('/motion-dom/') || id.includes('/motion-utils/')) return 'vendor-motion'
-          if (id.includes('recharts') || id.includes('d3-') || id.includes('victory')) return 'vendor-charts'
+          // recharts/d3/victory: do NOT assign to a shared vendor chunk. Keeping
+          // them unassigned lets Rollup place them inside the lazily-imported
+          // route that actually uses them (Analytics), so they are never eagerly
+          // downloaded or modulepreloaded on the initial page load.
           if (id.includes('react-router') || id.includes('react-dom') || id.includes('/react/') || id.includes('scheduler')) return 'vendor-react'
         },
       },
@@ -36,7 +40,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    strictPort: true, // fail loudly if 5173 is taken instead of drifting to 5174
+    strictPort: true,
     host: true,
   },
 })
