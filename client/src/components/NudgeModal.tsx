@@ -15,20 +15,41 @@ export interface NudgeItem {
 
 const DISMISS_KEY = 'optryva-nudge-dismissed'
 
-/** Animated modal that nudges a student (who finished onboarding) to complete the
- *  still-missing important profile bits — preferences, portfolio/evidence, skills.
- *  Shown only after the required onboarding steps are done (the router sends
- *  unfinished users back into the wizard instead). */
-export function NudgeModal({ items, onClose }: { items: NudgeItem[]; onClose: () => void }) {
+/** Animated modal that nudges a user to complete still-missing profile fields.
+ *
+ *  By default it renders the student-flavored treatment (mascot + confetti + a
+ *  celebratory "🚀" title), which is only ever used for students. Pass
+ *  `mascot={false}` for a professional, business-grade variant (no mascot, no
+ *  emoji, no confetti) used by companies and schools. `title`/`description`
+ *  override the defaults and are recommended alongside `mascot={false}`.
+ */
+export function NudgeModal({
+  items,
+  onClose,
+  title,
+  description,
+  mascot = true,
+}: {
+  items: NudgeItem[]
+  onClose: () => void
+  title?: string
+  description?: string
+  mascot?: boolean
+}) {
   const navigate = useNavigate()
   const [burst, setBurst] = useState(false)
 
   function act(item: NudgeItem) {
-    setBurst(true)
-    window.setTimeout(() => {
+    if (mascot) {
+      setBurst(true)
+      window.setTimeout(() => {
+        onClose()
+        navigate(item.to)
+      }, 650)
+    } else {
       onClose()
       navigate(item.to)
-    }, 650)
+    }
   }
 
   return (
@@ -54,15 +75,22 @@ export function NudgeModal({ items, onClose }: { items: NudgeItem[]; onClose: ()
             <X className="h-4 w-4" />
           </button>
 
-          <div className="relative mb-2 h-24 w-full overflow-hidden">
-            <div className="flex h-full items-center justify-center">
-              <OnboardingMascot walk className="h-20 w-20" />
+          {mascot && (
+            <div className="relative mb-2 h-24 w-full overflow-hidden">
+              <div className="flex h-full items-center justify-center">
+                <OnboardingMascot walk className="h-20 w-20" />
+              </div>
             </div>
-          </div>
+          )}
 
-          <h2 className="text-xl font-extrabold tracking-tight">You&apos;re almost there! 🚀</h2>
+          <h2 className="text-xl font-extrabold tracking-tight">
+            {title ?? (mascot ? "You're almost there! 🚀" : 'A few details left')}
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Add a few details to stand out to employers and unlock smarter matches.
+            {description ??
+              (mascot
+                ? 'Add a few details to stand out to employers and unlock smarter matches.'
+                : 'Finish these to make your organization profile complete.')}
           </p>
 
           <ul className="mt-4 space-y-2 text-left">

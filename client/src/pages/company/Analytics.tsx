@@ -85,7 +85,15 @@ export default function Analytics() {
 
   return (
     <div className="space-y-5">
-      {showNudge && <NudgeModal items={nudgeItems} onClose={() => setNudgeHidden(true)} />}
+      {showNudge && (
+        <NudgeModal
+          items={nudgeItems}
+          onClose={() => setNudgeHidden(true)}
+          mascot={false}
+          title="Complete your organization profile"
+          description="A few professional details help students and candidates recognize and trust you."
+        />
+      )}
       <div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
