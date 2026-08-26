@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { FileText, ArrowRight, Briefcase, Sparkles } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
-import { applicationsApi, jobsApi, profilesApi } from '@/lib/api'
-import type { Application, ApplicationStatus, JobListing, Profile } from '@/types'
+import { applicationsApi, jobsApi } from '@/lib/api'
+import type { Application, ApplicationStatus, JobListing } from '@/types'
 import { Card, CardBody, Badge, Avatar, Skeleton } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { AppProgressSteps } from '@/components/AppProgressSteps'
@@ -35,7 +35,6 @@ export default function Applications() {
   const user = useCurrentUser()!
   const [apps, setApps] = useState<Application[]>([])
   const [jobs, setJobs] = useState<Record<string, JobListing>>({})
-  const [companies, setCompanies] = useState<Record<string, Profile>>({})
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<ApplicationStatus | 'all'>('all')
 
@@ -54,7 +53,6 @@ export default function Applications() {
       allJobs.forEach((j) => (jmap[j.id] = j))
       setApps(a)
       setJobs(jmap)
-      setCompanies({})
       setLoading(false)
     })()
   }, [user])
@@ -110,8 +108,7 @@ export default function Applications() {
         <div className="space-y-3">
           {filtered.map((a, i) => {
             const job = jobs[a.job_id]
-            const company = job ? companies[job.company_id] : undefined
-            const brand = job?.original_company_name || company?.company_name
+            const brand = job?.original_company_name || job?.company_name
             return (
               <motion.div key={a.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
                 <Link to={`/app/applications/${a.id}`}>
@@ -119,7 +116,7 @@ export default function Applications() {
                     <CardBody>
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 gap-3">
-                          <Avatar name={brand} src={job?.original_company_logo_url || company?.avatar_url} size={44} className="rounded-xl" />
+                           <Avatar name={brand} src={job?.original_company_logo_url || job?.company_avatar_url} size={44} className="rounded-xl" />
                           <div className="min-w-0">
                             <p className="truncate font-semibold">{job?.title ?? 'Role'}</p>
                             <p className="truncate text-sm text-muted-foreground">{brand} · {job?.location}</p>

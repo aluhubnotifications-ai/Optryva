@@ -22,7 +22,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Avatar, Badge, Card, CardBody } from "@/components/ui/primitives";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { useToast } from "@/components/ui/toast";
-import { applicationsApi, jobsApi, profilesApi } from "@/lib/api";
+import { applicationsApi, jobsApi } from "@/lib/api";
 import { useCurrentUser } from "@/lib/store";
 import { cn, formatDate, timeAgo } from "@/lib/utils";
 import type { Application, JobListing, Profile } from "@/types";
@@ -61,11 +61,13 @@ export default function ApplicationDetail() {
 				setLoading(false);
 				return;
 			}
+			// The job row already carries the company's display name + avatar
+			// (the server attaches them in GET /jobs), so we fetch only the job —
+			// no separate profiles fetch needed.
 			const j = await jobsApi.get(a.job_id);
-			const c = j ? await profilesApi.get(j.company_id) : null;
 			setApp(a);
 			setJob(j);
-			setCompany(c);
+			setCompany(null);
 			setLoading(false);
 		})();
 	}, [id]);
@@ -89,7 +91,7 @@ export default function ApplicationDetail() {
 		);
 	}
 
-	const brand = job.original_company_name || company?.company_name;
+	const brand = job.original_company_name || job.company_name;
 
 	const when = job.assignment?.required_when ?? "after_application";
 	const eligible = when === "after_application" || app.status === "shortlisted";
@@ -325,7 +327,7 @@ export default function ApplicationDetail() {
 							>
 								<Avatar
 									name={brand}
-									src={job.original_company_logo_url || company?.avatar_url}
+									src={job.original_company_logo_url || job.company_avatar_url}
 									size={56}
 									className="rounded-2xl"
 								/>
