@@ -18,7 +18,6 @@ import {
   Save,
   Camera,
   Eye,
-  MapPin,
   Compass,
   CheckCircle2,
   Circle,
@@ -40,12 +39,11 @@ import { useToast } from '@/components/ui/toast'
 import { formatDate, cn, fileToDataUrl } from '@/lib/utils'
 import { ResumeWorkspace } from '@/components/ResumeWorkspace'
 import { EvidenceGallery } from '@/components/EvidenceGallery'
+import { CountryMultiSelect } from '@/components/ui/CountryMultiSelect'
 
 const ROLES = ['Software Engineering', 'Data Science', 'Product Management', 'Marketing', 'Operations', 'Finance', 'Design', 'Consulting']
 const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Agriculture', 'Education', 'E-commerce', 'Consulting', 'Nonprofit']
 const LISTING_TYPES: ListingType[] = ['Internship', 'Full-time', 'Part-time', 'Fellowship']
-import { COUNTRIES as GEO_COUNTRIES } from '@/lib/geo'
-const COUNTRIES = GEO_COUNTRIES.filter((c) => c.code !== 'all' && c.code !== 'remote').map((c) => c.name)
 
 export default function Profile() {
   const user = useCurrentUser()!
@@ -54,7 +52,6 @@ export default function Profile() {
   const [, force] = useState(0)
   const [saving, setSaving] = useState(false)
   const [skillInput, setSkillInput] = useState('')
-  const [countryInput, setCountryInput] = useState('')
   const [confirmRemoveCv, setConfirmRemoveCv] = useState(false)
   const [params] = useSearchParams()
   const [tab, setTab] = useState<'profile' | 'resumes' | 'gallery'>(() => {
@@ -256,11 +253,7 @@ export default function Profile() {
     setSkillInput('')
   }
 
-  function addCountry() {
-    const c = countryInput.trim()
-    if (c && !prefCountries.includes(c)) setPrefCountries([...prefCountries, c])
-    setCountryInput('')
-  }
+
 
   return (
     <motion.div
@@ -400,18 +393,7 @@ export default function Profile() {
 
         <Label className="mt-4">Countries I'd work in</Label>
         <p className="mb-1.5 text-xs text-muted-foreground">Pick where you'd like to work — we won't match roles outside these. Remote roles always count, and leaving this empty means anywhere.</p>
-        <ChipGroup
-          options={Array.from(new Set([...COUNTRIES, ...prefCountries]))}
-          selected={prefCountries}
-          onToggle={(v) => toggle(prefCountries, setPrefCountries, v)}
-        />
-        <form onSubmit={(e) => { e.preventDefault(); addCountry() }} className="mt-2 flex gap-2">
-          <div className="relative max-w-xs flex-1">
-            <MapPin className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={countryInput} onChange={(e) => setCountryInput(e.target.value)} placeholder="Add another country…" className="pl-8" />
-          </div>
-          <Button type="submit" variant="outline" size="icon" aria-label="Add country"><Plus className="h-4 w-4" /></Button>
-        </form>
+        <CountryMultiSelect value={prefCountries} onChange={setPrefCountries} includeRemote placeholder="Search countries to add…" />
 
         <div className="mt-4">
           <Label>Work type</Label>

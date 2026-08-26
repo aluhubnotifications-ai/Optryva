@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Plus, X } from 'lucide-react'
-import { COUNTRIES } from '@/lib/geo'
+import { COUNTRIES, type Country } from '@/lib/geo'
 import { cn } from '@/lib/utils'
 
 // Quick lookup of a country's flag image by name so selected tags can show it.
 const FLAG_BY_NAME: Record<string, string | undefined> = Object.fromEntries(
   COUNTRIES.map((c) => [c.name, c.flagUrl]),
 )
-// Only real countries (not the "All countries" / "Remote" pseudo-entries).
+// Only real countries (not the "All countries" pseudo-entry).
 const REAL_COUNTRIES = COUNTRIES.filter((c) => c.code !== 'all' && c.code !== 'remote')
+// Optional "Remote (anywhere)" pseudo-location shown for the work-preferences picker.
+const REMOTE_COUNTRY: Country = { code: 'remote', name: 'Remote (anywhere)' }
 
 interface CountryMultiSelectProps {
   value: string[]
@@ -16,6 +18,8 @@ interface CountryMultiSelectProps {
   placeholder?: string
   id?: string
   suggestions?: readonly string[]
+  /** Include the "Remote (anywhere)" pseudo-location as a selectable entry. */
+  includeRemote?: boolean
 }
 
 /**
@@ -23,17 +27,19 @@ interface CountryMultiSelectProps {
  * become removable tags. Typing a value not in the list lets the user add it
  * as a custom location (e.g. a city). Far friendlier than a flat wall of chips.
  */
-export function CountryMultiSelect({ value, onChange, placeholder, id, suggestions }: CountryMultiSelectProps) {
+export function CountryMultiSelect({ value, onChange, placeholder, id, suggestions, includeRemote }: CountryMultiSelectProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [highlight, setHighlight] = useState(0)
   const wrapRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  const list = includeRemote ? [...REAL_COUNTRIES, REMOTE_COUNTRY] : REAL_COUNTRIES
+
   const q = query.trim().toLowerCase()
-  const matches = q ? REAL_COUNTRIES.filter((c) => c.name.toLowerCase().includes(q)) : REAL_COUNTRIES
+  const matches = q ? list.filter((c) => c.name.toLowerCase().includes(q)) : list
   const filtered = matches.filter((c) => !value.includes(c.name))
-  const exactExists = REAL_COUNTRIES.some((c) => c.name.toLowerCase() === q)
+  const exactExists = list.some((c) => c.name.toLowerCase() === q)
   const showCustom = q.length > 0 && !exactExists && !value.includes(query.trim())
 
   useEffect(() => {
