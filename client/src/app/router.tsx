@@ -98,6 +98,11 @@ function lazyRoute(factory: () => Promise<{ default: ComponentType }>) {
 function RequireAuth() {
   const userId = useSession((s) => s.userId)
   const profile = useSession((s) => s.profile)
+  // Persisted "still owes onboarding" flag: set true the moment a user opens the
+  // wizard, cleared in finish(). Survives a refresh, so an unfinished student OR
+  // company/school is sent straight back to /onboarding instead of landing on the
+  // dashboard with a half-finished profile.
+  const needsOnb = useSession((s) => (s.userId ? !!s.needsOnboarding[s.userId] : false))
   const location = useLocation()
   // Refresh the persisted profile from the server on load, so changes made since
   // last login (is_admin, plan, …) take effect without a re-login.
@@ -116,14 +121,15 @@ function RequireAuth() {
       </div>
     )
   }
-  // Only accounts created in this session are held in the onboarding wizard. The
-  // "new" marker comes from the `?new=1` flag the server/register sets (and the
-  // OAuth callback sets for brand-new Google accounts). Returning users — even
-  // ones who haven't filled every optional profile field, or who aren't yet
-  // match-ready — are NEVER bounced to onboarding; they land on their Profile and
-  // complete things at their leisure. (Using `needsOnboarding` here would loop
-  // companies/schools, which have no résumé/skills steps in their flow.)
-  if (requiresProfileCompletion(profile) && isNewAccount() && location.pathname !== '/onboarding') {
+  // Accounts created in this session (the `?new=1` marker) AND any account that
+  // started but hasn't finished onboarding (persisted `needsOnboarding` flag) are
+  // held in the wizard until the required steps are done. Returning users who
+  // never started onboarding, or who already finished it, are NOT bounced — they
+  // land on their Profile / dashboard and complete optional fields at leisure.
+  if (
+    location.pathname !== '/onboarding' &&
+    (needsOnb || (requiresProfileCompletion(profile) && isNewAccount()))
+  ) {
     return <Navigate to="/onboarding" replace />
   }
   return (
