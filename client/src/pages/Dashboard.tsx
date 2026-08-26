@@ -434,7 +434,7 @@ function Hero({ user, completeness }: { user: Profile; completeness: number }) {
             <Avatar name={user.full_name} src={user.avatar_url} size={56} className="ring-4 ring-card" />
             <div>
               <p className="text-sm text-muted-foreground">{greeting()},</p>
-              <h1 className="text-2xl font-bold tracking-tight">{user.full_name.split(' ')[0]} 👋</h1>
+              <h1 className="text-2xl font-bold tracking-tight">{user.full_name.split(' ')[0]}</h1>
               <p className="mt-1 text-sm text-muted-foreground">Profile {completeness}% complete · {user.plan === 'free' ? 'Free plan' : user.plan}</p>
             </div>
           </div>
