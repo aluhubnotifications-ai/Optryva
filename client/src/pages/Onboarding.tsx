@@ -432,7 +432,9 @@ function OnboardingContent() {
   }
 
   async function finish() {
-    if (!hasResume) return toast({ title: 'Add a résumé or paste your experience', tone: 'error' })
+    // Only students have a résumé step. Schools/companies finish without one,
+    // so do NOT block them on a résumé they were never asked for.
+    if (userType === 'student' && !hasResume) return toast({ title: 'Add a résumé or paste your experience', tone: 'error' })
     // Students finish straight from the Preferences step (their last step), so
     // validate here too — the per-step handleNext guard is skipped on the last.
     if (userType === 'student') {
