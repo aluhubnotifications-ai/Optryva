@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Suspense, useEffect, useMemo, useRef, useState, startTransition } from 'react'
+import { Link } from 'react-router-dom'
 import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
-import { AnimatePresence, motion } from 'framer-motion'
+import { motion } from 'framer-motion'
 import {
   ArrowLeft,
   ArrowRight,
@@ -165,59 +165,99 @@ const STEP_META: Record<StepId, { label: string; icon: typeof User; blurb: strin
   school: { label: 'Your institution', icon: Building2, blurb: 'Help students recognize and trust you.' },
   company: { label: 'Your company', icon: Briefcase, blurb: 'So we can match you with the right talent.' },
    skills: { label: 'Skills', icon: Sparkles, blurb: 'A few things you’re good at.' },
-   resume: { label: 'Résumé', icon: FileText, blurb: 'Upload or paste — editable later.' },
-   preferences: { label: 'Preferences', icon: Sparkles, blurb: 'So we match you to the right roles.' },
+resume: { label: 'Résumé', icon: FileText, blurb: 'Upload or paste — editable later.' },
+  preferences: { label: 'Preferences', icon: Sparkles, blurb: 'So we match you to the right roles.' },
 }
 
-export default function Onboarding() {
+function OnboardingContent() {
   const navigate = useTransitionNavigate()
   const user = useCurrentUser()
   const { toast } = useToast()
 
   const userId = useSession((s) => s.userId)
   const setNeedsOnboarding = useSession((s) => s.setNeedsOnboarding)
-  if (!userId) return <Navigate to="/login" replace />
-  // Already finished the required steps → go straight to the app.
-  if (user && !requiresProfileCompletion(user)) return <Navigate to="/app/profile" replace />
+
+  // Already finished the required steps → go straight to the app. Navigate inside
+  // an effect (not via <Navigate>) so it runs as a transition; otherwise mounting
+  // the lazy /app/profile chunk during a discrete update throws React #300.
+  const finished = !!user && !requiresProfileCompletion(user)
+  useEffect(() => {
+    if (finished) navigate('/app/profile', { replace: true })
+  }, [finished, navigate])
 
   // This user is in the wizard because they're a new account (flagged ?new=1 by
   // register / the OAuth callback). Mirror that into the persisted
   // `needsOnboarding` flag so a refresh or navigating away can't let them skip
   // the required steps — the router re-holds them here until they finish.
+  // IMPORTANT: this hook MUST run before the `if (finished) return null` below so
+  // the hook order stays identical on every render (Rules of Hooks). It only
+  // flags the user while onboarding is incomplete; once `finished` is true the
+  // finish() flow clears the flag, and we must not re-set it here.
   useEffect(() => {
-    if (userId) setNeedsOnboarding(userId, true)
-  }, [userId, setNeedsOnboarding])
+    if (userId && !finished) setNeedsOnboarding(userId, true)
+  }, [userId, finished, setNeedsOnboarding])
 
-  const [step, setStep] = useState(1)
-  const [userType, setUserType] = useState<UserType | ''>(user?.user_type ?? '')
-  const [name, setName] = useState(user?.full_name ?? '')
-  const [goal, setGoal] = useState(user?.onboarding_goal ?? '')
-  const [country, setCountry] = useState(user?.country ?? user?.location ?? '')
-  const [workType, setWorkType] = useState(user?.work_type ?? '')
-  const [school, setSchool] = useState(user?.school ?? '')
-  const [major, setMajor] = useState(user?.major ?? '')
-  const [gpa, setGpa] = useState(user?.gpa ?? '')
-  const [year, setYear] = useState(user?.year ? String(user.year) : '')
-  const [bio, setBio] = useState(user?.bio ?? '')
-  const [studentDomains, setStudentDomains] = useState(
+  // Transition-wrapped state for all form fields to prevent React #300
+  const [step, _setStep] = useState(1)
+  const [userType, _setUserType] = useState<UserType | ''>(user?.user_type ?? '')
+  const [name, _setName] = useState(user?.full_name ?? '')
+  const [goal, _setGoal] = useState(user?.onboarding_goal?.trim() ?? '')
+  const [country, _setCountry] = useState(user?.country ?? user?.location ?? '')
+  const [workType, _setWorkType] = useState(user?.work_type ?? '')
+  const [school, _setSchool] = useState(user?.school ?? '')
+  const [major, _setMajor] = useState(user?.major ?? '')
+  const [gpa, _setGpa] = useState(user?.gpa ?? '')
+  const [year, _setYear] = useState(user?.year ? String(user.year) : '')
+  const [bio, _setBio] = useState(user?.bio ?? '')
+  const [studentDomains, _setStudentDomains] = useState(
     Array.isArray(user?.student_domains) ? (user?.student_domains as string[]).join(', ') : '',
   )
-  const [industry, setIndustry] = useState(user?.industry ?? '')
-  const [companySize, setCompanySize] = useState(user?.company_size ?? '')
-  const [skills, setSkills] = useState<string[]>(user?.skills ?? [])
-  const [skillInput, setSkillInput] = useState('')
-  const [desiredRoles, setDesiredRoles] = useState<string[]>(user?.desired_roles ?? [])
-  const [roleInput, setRoleInput] = useState('')
-  const [preferredIndustries, setPreferredIndustries] = useState<string[]>(user?.preferred_industries ?? [])
-  const [prefCountries, setPrefCountries] = useState<string[]>(user?.pref_countries ?? [])
-  const [prefListingTypes, setPrefListingTypes] = useState<string[]>(user?.pref_listing_types ?? [])
-  const [cvUrl, setCvUrl] = useState<string | undefined>(user?.cv_url ?? undefined)
-  const [cvText, setCvText] = useState(user?.cv_text ?? '')
-  const [cvFilename, setCvFilename] = useState<string | null>(user?.cv_filename ?? null)
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [celebrating, setCelebrating] = useState(false)
-  const [resumeBurst, setResumeBurst] = useState(false)
+  const [industry, _setIndustry] = useState(user?.industry ?? '')
+  const [companySize, _setCompanySize] = useState(user?.company_size ?? '')
+  const [skills, _setSkills] = useState<string[]>(user?.skills ?? [])
+  const [skillInput, _setSkillInput] = useState('')
+  const [desiredRoles, _setDesiredRoles] = useState<string[]>(user?.desired_roles ?? [])
+  const [roleInput, _setRoleInput] = useState('')
+  const [preferredIndustries, _setPreferredIndustries] = useState<string[]>(user?.preferred_industries ?? [])
+  const [prefCountries, _setPrefCountries] = useState<string[]>(user?.pref_countries ?? [])
+  const [prefListingTypes, _setPrefListingTypes] = useState<string[]>(user?.pref_listing_types ?? [])
+  const [cvUrl, _setCvUrl] = useState<string | undefined>(user?.cv_url ?? undefined)
+  const [cvText, _setCvText] = useState(user?.cv_text ?? '')
+  const [cvFilename, _setCvFilename] = useState<string | null>(user?.cv_filename ?? null)
+  const [uploadProgress, _setUploadProgress] = useState<number | null>(null)
+  const [saving, _setSaving] = useState(false)
+  const [celebrating, _setCelebrating] = useState(false)
+  const [resumeBurst, _setResumeBurst] = useState(false)
+
+  // Transition-wrapped setters to prevent React #300 on synchronous updates
+  const setStep = (v: number | ((prev: number) => number)) => startTransition(() => _setStep(v))
+  const setUserType = (v: UserType | '' | ((prev: UserType | '') => UserType | '')) => startTransition(() => _setUserType(v))
+  const setName = (v: string | ((prev: string) => string)) => startTransition(() => _setName(v))
+  const setGoal = (v: string | ((prev: string) => string)) => startTransition(() => _setGoal(v))
+  const setCountry = (v: string | ((prev: string) => string)) => startTransition(() => _setCountry(v))
+  const setWorkType = (v: string | ((prev: string) => string)) => startTransition(() => _setWorkType(v))
+  const setSchool = (v: string | ((prev: string) => string)) => startTransition(() => _setSchool(v))
+  const setMajor = (v: string | ((prev: string) => string)) => startTransition(() => _setMajor(v))
+  const setGpa = (v: string | ((prev: string) => string)) => startTransition(() => _setGpa(v))
+  const setYear = (v: string | ((prev: string) => string)) => startTransition(() => _setYear(v))
+  const setBio = (v: string | ((prev: string) => string)) => startTransition(() => _setBio(v))
+  const setStudentDomains = (v: string | ((prev: string) => string)) => startTransition(() => _setStudentDomains(v))
+  const setIndustry = (v: string | ((prev: string) => string)) => startTransition(() => _setIndustry(v))
+  const setCompanySize = (v: string | ((prev: string) => string)) => startTransition(() => _setCompanySize(v))
+  const setSkills = (v: string[] | ((prev: string[]) => string[])) => startTransition(() => _setSkills(v))
+  const setSkillInput = (v: string | ((prev: string) => string)) => startTransition(() => _setSkillInput(v))
+  const setDesiredRoles = (v: string[] | ((prev: string[]) => string[])) => startTransition(() => _setDesiredRoles(v))
+  const setRoleInput = (v: string | ((prev: string) => string)) => startTransition(() => _setRoleInput(v))
+  const setPreferredIndustries = (v: string[] | ((prev: string[]) => string[])) => startTransition(() => _setPreferredIndustries(v))
+  const setPrefCountries = (v: string[] | ((prev: string[]) => string[])) => startTransition(() => _setPrefCountries(v))
+  const setPrefListingTypes = (v: string[] | ((prev: string[]) => string[])) => startTransition(() => _setPrefListingTypes(v))
+  const setCvUrl = (v: string | undefined | ((prev: string | undefined) => string | undefined)) => startTransition(() => _setCvUrl(v))
+  const setCvText = (v: string | ((prev: string) => string)) => startTransition(() => _setCvText(v))
+  const setCvFilename = (v: string | null | ((prev: string | null) => string | null)) => startTransition(() => _setCvFilename(v))
+  const setUploadProgress = (v: number | null | ((prev: number | null) => number | null)) => startTransition(() => _setUploadProgress(v))
+  const setSaving = (v: boolean | ((prev: boolean) => boolean)) => startTransition(() => _setSaving(v))
+  const setCelebrating = (v: boolean | ((prev: boolean) => boolean)) => startTransition(() => _setCelebrating(v))
+  const setResumeBurst = (v: boolean | ((prev: boolean) => boolean)) => startTransition(() => _setResumeBurst(v))
 
   const hasResume = !!(cvUrl || cvText.trim())
 
@@ -447,6 +487,12 @@ export default function Onboarding() {
     }
   }
 
+  // Early-out AFTER every hook above has been declared, so the hook count/order
+  // is identical on every render (Rules of Hooks). An early return placed before
+  // the useState declarations would crash with React #300/#310 when `finished`
+  // flips between renders (e.g. the moment onboarding completes).
+  if (finished) return null
+
   return (
     <div className="mesh-bg min-h-screen">
       <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col px-4 py-10 sm:px-6">
@@ -460,10 +506,9 @@ export default function Onboarding() {
 
         {/* progress */}
         <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <motion.div
-            className="h-full rounded-full bg-primary"
-            animate={{ width: `${progress}%` }}
-            transition={{ type: 'spring', stiffness: 120, damping: 20 }}
+          <div
+            className="h-full rounded-full bg-primary transition-all duration-300 ease-out"
+            style={{ width: `${progress}%` }}
           />
         </div>
 
@@ -501,14 +546,11 @@ export default function Onboarding() {
             <p className="mt-0.5 text-sm text-muted-foreground">{step === 1 ? 'Pick the option that fits you best.' : meta.blurb}</p>
           </div>
 
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={current.id}
-              initial={{ opacity: 0, x: 24 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -24 }}
-              transition={{ duration: 0.22, ease: 'easeOut' }}
-            >
+          <div
+            key={current.id}
+            className="animate-slide-in"
+            style={{ opacity: 1, transform: 'translateX(0)' }}
+          >
           {current.id === 'about' && (
             <div className="space-y-5">
               <div>
@@ -906,8 +948,7 @@ export default function Onboarding() {
               </div>
             </div>
           )}
-          </motion.div>
-        </AnimatePresence>
+          </div>
         </div>
 
         {/* footer */}
@@ -932,36 +973,36 @@ export default function Onboarding() {
         </div>
       )}
       {celebrating && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="pointer-events-none fixed inset-0 z-[60] flex flex-col items-center justify-center gap-5 bg-background/85 backdrop-blur-sm"
+        <div
+          className="pointer-events-none fixed inset-0 z-[60] flex flex-col items-center justify-center gap-5 bg-background/85 backdrop-blur-sm animate-fade-in"
         >
-          <motion.div
-            initial={{ scale: 0.4, rotate: -10, opacity: 0 }}
-            animate={{ scale: 1, rotate: 0, opacity: 1 }}
-            transition={{ type: 'spring', stiffness: 220, damping: 13 }}
-            className="flex flex-col items-center gap-2"
-          >
+          <div className="flex flex-col items-center gap-2 animate-scale-in">
             <Logo className="h-20 w-20 drop-shadow-lg" />
             <OnboardingMascot celebrating className="h-20 w-20" />
-          </motion.div>
-          <motion.h1
-            initial={{ y: 14, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.12, type: 'spring', stiffness: 240, damping: 18 }}
-            className="text-center text-3xl font-extrabold tracking-tight"
-          >
+          </div>
+          <h1 className="text-center text-3xl font-extrabold tracking-tight animate-slide-up">
             Welcome to Optryva! <span className="inline-block animate-bounce">🎉</span>
-          </motion.h1>
+          </h1>
           <p className="text-center text-sm text-muted-foreground">Your profile is ready — taking you there…</p>
           <div className="mt-1">
             <Spinner label="Loading your profile…" />
           </div>
           <Confetti count={70} />
           <Confetti count={70} />
-        </motion.div>
+        </div>
       )}
     </div>
+  )
+}
+
+export default function Onboarding() {
+  return (
+    <Suspense fallback={
+      <div className="mesh-bg flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    }>
+      <OnboardingContent />
+    </Suspense>
   )
 }

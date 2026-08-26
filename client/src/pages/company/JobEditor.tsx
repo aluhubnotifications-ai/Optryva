@@ -160,6 +160,19 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
   const [generated, setGenerated] = useState<{ title: string; prompt: string; questions: any[]; rubric: any[] } | null>(null)
   const studioFileRef = useRef<HTMLInputElement>(null)
 
+  // AI job generator state
+  const [jobStudioOpen, setJobStudioOpen] = useState(false)
+  const [jobStudioFile, setJobStudioFile] = useState<{ name: string; dataUrl: string; kind: string } | null>(null)
+  const [jobStudioBrief, setJobStudioBrief] = useState('')
+  const [jobStudioInstruction, setJobStudioInstruction] = useState('')
+  const [jobGenerating, setJobGenerating] = useState(false)
+  const [jobGenError, setJobGenError] = useState<string | null>(null)
+  const [jobGenerated, setJobGenerated] = useState<{
+    title: string; description: string; category: string; listing_type: string; location: string
+    pay: string; duration: string; tags: string[]; responsibilities: string[]; qualifications: string[]; benefits: string[]
+  } | null>(null)
+  const jobStudioFileRef = useRef<HTMLInputElement>(null)
+
   function studioKindFromFile(file: File): string {
     if (file.type === 'application/pdf') return 'pdf'
     if (file.type.includes('wordprocessingml') || file.type === 'application/msword') return 'doc'
@@ -223,6 +236,60 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
     setGenerated(null)
     setStudioOpen(false)
     toast({ title: 'Assessment updated with AI suggestions', tone: 'success' })
+  }
+
+  async function onJobStudioFile(file?: File) {
+    if (!file) return
+    try {
+      const dataUrl = await fileToDataUrl(file, 12 * 1024 * 1024)
+      setJobStudioFile({ name: file.name, dataUrl, kind: studioKindFromFile(file) })
+      setJobGenError(null)
+    } catch (e) {
+      toast({ title: 'Could not read that file', description: e instanceof Error ? e.message : undefined, tone: 'error' })
+    } finally {
+      if (jobStudioFileRef.current) jobStudioFileRef.current.value = ''
+    }
+  }
+
+  async function runJobGeneration(refine: boolean) {
+    setJobGenerating(true)
+    setJobGenError(null)
+    try {
+      const payload: any = {
+        brief: jobStudioBrief,
+        sources: jobStudioFile ? [jobStudioFile] : [],
+        instruction: jobStudioInstruction,
+      }
+      if (refine && jobGenerated) payload.existing = jobGenerated
+      else if (jobGenerated) payload.existing = jobGenerated
+      const res = await aiApi.generateJob(payload)
+      setJobGenerated(res)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not generate.'
+      setJobGenError(msg === 'unauthorized' ? 'Your session expired — please sign in again.' : `AI generation failed: ${msg}`)
+    } finally {
+      setJobGenerating(false)
+    }
+  }
+
+  function applyGenerated() {
+    setF((p) => ({
+      ...p,
+      title: jobGenerated?.title || p.title,
+      description: jobGenerated?.description || p.description,
+      type: jobGenerated?.category || p.type,
+      listing_type: (jobGenerated?.listing_type as ListingType) || p.listing_type,
+      location: jobGenerated?.location || p.location,
+      pay: jobGenerated?.pay || p.pay,
+      duration: jobGenerated?.duration || p.duration,
+      tags: jobGenerated?.tags?.length ? jobGenerated.tags.join(', ') : p.tags,
+      responsibilities: jobGenerated?.responsibilities?.length ? jobGenerated.responsibilities : p.responsibilities,
+      qualifications: jobGenerated?.qualifications?.length ? jobGenerated.qualifications : p.qualifications,
+      benefits: jobGenerated?.benefits?.length ? jobGenerated.benefits : p.benefits,
+    }))
+    setJobGenerated(null)
+    setJobStudioOpen(false)
+    toast({ title: 'Details filled by AI — review before posting', tone: 'success' })
   }
 
   // Lightweight seed so the timing/attempts settings are visible the moment the
@@ -377,6 +444,55 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
 
       {active === 'details' && (
         <section className="space-y-4">
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 mb-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <div>
+                  <p className="text-sm font-medium">Draft this listing with AI</p>
+                  <p className="text-xs text-muted-foreground">Upload a brief/Job Description or describe the role — AI writes the whole posting for you to edit.</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setJobStudioOpen(!jobStudioOpen)} className="text-sm font-medium text-primary hover:text-primary">
+                {jobStudioOpen ? 'Hide AI' : 'Generate with AI'}
+              </button>
+            </div>
+          </div>
+          {jobStudioOpen && (
+            <div className="mt-3 space-y-3 rounded-xl border border-border p-3">
+              <p className="text-xs text-muted-foreground">Upload a brief (PDF, Word, image, or text) and/or describe the role. AI drafts the full posting.</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <input ref={jobStudioFileRef} type="file" accept=".pdf,.doc,.docx,.txt,image/*,text/*" className="hidden" onChange={(e) => onJobStudioFile(e.target.files?.[0])} />
+                <Button type="button" size="sm" variant="outline" onClick={() => jobStudioFileRef.current?.click()}>
+                  <ImagePlus className="h-4 w-4" /> {jobStudioFile ? `Change (${jobStudioFile.name})` : 'Upload document'}
+                </Button>
+                {jobStudioFile && (<Button type="button" size="sm" variant="ghost" onClick={() => setJobStudioFile(null)}>Remove</Button>)}
+              </div>
+              <Textarea value={jobStudioBrief} onChange={(e) => setJobStudioBrief(e.target.value)} className="min-h-[80px]" placeholder="Describe the role, or paste a draft job description." />
+              <Textarea value={jobStudioInstruction} onChange={(e) => setJobStudioInstruction(e.target.value)} className="min-h-[60px]" placeholder="Optional instruction — e.g. 'Make it sound energetic'." />
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" onClick={() => runJobGeneration(false)} loading={jobGenerating}><Sparkles className="h-4 w-4" /> {jobGenerated ? 'Regenerate' : 'Generate posting'}</Button>
+                {jobGenerated && (<Button type="button" size="sm" variant="outline" onClick={() => runJobGeneration(true)} loading={jobGenerating}>Refine with instruction</Button>)}
+              </div>
+              {jobGenError && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{jobGenError}</p>}
+              {jobGenerating && !jobGenerated && (<p className="flex items-center gap-2 text-xs text-muted-foreground"><span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" /> Drafting your job posting…</p>)}
+              {jobGenerated && (
+                <div className="space-y-3 rounded-lg border border-border p-3">
+                  <div>
+                    <p className="text-sm font-semibold">{jobGenerated.title}</p>
+                    <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">{jobGenerated.description}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {jobGenerated.tags.map((t,i)=>(<span key={i} className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{t}</span>))}
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" size="sm" variant="ghost" onClick={()=>setJobGenerated(null)}>Discard</Button>
+                    <Button type="button" size="sm" onClick={applyGenerated}>Use these details</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <div><Label>Title <span className="text-danger">*</span></Label><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="e.g. Frontend Engineer Intern" /></div>
           <div><Label>Description <span className="text-danger">*</span></Label><Textarea value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} className="min-h-[100px]" placeholder="What the role involves…" /></div>
 
@@ -459,7 +575,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
                       <Avatar name={f.original_company_name} src={f.original_company_logo_url || undefined} size={44} className="rounded-xl" />
                       <div className="flex gap-2">
                         <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => logoRef.current?.click()}><ImagePlus className="h-4 w-4" /> {f.original_company_logo_url ? 'Change' : 'Upload'}</Button>
-                        {f.original_company_logo_url && (<Button type="button" variant="ghost" size="sm" onClick={() => setF({ ...f, original_company_logo_url: '' })}>Remove</Button>)}
+                        {f.original_company_logo_url && <Button type="button" variant="ghost" size="sm" onClick={() => setF({ ...f, original_company_logo_url: '' })}>Remove</Button>}
                       </div>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">PNG, JPG, or any image from your device.</p>
@@ -501,14 +617,14 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
                 <Button type="button" size="sm" variant="outline" onClick={() => studioFileRef.current?.click()}>
                   <ImagePlus className="h-4 w-4" /> {studioFile ? `Change (${studioFile.name})` : 'Upload document'}
                 </Button>
-                {studioFile && (<Button type="button" size="sm" variant="ghost" onClick={() => setStudioFile(null)}>Remove</Button>)}
+                {studioFile && <Button type="button" size="sm" variant="ghost" onClick={() => setStudioFile(null)}>Remove</Button>}
               </div>
               <Textarea value={studioInstruction} onChange={(e) => setStudioInstruction(e.target.value)} className="min-h-[70px]" placeholder="Optional instruction — e.g. 'Make it a take-home coding task', 'Focus on system design', 'Harder, for senior candidates'." />
               <div className="flex flex-wrap gap-2">
                 <Button type="button" size="sm" onClick={() => runGeneration(false)} loading={generating}>
                   <Sparkles className="h-4 w-4" /> {generated ? 'Regenerate' : 'Generate questions'}
                 </Button>
-                {generated && (<Button type="button" size="sm" variant="outline" onClick={() => runGeneration(true)} loading={generating}>Refine with instruction</Button>)}
+                {generated && <Button type="button" size="sm" variant="outline" onClick={() => runGeneration(true)} loading={generating}>Refine with instruction</Button>}
               </div>
               {genError && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{genError}</p>}
               {generating && !generated && (
@@ -709,7 +825,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
       <div className="flex items-center gap-2 border-t border-border pt-4">
         <Button variant="ghost" onClick={onCancel}>Cancel</Button>
         <div className="ml-auto flex gap-2">
-          {active !== 'details' && (<Button variant="outline" type="button" onClick={() => { if (prevId) setActive(prevId) }}>Back</Button>)}
+          {active !== 'details' && <Button variant="outline" type="button" onClick={() => { if (prevId) setActive(prevId) }}>Back</Button>}
           {active === 'submission' ? (
             <Button onClick={submit} loading={saving}>{editing ? 'Save changes' : 'Post listing'}</Button>
           ) : (

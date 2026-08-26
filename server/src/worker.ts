@@ -8,14 +8,23 @@
 // process.env reads in db.ts / claude.ts / auth.ts work unchanged.
 
 import { app } from '@/app'
+import { setExtractionBinding } from '@/lib/extractionClient'
 import { runCalibration } from '@/scripts/calibrate'
+
+// The Extraction Worker (`optryva-extract`) is called via a SERVICE BINDING, not
+// over HTTPS. Workers cannot fetch other `*.workers.dev` hostnames (error 1042),
+// so the binding is what actually makes evidence AI work in production. See the
+// big comment in @/lib/extractionClient for the full rationale.
 import { runEval } from '@/scripts/eval-matching'
 import { buildFeatures } from '@/scripts/build-features'
 import { trainRanker } from '@/scripts/train-ranker'
 import { trainDistill } from '@/scripts/train-distill'
 
 export default {
-  fetch: app.fetch,
+  fetch(request: Request, env: any, ctx: any) {
+    if (env?.EXTRACTION) setExtractionBinding(env.EXTRACTION)
+    return app.fetch(request, env, ctx)
+  },
   // Nightly cron (see wrangler triggers): the whole self-improving loop, in order.
   //   1. calibrate     — tighten the LLM rubric from real outcomes
   //   2. features      — refresh the (student,job) training set + labels

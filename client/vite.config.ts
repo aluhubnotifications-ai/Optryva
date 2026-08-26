@@ -10,6 +10,11 @@ export default defineConfig({
     },
   },
   build: {
+    minify: 'esbuild',
+    // Keep component/function names so React's #300 componentStack (rendered
+    // on-screen by ErrorBoundary) names the real suspending component instead
+    // of a minified alias — critical for diagnosing error #300.
+    esbuild: { keepNames: true },
     rollupOptions: {
       output: {
         // Split only the universally-used vendors into their own content-hashed

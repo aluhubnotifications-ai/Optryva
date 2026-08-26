@@ -134,7 +134,7 @@ async function buildMistralContent(job: any, docs: any[], instruction?: string, 
 }
 
 /** Turn an uploaded source into a Mistral content part (image_url / extracted text). */
-async function sourceToMistralPart(src: SourceInput): Promise<any | null> {
+export async function sourceToMistralPart(src: SourceInput): Promise<any | null> {
   if (!src?.dataUrl) return null
   const parsed = parseDataUrl(src.dataUrl)
   if (!parsed) return null
@@ -163,7 +163,7 @@ async function sourceToMistralPart(src: SourceInput): Promise<any | null> {
 }
 
 /** Turn an uploaded source into a Claude content block (image / PDF / extracted text). */
-async function sourceToBlock(src: SourceInput): Promise<any | null> {
+export async function sourceToBlock(src: SourceInput): Promise<any | null> {
   if (!src?.dataUrl) return null
   const parsed = parseDataUrl(src.dataUrl)
   if (!parsed) return null

@@ -28,8 +28,8 @@ import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { useMatchRun } from '@/lib/matchRun'
 import { fetchProtectedDocument, profilesApi, resumesApi, evidenceApi, authApi } from '@/lib/api'
-import { profileCompletion, GOAL_OPTIONS, ROLE_OPTIONS, setEvidenceDeclined, isEvidenceDeclined, type OnboardingStep } from '@/lib/onboarding'
-import type { Profile as ProfileT, UserType, WorkType, ListingType, ResumeProfile } from '@/types'
+import { profileCompletion, setEvidenceDeclined, isEvidenceDeclined, type OnboardingStep } from '@/lib/onboarding'
+import type { Profile as ProfileT, WorkType, ListingType, ResumeProfile } from '@/types'
 import { Card, CardBody, Badge, Avatar, Input, Label, Textarea, Select } from '@/components/ui/primitives'
 import { CountryCombobox } from '@/components/ui/CountryCombobox'
 import { Button } from '@/components/ui/Button'
@@ -78,11 +78,6 @@ export default function Profile() {
     }
   }, [user.id, user.user_type])
 
-  // The 3-question quick intake (name / who you are / first goal) runs the moment
-  // a student arrives with any of those missing — e.g. straight after Google sign-in.
-  const [introOpen, setIntroOpen] = useState(
-    () => !user.full_name?.trim() || !user.user_type || !user.onboarding_goal?.trim(),
-  )
   // Optional onboarding steps the student chose to "Skip for now" (session-only).
   const [skipped, setSkipped] = useState<Set<string>>(new Set())
 
@@ -155,10 +150,6 @@ export default function Profile() {
 
   // Jump the student to whichever field the onboarding step is about.
   function focusStep(step: OnboardingStep) {
-    if (step.key === 'name' || step.key === 'role' || step.key === 'goal') {
-      setIntroOpen(true)
-      return
-    }
     if (step.section === 'resumes') {
       setTab('resumes')
       return
@@ -535,17 +526,6 @@ export default function Profile() {
 
       <AccountSecurity />
 
-        {/* Quick intake: name, who you are, first goal */}
-        <OnboardingIntro
-          open={introOpen}
-          user={user}
-          onClose={() => setIntroOpen(false)}
-          onSaved={() => {
-            setIntroOpen(false)
-            toast({ title: 'Profile updated', tone: 'success' })
-          }}
-        />
-
         {/* Remove CV confirmation */}
         <Modal
           open={confirmRemoveCv}
@@ -874,111 +854,4 @@ function ProfileCompletionCard({
   )
 }
 
-/* ---------- Onboarding: 3-question quick intake ---------- */
-function OnboardingIntro({
-  open,
-  user,
-  onClose,
-  onSaved,
-}: {
-  open: boolean
-  user: ProfileT
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const [name, setName] = useState(user.full_name ?? '')
-  const [userType, setUserType] = useState<UserType | ''>(user.user_type ?? '')
-  const [goal, setGoal] = useState(user.onboarding_goal ?? '')
-  const [saving, setSaving] = useState(false)
-  const { toast } = useToast()
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!userType) {
-      toast({ title: 'Pick who you are', description: 'Choose Student, Employer, or University to continue.', tone: 'error' })
-      return
-    }
-    setSaving(true)
-    try {
-      const updated = await profilesApi.update(user.id, {
-        full_name: name.trim(),
-        user_type: userType,
-        onboarding_goal: goal,
-      })
-      if (updated) useSession.getState().setProfile(updated)
-      onSaved()
-    } catch (err) {
-      toast({ title: 'Could not save', description: err instanceof Error ? err.message : undefined, tone: 'error' })
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} size="md" title="Welcome to Optryva" description="A few quick things so we can tailor your experience.">
-      <form onSubmit={submit} className="space-y-4">
-        <div>
-          <Label>What's your name?</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" required />
-        </div>
-
-        <div>
-          <Label>I'm here as a…</Label>
-          <div className="grid grid-cols-3 gap-2">
-            {ROLE_OPTIONS.map((r) => {
-              const on = userType === r.value
-              return (
-                <button
-                  key={r.value}
-                  type="button"
-                  onClick={() => setUserType(r.value)}
-                  aria-pressed={on}
-                  className={cn(
-                    'rounded-xl border p-3 text-center text-sm transition-colors',
-                    on ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/40',
-                  )}
-                >
-                  <span className="font-medium">{r.label}</span>
-                  <span className="mt-0.5 block text-[11px] text-muted-foreground">{r.hint}</span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        <div>
-          <Label>Your first goal</Label>
-          <div className="grid gap-2">
-            {GOAL_OPTIONS.map((g) => {
-              const on = goal === g.value
-              return (
-                <button
-                  key={g.value}
-                  type="button"
-                  onClick={() => setGoal(g.value)}
-                  aria-pressed={on}
-                  className={cn(
-                    'flex items-center justify-between rounded-xl border px-3 py-2.5 text-left text-sm transition-colors',
-                    on ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/40',
-                  )}
-                >
-                  <span>
-                    <span className="font-medium">{g.label}</span>
-                    <span className="block text-[11px] text-muted-foreground">{g.hint}</span>
-                  </span>
-                  {on && <CheckCircle2 className="h-4 w-4 flex-shrink-0" />}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="ghost" onClick={onClose}>I'll do this later</Button>
-          <Button type="submit" loading={saving} disabled={!name.trim() || !goal}>
-            {saving ? 'Saving…' : 'Continue'}
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  )
-}

@@ -172,9 +172,11 @@ export async function buildCandidateSummary(
     '2. A short "Evidence highlights" section where each relevant evidence item ' +
     'is one bullet: lead with the item title in bold, then a crisp sentence on ' +
     'what they did and the impact or skill it demonstrates.\n\n' +
-    'Tone: confident and professional. Prefer specific, concrete language over ' +
-    'vague claims. Use active voice. Do not invent details not present. Use ' +
-    'Markdown: bold for titles (**Title:**), "- " for bullets. Keep concise.'
+    'Tone: confident, professional, and fluent. Prefer specific, concrete ' +
+    'language over vague claims. Use active voice. Do not invent details not ' +
+    'present. Write in clear, correct English. Use Markdown: **bold** for titles ' +
+    '(**Title:**) and "- " for bullets. Never use single asterisks (*) as ' +
+    'decoration. Keep concise.'
   return mistralText({ system: sys, user: `Candidate evidence:\n${bullets}`, maxTokens: 900 })
 }
 
@@ -194,15 +196,15 @@ export async function answerQuestion(
           const detail = it.ai_summary || it.description || ''
           const links = (it as { links?: string[] }).links ?? []
           const linkLine = links.length ? `\n   Links provided by student: ${links.join(', ')}` : ''
-          return `${i + 1}. "${it.title}" [status: ${it.status}]${skills ? ` — skills: ${skills}` : ''}\n   What the AI extracted from the source: ${detail || '(no extractable content)'}${linkLine}`
+          return `• "${it.title}" [status: ${it.status}]${skills ? ` — skills: ${skills}` : ''}\n   What the AI extracted from the source: ${detail || '(no extractable content)'}${linkLine}`
         })
         .join('\n\n')
     : '(No evidence items found.)'
   const sys =
-    'You are Optryva\'s evidence assistant helping an employer ask questions ' +
-    'about a student candidate\'s portfolio of work. The employer asks things ' +
-    'like "What exactly did they do?", "Where is the proof?", "Does this match ' +
-    'the role?", "What is missing?".\n\n' +
+    'You are Optryva\'s evidence assistant helping an employer evaluate a student ' +
+    'candidate\'s portfolio of work. The employer asks things like "What exactly ' +
+    'did they do?", "Where is the proof?", "Does this match the role?", "What is ' +
+    'missing?".\n\n' +
     'Rules:\n' +
     '- Ground EVERY answer strictly in the evidence context below (what AI ' +
     'extracted from their files and linked pages). Never invent facts.\n' +
@@ -211,9 +213,15 @@ export async function answerQuestion(
     '- If the evidence does NOT answer the question, say what is missing and ' +
     'which specific link, file, or document the employer should request (e.g. ' +
     '"ask for the live dashboard URL" or "request the published policy brief PDF").\n' +
-    '- Reference evidence items by number/title when pointing at proof.\n' +
-    '- Keep answers concise and skimmable (short paragraphs or a few bullets). ' +
-    'Professional tone, addressed to the recruiter.'
+    '- Reference each piece of evidence by its TITLE (e.g. "the Youth Leadership ' +
+    'Initiative"), NEVER by item number (there is no #1/#2 in the UI).\n' +
+    '- WRITE TIGHTLY. Lead with a 1–2 sentence direct answer. Then, only if you ' +
+    'must list items, use a short markdown bullet list (- ). Avoid long walls of ' +
+    'text, repetition, and generic filler. Use **bold** for evidence titles and ' +
+    'key outcomes. Skip headings unless the answer truly needs sections.\n' +
+    '- Professional, recruiter-facing tone. Be specific and concrete. Write in ' +
+    'clear, fluent, grammatically correct English. Do NOT use single asterisks ' +
+    '(*) for decoration — reserve **bold** for true emphasis only.'
   return mistralText({
     system: sys,
     user: `CANDIDATE EVIDENCE CONTEXT:\n${context}\n\nEMPLOYER QUESTION: ${question}`,

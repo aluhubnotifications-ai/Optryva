@@ -7,6 +7,18 @@ import { extractionClient } from '@/lib/extractionClient'
 import { mimeForName } from '@/lib/bytes'
 import type { CandidateEvidenceItem } from '@/lib/extraction'
 
+// In-memory cache so we don't regenerate (and re-spend tokens on) the AI summary
+// on every page load. Job-scoped summaries are keyed by student + a hash of the
+// job description; the profile-wide summary is cached in the DB instead (see the
+// POST /summary handler below). TTL keeps it fresh after evidence edits.
+const summaryCache = new Map<string, { value: string; exp: number }>()
+const SUMMARY_TTL_MS = 10 * 60 * 1000
+function hashStr(s: string): string {
+  let h = 5381
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0
+  return String(h >>> 0)
+}
+
 export const evidence = Router()
 evidence.use(requireAuth)
 
@@ -132,8 +144,16 @@ evidence.post('/student/:studentId/summary', async (req, res) => {
     .order('created_at', { ascending: false })).data as CandidateEvidenceItem[] | null
 
   if (jobDescription) {
+    const cacheKey = `j:${studentId}:${hashStr(jobDescription)}`
+    const hit = summaryCache.get(cacheKey)
+    if (hit && hit.exp > Date.now()) {
+      res.json({ summary: hit.value })
+      return
+    }
     const summary = await extractionClient.candidateSummary(items ?? [], jobDescription)
-    res.json({ summary: summary ?? 'No evidence submitted yet.' })
+    const out = summary ?? 'No evidence submitted yet.'
+    summaryCache.set(cacheKey, { value: out, exp: Date.now() + SUMMARY_TTL_MS })
+    res.json({ summary: out })
     return
   }
 
@@ -333,4 +353,33 @@ evidence.post('/student/:studentId/chat', async (req, res) => {
   ) as ChatMsg
 
   res.json([userMsg, aiMsg])
+})
+
+// Delete a single chat message (only the caller's own messages for this
+// candidate). Returns 404 if it doesn't exist or isn't theirs.
+evidence.delete('/student/:studentId/chat/:messageId', async (req, res) => {
+  const { studentId, messageId } = req.params
+  const existing = (await sb.from('evidence_chat_messages')
+    .select('id')
+    .eq('id', messageId)
+    .eq('user_id', req.user!.id)
+    .eq('student_id', studentId)
+    .maybeSingle()).data
+  if (!existing) return res.status(404).json({ error: 'not_found' })
+  await sb.from('evidence_chat_messages')
+    .delete()
+    .eq('id', messageId)
+    .eq('user_id', req.user!.id)
+    .eq('student_id', studentId)
+  res.json({ ok: true })
+})
+
+// Clear the whole conversation for this candidate (caller's messages only).
+evidence.delete('/student/:studentId/chat', async (req, res) => {
+  const studentId = req.params.studentId
+  await sb.from('evidence_chat_messages')
+    .delete()
+    .eq('user_id', req.user!.id)
+    .eq('student_id', studentId)
+  res.json({ ok: true })
 })

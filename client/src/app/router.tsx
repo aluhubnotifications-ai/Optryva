@@ -13,6 +13,12 @@ import Login from '@/pages/auth/Login'
 import Register from '@/pages/auth/Register'
 import VerifyEmail from '@/pages/auth/VerifyEmail'
 import ForgotPassword from '@/pages/auth/ForgotPassword'
+
+// Collect every lazy route factory so the app can warm all route chunks
+// immediately after auth. Declared BEFORE the lazyRoute(...) calls below because
+// those run at module-init time and push into this array (a hoisted function
+// can be called early, but a `const` it closes over must already be initialized).
+const lazyFactories: Array<() => Promise<{ default: ComponentType }>> = []
 const Dashboard = lazyRoute(() => import('@/pages/Dashboard'))
 const Research = lazyRoute(() => import('@/pages/Research'))
 const Jobs = lazyRoute(() => import('@/pages/student/Jobs'))
@@ -48,10 +54,26 @@ function RouteFallback() {
   )
 }
 
+/** Collect every lazy route factory so the app can warm all route chunks
+ *  immediately after auth. Once a chunk is already loaded, React.lazy resolves
+ *  synchronously on first render, so the post-onboarding navigation into
+ *  /app/* never suspends — which is what previously threw React error #300. */
+export function preloadRoutes() {
+  for (const factory of lazyFactories) {
+    try {
+      void factory()
+    } catch {
+      /* preload is best-effort */
+    }
+  }
+}
+
 /** Wrap a `lazy()` import in its own <Suspense> so every route has a boundary
  *  directly around the suspending chunk. This — combined with transition-based
- *  navigation — prevents React error #300 when a not-yet-loaded page mounts. */
+ *  navigation and preloaded chunks — prevents React error #300 when a
+ *  not-yet-loaded page mounts. */
 function lazyRoute(factory: () => Promise<{ default: ComponentType }>) {
+  lazyFactories.push(factory)
   const Component = lazy(factory)
   return function LazyRoute() {
     return (
@@ -126,23 +148,109 @@ function ApplicationsRoute() {
 function RouteError() {
   const error = useRouteError()
   const message = error instanceof Error ? error.message : isRouteErrorResponse(error) ? error.statusText : ''
+  // Try multiple places where componentStack might live (React Router attaches it directly)
+  const stack = (error as any)?.componentStack 
+    || (error instanceof Error ? (error as Error & { componentStack?: string }).componentStack : undefined)
   const chunkFailed = /dynamically imported module|importing a module script failed|failed to fetch/i.test(message)
+
+  // 10-second lock so you can read/copy the stack before any navigation
+  const [lock, setLock] = useState(true)
+  const [countdown, setCountdown] = useState(10)
+  useEffect(() => {
+    const id = setInterval(() => setCountdown(c => c - 1), 1000)
+    const t = setTimeout(() => setLock(false), 10000)
+    return () => { clearInterval(id); clearTimeout(t) }
+  }, [])
+
+  // Log full stack to console with unmistakable prefix
+  useEffect(() => {
+    if (stack) {
+      console.error('🚨 ROUTE ERROR FULL STACK:', message)
+      console.error('🚨 COMPONENT STACK:\n', stack)
+    }
+  }, [message, stack])
+
+  const copyStack = () => {
+    navigator.clipboard.writeText(`${message}\n\n${stack || 'no stack'}`)
+    alert('Full error stack copied to clipboard!')
+  }
+
+  const goProfile = () => {
+    window.location.href = '/app/profile'
+  }
+
+  const handleReload = () => {
+    if (!lock) window.location.reload()
+  }
+
   return (
-    <div className="mesh-bg flex min-h-screen items-center justify-center px-5 py-12">
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-7 text-center shadow-card">
-        <h1 className="text-xl font-bold">We couldn’t open this page</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div className="w-full max-w-4xl rounded-2xl border-2 border-destructive bg-card p-6 shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <h1 className="text-2xl font-bold text-destructive">🚨 Route Error — Full Stack Below</h1>
+          {stack && (
+            <button
+              type="button"
+              onClick={copyStack}
+              className="flex-shrink-0 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
+            >
+              Copy Stack
+            </button>
+          )}
+        </div>
+
+        <p className="mb-4 text-sm text-muted-foreground">
           {chunkFailed
             ? 'The app was updated while this page was open. Reload to get the latest version.'
-            : 'Something went wrong while loading this page. Please try again.'}
+            : 'Something went wrong while loading this page. Check the stack below.'}
         </p>
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="mt-5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
-        >
-          Reload page
-        </button>
+
+        {lock && (
+          <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-center">
+            <span className="font-mono text-lg font-bold text-destructive">
+              Locked for {countdown}s — navigation blocked so you can copy the stack
+            </span>
+          </div>
+        )}
+
+        {stack ? (
+          <div className="rounded-lg border border-border bg-background p-4 text-left overflow-auto max-h-[70vh]">
+            <pre className="text-[12px] font-mono text-foreground whitespace-pre-wrap break-all">
+              {`${message}\n\n${stack}`}
+            </pre>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No component stack available.</p>
+        )}
+
+        <div className="mt-5 flex gap-3">
+          <button
+            type="button"
+            onClick={handleReload}
+            disabled={lock}
+            className="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {lock ? `Reload Page (${countdown}s)` : 'Reload Page'}
+          </button>
+          {stack && (
+            <button
+              type="button"
+              onClick={copyStack}
+              className="flex-1 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted"
+            >
+              Copy Stack
+            </button>
+          )}
+          {!lock && (
+            <button
+              type="button"
+              onClick={goProfile}
+              className="flex-1 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground hover:opacity-90"
+            >
+              Continue to Profile
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -168,6 +276,7 @@ export const router = createBrowserRouter([
         <Onboarding />
       </Suspense>
     ),
+    errorElement: <RouteError />,
   },
   {
     path: '/app',

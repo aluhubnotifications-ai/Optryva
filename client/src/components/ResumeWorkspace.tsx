@@ -28,6 +28,11 @@ export function ResumeWorkspace({ initialResumes }: { initialResumes?: ResumePro
   const [saving, setSaving] = useState<string | null>(null)
   const [pendingResumeId, setPendingResumeId] = useState<string | null>(null)
   const [skillInputs, setSkillInputs] = useState<Record<string, string>>({})
+  // Once the user mutates the list locally (create/remove/save), ignore any
+  // in-flight or prop-driven list() fetch so it can't clobber their changes —
+  // otherwise a slow background fetch (or Profile re-supplying initialResumes)
+  // wipes a résumé the moment it's created.
+  const mutatedRef = useRef(false)
   const [preview, setPreview] = useState<{ resume: ResumeProfile; url: string; type: string } | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewDocumentLoading, setPreviewDocumentLoading] = useState(false)
@@ -35,12 +40,13 @@ export function ResumeWorkspace({ initialResumes }: { initialResumes?: ResumePro
 
   // Render instantly from parent-provided data when available; in all cases,
   // refresh in the background so the list stays fresh (e.g. after creating one).
+  // Skip applying the result if the user has already mutated the list locally.
   useEffect(() => {
     let active = true
     resumesApi
       .list()
       .then((r) => {
-        if (active) setResumes(r)
+        if (active && !mutatedRef.current) setResumes(r)
       })
       .catch(() => {
         if (active && !initialResumes) toast({ title: 'Could not load résumé profiles', tone: 'error' })
@@ -55,12 +61,13 @@ export function ResumeWorkspace({ initialResumes }: { initialResumes?: ResumePro
 
   // Seed from parent data immediately (before the background fetch resolves).
   useEffect(() => {
-    if (initialResumes) setResumes(initialResumes)
+    if (initialResumes && !mutatedRef.current) setResumes(initialResumes)
   }, [initialResumes])
 
   async function create() {
     if (pendingResumeId) return
     try {
+      mutatedRef.current = true
       const created = await resumesApi.create(blank(resumes[0]))
       setResumes((current) => [...current, created])
       setPendingResumeId(created.id)
@@ -71,6 +78,7 @@ export function ResumeWorkspace({ initialResumes }: { initialResumes?: ResumePro
 
   async function save(resume: ResumeProfile) {
     setSaving(resume.id)
+    mutatedRef.current = true
     try {
       const updated = await resumesApi.update(resume.id, resume)
       setResumes((current) => current.map((item) => item.id === updated.id ? updated : item))
@@ -84,6 +92,7 @@ export function ResumeWorkspace({ initialResumes }: { initialResumes?: ResumePro
   }
 
   async function remove(resume: ResumeProfile) {
+    mutatedRef.current = true
     try {
       await resumesApi.remove(resume.id)
       setResumes((current) => current.filter((item) => item.id !== resume.id))

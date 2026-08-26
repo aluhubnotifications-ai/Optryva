@@ -23,5 +23,10 @@
   // worker.ts scheduled(). Calibration self-gates until enough outcomes exist.
   "triggers": { "crons": ["0 2 * * *"] },
 
+  // Service binding to the dedicated extraction Worker. Lets THIS worker call
+  // optryva-extract internally (no public HTTP), which avoids Cloudflare's block
+  // on Worker→Worker fetch() over *.workers.dev (error 1042 / prohibited IP).
+  "services": [{ "binding": "EXTRACTION", "service": "optryva-extract" }],
+
   "observability": { "enabled": true }
 }

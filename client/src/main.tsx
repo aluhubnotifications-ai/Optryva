@@ -1,11 +1,13 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { RouterProvider } from 'react-router-dom'
-import { router } from '@/app/router'
+import { router, preloadRoutes } from '@/app/router'
+import { ErrorBoundary } from '@/app/ErrorBoundary'
 import { ThemeProvider } from '@/lib/theme'
 import { ToastProvider } from '@/components/ui/toast'
 import { bootstrapSession } from '@/lib/api'
+import { Spinner } from '@/components/ui/Spinner'
 import './styles/globals.css'
 
 // Gate the app on a one-time session bootstrap. After OAuth (or a session whose
@@ -23,6 +25,12 @@ function Bootstrap({ children }: { children: React.ReactNode }) {
       cancelled = true
     }
   }, [])
+  // Warm every route chunk once the session is known, so the first navigation
+  // into /app/* (e.g. right after onboarding finishes) never has to lazy-load a
+  // page and suspend — the root cause of React error #300.
+  useEffect(() => {
+    if (ready) preloadRoutes()
+  }, [ready])
   if (!ready) {
     return (
       <div className="mesh-bg flex min-h-screen items-center justify-center">
@@ -68,7 +76,25 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <ThemeProvider>
       <ToastProvider>
         <Bootstrap>
-          <RouterProvider router={router} />
+          <ErrorBoundary>
+            <Suspense
+              fallback={
+                <div className="mesh-bg flex min-h-screen items-center justify-center">
+                  <Spinner label="Loading…" />
+                </div>
+              }
+            >
+              <RouterProvider
+                router={router}
+                // Wrap navigations in React.startTransition so that mounting a
+                // lazy() route chunk (e.g. /app/profile) suspends into its Suspense
+                // fallback instead of throwing React error #300 ("suspended during
+                // synchronous input"). This is the v7 default; opting in early here
+                // is the supported fix on react-router v6.
+                future={{ v7_startTransition: true }}
+              />
+            </Suspense>
+          </ErrorBoundary>
         </Bootstrap>
       </ToastProvider>
     </ThemeProvider>

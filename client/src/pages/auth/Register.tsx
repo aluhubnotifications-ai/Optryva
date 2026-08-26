@@ -16,6 +16,18 @@ const ERRORS: Record<string, string> = {
   invalid: 'Please fill in your name, a valid email, and a password (6+ chars).',
 }
 
+// Password strength score (0–4). We require at least "fair" (score >= 2:
+// 8+ chars plus at least one letter/digit mix) before allowing sign-up.
+function passwordStrength(pw: string): { score: number; label: string } {
+  let score = 0
+  if (pw.length >= 8) score++
+  if (pw.length >= 12) score++
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++
+  if (/\d/.test(pw) && /[^A-Za-z0-9]/.test(pw)) score++
+  const label = score < 2 ? 'Weak' : score < 3 ? 'Fair' : score < 4 ? 'Good' : 'Strong'
+  return { score, label }
+}
+
 const ROLES: { value: UserType; label: string; hint: string; icon: typeof User }[] = [
   { value: 'student', label: 'Student', hint: 'Find roles', icon: User },
   { value: 'company', label: 'Company', hint: 'Hire talent', icon: Building2 },
@@ -37,15 +49,24 @@ export default function Register() {
     password: '',
     user_type: 'student',
   })
+  const [confirm, setConfirm] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+
+  const strength = passwordStrength(form.password)
+  const pwOk = strength.score >= 2
+  const pwMismatch = confirm.length > 0 && confirm !== form.password
 
   const nameField = NAME_FIELD[form.user_type]
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    if (!form.name.trim()) return setError('Please add your name.')
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim())) return setError('Please enter a valid email address.')
+    if (!pwOk) return setError('Use a stronger password — at least 8 characters with a mix of letters, numbers, and symbols.')
+    if (form.password !== confirm) return setError('Passwords do not match.')
     setLoading(true)
     try {
       const { accessToken, user } = await authApi.register({
@@ -206,10 +227,58 @@ export default function Register() {
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                   required
-                  minLength={6}
+                  minLength={8}
+                  autoComplete="new-password"
                   className="pl-9"
+                  aria-invalid={form.password.length > 0 && !pwOk}
                 />
               </div>
+              {form.password.length > 0 && (
+                <div className="mt-2">
+                  <div className="flex gap-1">
+                    {[0, 1, 2, 3].map((i) => (
+                      <div
+                        key={i}
+                        className={cn(
+                          'h-1.5 flex-1 rounded-full',
+                          i < strength.score
+                            ? strength.score < 2
+                              ? 'bg-destructive'
+                              : strength.score < 4
+                                ? 'bg-amber-500'
+                                : 'bg-emerald-500'
+                            : 'bg-muted',
+                        )}
+                      />
+                    ))}
+                  </div>
+                  <p
+                    className={cn(
+                      'mt-1 text-xs',
+                      strength.score < 2 ? 'text-destructive' : strength.score < 4 ? 'text-amber-600' : 'text-emerald-600',
+                    )}
+                  >
+                    {strength.label} password
+                  </p>
+                </div>
+              )}
+            </div>
+            <div>
+              <Label>Confirm password</Label>
+              <div className="relative mt-1">
+                <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="password"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                  className="pl-9"
+                  aria-invalid={pwMismatch}
+                />
+              </div>
+              {pwMismatch && <p className="mt-1 text-xs text-destructive">Passwords do not match.</p>}
             </div>
             {error && (
               <div className={cn('flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive')}>
@@ -217,7 +286,7 @@ export default function Register() {
                 <span>{error}</span>
               </div>
             )}
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full" disabled={loading || !pwOk || pwMismatch || confirm.length === 0}>
               {loading ? (
                 <>
                   <Spinner className="h-4 w-4" /> Creating…

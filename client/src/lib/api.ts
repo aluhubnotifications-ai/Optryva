@@ -1389,6 +1389,26 @@ export const aiApi = {
   }): Promise<{ title: string; prompt: string; questions: AiAssignmentQuestion[]; rubric: AiRubricCriterion[] }> {
     return (await trackAi('Designing your assignment', () => aiPost('/ai/assignment/generate', payload))) as any
   },
+  async generateJob(payload: {
+    brief?: string
+    sources?: { kind: string; name?: string; dataUrl: string }[]
+    instruction?: string
+    existing?: Record<string, unknown>
+  }): Promise<{
+    title: string
+    description: string
+    category: string
+    listing_type: string
+    location: string
+    pay: string
+    duration: string
+    tags: string[]
+    responsibilities: string[]
+    qualifications: string[]
+    benefits: string[]
+  }> {
+    return (await trackAi('Drafting your job posting', () => aiPost('/ai/job/generate', payload))) as any
+  },
 }
 
 // ---- Admin (gated server-side by ADMIN_EMAILS; UI also hidden from non-admins) ----
@@ -1464,10 +1484,16 @@ export const evidenceApi = {
     return (await apiFetch(`/evidence/${id}/confirm`, { method: 'POST', body: JSON.stringify({ confirmed }) })) as EvidenceItem
   },
   async summary(studentId: string, jobDescription?: string): Promise<{ summary: string }> {
-    return (await apiFetch(`/evidence/student/${studentId}/summary`, {
-      method: 'POST',
-      body: JSON.stringify({ jobDescription: jobDescription ?? '' }),
-    })) as { summary: string }
+    const key = `evidence:summary:${studentId}:${jobDescription ?? ''}`
+    return cached(
+      key,
+      () =>
+        apiFetch(`/evidence/student/${studentId}/summary`, {
+          method: 'POST',
+          body: JSON.stringify({ jobDescription: jobDescription ?? '' }),
+        }) as Promise<{ summary: string }>,
+      10 * 60 * 1000,
+    )
   },
   async listChat(studentId: string): Promise<Array<{ id: string; role: 'employer' | 'ai'; content: string; created_at: string }>> {
     return (await apiFetch(`/evidence/student/${studentId}/chat`)) as Array<{ id: string; role: 'employer' | 'ai'; content: string; created_at: string }>
@@ -1477,5 +1503,15 @@ export const evidenceApi = {
       method: 'POST',
       body: JSON.stringify({ content }),
     })) as Array<{ id: string; role: 'employer' | 'ai'; content: string; created_at: string }>
+  },
+  async deleteChat(studentId: string, messageId: string): Promise<{ ok: boolean }> {
+    return (await apiFetch(`/evidence/student/${studentId}/chat/${messageId}`, {
+      method: 'DELETE',
+    })) as { ok: boolean }
+  },
+  async clearChat(studentId: string): Promise<{ ok: boolean }> {
+    return (await apiFetch(`/evidence/student/${studentId}/chat`, {
+      method: 'DELETE',
+    })) as { ok: boolean }
   },
 }

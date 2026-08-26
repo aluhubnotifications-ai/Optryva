@@ -2,10 +2,11 @@
 // code fences, ordered/unordered lists, and GitHub-style tables.
 
 function renderInline(text: string, keyBase: string) {
-  // split on **bold** and `code`
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g)
+  // split on **bold**, *italic*, and `code`
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g)
   return parts.map((p, i) => {
     if (/^\*\*[^*]+\*\*$/.test(p)) return <strong key={`${keyBase}-${i}`}>{p.slice(2, -2)}</strong>
+    if (/^\*[^*]+\*$/.test(p)) return <em key={`${keyBase}-${i}`} className="italic">{p.slice(1, -1)}</em>
     if (/^`[^`]+`$/.test(p)) return (
       <code key={`${keyBase}-${i}`} className="rounded bg-muted px-1.5 py-0.5 text-[0.85em] font-mono">{p.slice(1, -1)}</code>
     )
