@@ -62,11 +62,11 @@ export function OnboardingMascot({
           {walk && (
             <>
               <motion.rect
-                x="20"
-                y="50"
-                width="5"
-                height="9"
-                rx="2.5"
+                x="19"
+                y="53"
+                width="6"
+                height="10"
+                rx="3"
                 fill="hsl(var(--primary))"
                 style={{ transformBox: 'fill-box', transformOrigin: 'top center' }}
                 animate={{ rotate: [16, -16, 16] }}
@@ -74,10 +74,10 @@ export function OnboardingMascot({
               />
               <motion.rect
                 x="39"
-                y="50"
-                width="5"
-                height="9"
-                rx="2.5"
+                y="53"
+                width="6"
+                height="10"
+                rx="3"
                 fill="hsl(var(--accent))"
                 style={{ transformBox: 'fill-box', transformOrigin: 'top center' }}
                 animate={{ rotate: [-16, 16, -16] }}

@@ -183,7 +183,7 @@ function OnboardingContent() {
   // the lazy /app/profile chunk during a discrete update throws React #300.
   const finished = !!user && !requiresProfileCompletion(user)
   useEffect(() => {
-    if (finished) navigate('/app/profile', { replace: true })
+    if (finished) navigate('/app', { replace: true })
   }, [finished, navigate])
 
   // This user is in the wizard because they're a new account (flagged ?new=1 by
@@ -515,8 +515,8 @@ function OnboardingContent() {
       if (userId) useSession.getState().setNeedsOnboarding(userId, false)
       setCelebrating(true)
       playSuccess()
-      toast({ title: "You're all set!", description: 'Taking you to your profile…', tone: 'success' })
-      setTimeout(() => navigate('/app/profile', { replace: true }), 1500)
+      toast({ title: "You're all set!", description: 'Taking you to your dashboard…', tone: 'success' })
+      setTimeout(() => navigate('/app', { replace: true }), 1500)
     } catch (e) {
       toast({ title: "Couldn't finish", description: e instanceof Error ? e.message : undefined, tone: 'error' })
       setSaving(false)
