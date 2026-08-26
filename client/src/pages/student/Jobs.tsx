@@ -31,7 +31,8 @@ import type { AiMatch, JobListing, Profile, ResumeProfile } from '@/types'
 import { AIResearchPanel } from '@/components/AIResearchPanel'
 import { TrajectorySimulator } from '@/components/TrajectorySimulator'
 import { ShowYourWork } from '@/components/ShowYourWork'
-import { useMatchRun } from '@/lib/matchRun'
+import { MatchRunner } from '@/components/MatchRunner'
+import { useMatchRun, needsMatchRun } from '@/lib/matchRun'
 import { useMatchProgress } from '@/lib/matchProgress'
 import { matchReadiness } from '@/lib/matchReady'
 import { Drawer } from '@/components/ui/Drawer'
@@ -114,11 +115,15 @@ export default function Jobs() {
     setShown(PAGE)
   }, [country, tab, typeKey, listQ, jobs])
 
-  // We no longer show a "Run AI matching" card on the Opportunities page — the board
-  // is the whole view. Matching runs quietly in the background and scores stream in;
-  // if it fails, the listings are simply shown without AI ranking.
+  // Daily "run AI matching" gate. We hold the gate until the student has a résumé
+  // + preferences — the funnel can't rank without them. After a successful (or
+  // failed) run we close the gate so the board becomes the whole view. An
+  // `autoOpen` flag prevents the gate from re-opening after a failure.
   const lastRun = useMatchRun((s) => s.lastRun[user.id])
+  const markRun = useMatchRun((s) => s.markRun)
   const matchReady = matchReadiness(user, hasResume).ready
+  const [gateOpen, setGateOpen] = useState(() => !matchReady || needsMatchRun(lastRun))
+  const [autoOpen, setAutoOpen] = useState(true)
 
   useEffect(() => {
     let active = true
@@ -162,14 +167,19 @@ export default function Jobs() {
     }
   }, [user.id])
 
-  // Run matching quietly in the background as soon as the profile is ready. The runner
-  // is idempotent (reuses cached results, streams a live percentage only when needed),
-  // so the listings are usable immediately and scores fill in as they arrive — or, if
-  // the AI fails, the board is simply shown without AI ranking.
+  // Auto-run when the gate is already closed (e.g. returning user with cached scores
+// or a new day). The runner is idempotent and streams live progress.
   useEffect(() => {
-    if (matchReady) void useMatchProgress.getState().run(user.id)
+    if (!gateOpen && matchReady) void useMatchProgress.getState().run(user.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchReady, user.id])
+  }, [gateOpen, matchReady, user.id])
+
+  // Re-open the gate if matching was invalidated (e.g. CV upload), a new day, or
+  // the profile is missing the résumé/preferences. Skipped once the student has
+  // dismissed it after a failure (autoOpen=false), so they stay on the board.
+  useEffect(() => {
+    if (autoOpen && (!matchReady || needsMatchRun(lastRun))) setGateOpen(true)
+  }, [lastRun, matchReady, autoOpen])
 
   const filtered = useMemo(() => {
     let list = jobs.filter((j) => {
@@ -317,111 +327,124 @@ export default function Jobs() {
 
       {/* The opportunities board is the whole view. Matching runs in the background
           and scores stream in; if the AI fails, the listings are simply shown. */}
-      <>
-      {/* Sticky tabs */}
-      <div className="sticky top-16 z-20 -mx-4 mb-4 border-b border-border bg-background/95 px-4 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-        <div className="-mx-1 flex items-center gap-1 overflow-x-auto px-1">
-          {TABS.map((t) => {
-            const active = tab === t.key
-            return (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                className={cn(
-                  'relative flex shrink-0 items-center gap-1.5 px-3 py-2.5 text-sm font-medium transition-colors',
-                  active ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                <t.icon className="h-4 w-4" />
-                {t.label}
-                {active && (
-                  <motion.span layoutId="job-tab" className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-primary" />
-                )}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Two-pane: list (sticky/scroll) + detail (sticky/scroll) */}
-      <div className="grid gap-6 lg:grid-cols-[minmax(320px,400px)_1fr]">
-        {/* List */}
-        <section ref={listRef} className="lg:sticky lg:top-[7.5rem] lg:h-[calc(100vh-9rem)] lg:overflow-y-auto lg:pr-1">
-          <p className="mb-2 text-sm text-muted-foreground">
-            Showing <span className="font-semibold text-foreground">{filtered.length}</span> AI-matched {filtered.length === 1 ? 'role' : 'roles'}
-          </p>
-          <div className="sticky top-0 z-10 mb-3 bg-background pb-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={listQ} onChange={(e) => setListQ(e.target.value)} placeholder="Filter results…" className="pl-9" />
-            </div>
-          </div>
-
-           <div className="space-y-2">
-             {loading
-               ? Array.from({ length: 6 }).map((_, i) => <ListSkeleton key={i} />)
-               : filtered.slice(0, shown).map((job) => (
-                   <ListRow
-                     key={job.id}
-                     job={job}
-                     company={companies[job.company_id]}
-                     match={matches[job.id]}
-                     selected={selected?.id === job.id}
-                     onClick={() => openJob(job)}
-                   />
-                 ))}
-             {!loading && shown < filtered.length && (
-               <div ref={sentinelRef} className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
-                 <Spinner className="h-4 w-4" /> Loading more…
-               </div>
-             )}
-             {!loading && shown >= filtered.length && filtered.length > 0 && (
-               <p className="py-4 text-center text-xs text-muted-foreground">You've reached the end</p>
-             )}
-             {!loading && filtered.length === 0 && (
-               <p className="py-10 text-center text-sm text-muted-foreground">
-                 No roles in {country === 'All countries' ? 'this view' : country} yet. Try another country, type, or tab.
-               </p>
-             )}
-           </div>
-        </section>
-
-        {/* Detail (desktop) */}
-        <section className="hidden lg:block lg:sticky lg:top-[7.5rem] lg:h-[calc(100vh-9rem)] lg:overflow-y-auto lg:pr-1">
-          {selected ? (
-            <JobDetailContent
-              job={selected}
-              company={companies[selected.company_id]}
-              match={matches[selected.id]}
-              saved={saved.has(selected.id)}
-              onSave={() => toggleSave(selected.id)}
-              onApply={() => handleApply(selected)}
-              onResearch={() => setResearchJob(selected)}
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-border text-sm text-muted-foreground">
-              Select a role to view details
-            </div>
-          )}
-        </section>
-      </div>
-
-      {/* Detail (mobile drawer) */}
-      <Drawer open={!!mobileDetail} onClose={() => setMobileDetail(null)} width="lg" title="Opportunity details">
-        {mobileDetail && (
-          <JobDetailContent
-            job={mobileDetail}
-            company={companies[mobileDetail.company_id]}
-            match={matches[mobileDetail.id]}
-            saved={saved.has(mobileDetail.id)}
-            onSave={() => toggleSave(mobileDetail.id)}
-            onApply={() => handleApply(mobileDetail)}
-            onResearch={() => setResearchJob(mobileDetail)}
-            bare
+{gateOpen ? (
+        <div className="mt-2">
+          <MatchRunner
+            userId={user.id}
+            resumePresent={hasResume}
+            onComplete={() => { markRun(user.id); setGateOpen(false) }}
+            onError={() => { setAutoOpen(false); setGateOpen(false) }}
+            title="Today's AI matches"
+            subtitle={`Welcome back, ${user.full_name.split(' ')[0]} — let's score today's opportunities against your profile and show your best fits first. You can switch tabs while it runs.`}
           />
-        )}
-        </Drawer>
-      </>
+        </div>
+      ) : (
+        <>
+        {/* Sticky tabs */}
+        <div className="sticky top-16 z-20 -mx-4 mb-4 border-b border-border bg-background/95 px-4 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <div className="-mx-1 flex items-center gap-1 overflow-x-auto px-1">
+            {TABS.map((t) => {
+              const active = tab === t.key
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className={cn(
+                    'relative flex shrink-0 items-center gap-1.5 px-3 py-2.5 text-sm font-medium transition-colors',
+                    active ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <t.icon className="h-4 w-4" />
+                  {t.label}
+                  {active && (
+                    <motion.span layoutId="job-tab" className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-primary" />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Two-pane: list (sticky/scroll) + detail (sticky/scroll) */}
+        <div className="grid gap-6 lg:grid-cols-[minmax(320px,400px)_1fr]">
+          {/* List */}
+          <section ref={listRef} className="lg:sticky lg:top-[7.5rem] lg:h-[calc(100vh-9rem)] lg:overflow-y-auto lg:pr-1">
+            <p className="mb-2 text-sm text-muted-foreground">
+              Showing <span className="font-semibold text-foreground">{filtered.length}</span> AI-matched {filtered.length === 1 ? 'role' : 'roles'}
+            </p>
+            <div className="sticky top-0 z-10 mb-3 bg-background pb-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input value={listQ} onChange={(e) => setListQ(e.target.value)} placeholder="Filter results…" className="pl-9" />
+              </div>
+            </div>
+
+             <div className="space-y-2">
+              {loading
+                ? Array.from({ length: 6 }).map((_, i) => <ListSkeleton key={i} />)
+                : filtered.slice(0, shown).map((job) => (
+                    <ListRow
+                      key={job.id}
+                      job={job}
+                      company={companies[job.company_id]}
+                      match={matches[job.id]}
+                      selected={selected?.id === job.id}
+                      onClick={() => openJob(job)}
+                    />
+                  ))}
+              {!loading && shown < filtered.length && (
+                <div ref={sentinelRef} className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
+                  <Spinner className="h-4 w-4" /> Loading more…
+                </div>
+              )}
+              {!loading && shown >= filtered.length && filtered.length > 0 && (
+                <p className="py-4 text-center text-xs text-muted-foreground">You've reached the end</p>
+              )}
+              {!loading && filtered.length === 0 && (
+                <p className="py-10 text-center text-sm text-muted-foreground">
+                  No roles in {country === 'All countries' ? 'this view' : country} yet. Try another country, type, or tab.
+                </p>
+              )}
+            </div>
+          </section>
+
+          {/* Detail (desktop) */}
+          <section className="hidden lg:block lg:sticky lg:top-[7.5rem] lg:h-[calc(100vh-9rem)] lg:overflow-y-auto lg:pr-1">
+            {selected ? (
+              <JobDetailContent
+                job={selected}
+                company={companies[selected.company_id]}
+                match={matches[selected.id]}
+                saved={saved.has(selected.id)}
+                onSave={() => toggleSave(selected.id)}
+                onApply={() => handleApply(selected)}
+                onResearch={() => setResearchJob(selected)}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-border text-sm text-muted-foreground">
+                Select a role to view details
+              </div>
+            )}
+          </section>
+        </div>
+
+        {/* Detail (mobile drawer) */}
+        <Drawer open={!!mobileDetail} onClose={() => setMobileDetail(null)} width="lg" title="Opportunity details">
+          {mobileDetail && (
+            <JobDetailContent
+              job={mobileDetail}
+              company={companies[mobileDetail.company_id]}
+              match={matches[mobileDetail.id]}
+              saved={saved.has(mobileDetail.id)}
+              onSave={() => toggleSave(mobileDetail.id)}
+              onApply={() => handleApply(mobileDetail)}
+              onResearch={() => setResearchJob(mobileDetail)}
+              bare
+            />
+          )}
+          </Drawer>
+        </>
+      )}
 
       <AIResearchPanel
         open={!!researchJob}
