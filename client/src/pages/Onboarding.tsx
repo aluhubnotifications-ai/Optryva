@@ -30,6 +30,7 @@ import { useToast } from '@/components/ui/toast'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { Spinner } from '@/components/ui/Spinner'
 import { profilesApi, onboardingApi, authApi } from '@/lib/api'
+import { invalidateCache } from '@/lib/dataCache'
 import { fileToDataUrlWithProgress } from '@/lib/utils'
 import { requiresProfileCompletion, ROLE_CHOICES } from '@/lib/onboarding'
 import { playStep, playSuccess } from '@/lib/sound'
@@ -293,6 +294,10 @@ function OnboardingContent() {
     if (!user) return
     const updated = await profilesApi.update(user.id, patch)
     if (updated) useSession.getState().setProfile(updated)
+    // `authApi.me()` is cached for 60s (see dataCache). After we mutate the
+    // current user, bust that cache so the next `me()` (e.g. at finish()) sees
+    // the freshly-saved user_type/company_name instead of the stale login copy.
+    invalidateCache('auth:me')
   }
 
   function goNext() {
@@ -341,7 +346,16 @@ function OnboardingContent() {
       if (current.id === 'about') {
         if (!name.trim()) return toast({ title: 'Add your name', tone: 'error' })
         if (!goal) return toast({ title: 'Choose a goal', tone: 'error' })
-        await patchProfile({ full_name: name.trim(), onboarding_goal: goal, user_type: userType })
+        // Companies/schools store their display name in `company_name`; students
+        // use `full_name`. Both columns get the value so the org profile (which
+        // reads `company_name`) shows the right name.
+        const aboutPatch: Record<string, unknown> = {
+          full_name: name.trim(),
+          onboarding_goal: goal,
+          user_type: userType,
+        }
+        if (userType === 'company' || userType === 'school') aboutPatch.company_name = name.trim()
+        await patchProfile(aboutPatch)
         goNext()
       } else if (current.id === 'education') {
         if (!school.trim()) return toast({ title: 'Add your school', tone: 'error' })
@@ -456,6 +470,7 @@ function OnboardingContent() {
         onboarding_goal: goal,
         country: baseCountry,
         location: baseCountry,
+        ...(userType === 'company' || userType === 'school' ? { company_name: name.trim() } : {}),
         ...(userType === 'company' ? { work_type: workType } : {}),
         school: school.trim(),
         major: major.trim(),

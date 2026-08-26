@@ -4,7 +4,7 @@ import { Building2, Save, Link2, Crown, Globe, ShieldCheck, Lock, Gauge, Briefca
 import { useCurrentUser, useSession } from '@/lib/store'
 import { profilesApi } from '@/lib/api'
 import { CountryCombobox } from '@/components/ui/CountryCombobox'
-import type { Profile as ProfileT } from '@/types'
+import type { Profile as ProfileT, WorkType } from '@/types'
 import { Card, CardBody, Badge, Avatar, Input, Label, Textarea, Select } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { AvatarEditor } from '@/components/AvatarEditor'
@@ -45,6 +45,7 @@ export default function CompanyProfile() {
     website: user.website ?? '',
     linkedin: user.linkedin ?? '',
     email: user.email,
+    work_type: user.work_type ?? 'any',
     student_domains: (user.student_domains ?? []).join(', '),
     is_private: user.is_private ?? false,
   })
@@ -54,6 +55,7 @@ export default function CompanyProfile() {
     const patch: Partial<ProfileT> = {
       company_name: f.company_name, full_name: f.company_name, industry: f.industry, company_size: f.company_size,
       bio: f.bio, location: f.location, country: f.country || undefined, website: f.website, linkedin: f.linkedin,
+      work_type: f.work_type,
     }
     if (isSchool) {
       patch.student_domains = f.student_domains.split(',').map((s) => s.trim().replace(/^@/, '').replace(/^www\./, '').toLowerCase()).filter(Boolean)
@@ -116,6 +118,18 @@ export default function CompanyProfile() {
               <p className="mt-1 text-xs text-muted-foreground">Your listings use this country. Pick from the list or type your own — companies are locked to it when creating opportunities.</p>
             </div>
             <div><Label>Email</Label><Input value={f.email} disabled /></div>
+            {!isSchool && (
+              <div>
+                <Label>Work preference</Label>
+                <Select value={f.work_type} onChange={(e) => setF({ ...f, work_type: e.target.value as WorkType })}>
+                  <option value="any">Any</option>
+                  <option value="remote">Remote</option>
+                  <option value="hybrid">Hybrid</option>
+                  <option value="onsite">On-site</option>
+                </Select>
+                <p className="mt-1 text-xs text-muted-foreground">How your team works — shown on your opportunities.</p>
+              </div>
+            )}
           </div>
         </CardBody>
       </Card>
