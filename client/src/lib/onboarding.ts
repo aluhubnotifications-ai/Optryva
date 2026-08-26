@@ -74,7 +74,6 @@ export function profileCompletion(p: Profile | null | undefined, resumeCount = 0
     { key: 'name', label: 'Your name', done: !!p.full_name?.trim(), required: true, section: 'about' },
     { key: 'role', label: 'Who you are — Student, Employer, or University', done: !!p.user_type, required: true, section: 'intro' },
     { key: 'goal', label: 'Your first goal', done: !!p.onboarding_goal?.trim(), required: true, section: 'intro' },
-    { key: 'country', label: 'Country', done: !!(p.country?.trim() || p.location?.trim()), required: true, section: 'about' },
     {
       key: 'work',
       label: 'Work preferences',

@@ -20,7 +20,8 @@ export function matchReadiness(
   // would let the client think "ready" while the server refuses to match.
   // `resumePresent` lets callers inject the new résumé system's "active résumé"
   // status (resume_profiles), which the user object itself doesn't carry.
-  const hasResume = resumePresent ?? !!((user?.cv_text ?? '').trim())
+  const hasResume =
+    resumePresent ?? !!((user?.cv_text ?? '').trim() || user?.cv_filename || user?.cv_url)
   const hasPreferences =
     (user?.pref_listing_types?.length ?? 0) > 0 ||
     (user?.pref_countries?.length ?? 0) > 0 ||

@@ -8,7 +8,7 @@ import { now } from '@/lib/util'
 import { claudeText, claudeJson, claudeTextWithSearch, streamClaude, extractJson, hasClaude, MODELS } from '@/lib/claude'
 import { type MatchJob, type MatchStudent, type AiMatch } from '@/lib/matching'
 import type { ResumeProfile } from '@/lib/resume'
-import { ensureResumeProfile, asResumeProfile, retrieveCandidateJobs, retrieveJobsByVector } from '@/lib/enrich'
+import { ensureResumeProfile, ensureCvText, asResumeProfile, retrieveCandidateJobs, retrieveJobsByVector } from '@/lib/enrich'
 import { rerank, studentEmbedText, jobEmbedText, embedOne } from '@/lib/embeddings'
 import { extractFeatures } from '@/lib/features'
 import { loadRanker, rankerProb } from '@/lib/ranker'
@@ -163,7 +163,22 @@ export async function candidateJobs(viewer: any, rp: ResumeProfile | null): Prom
 
 /* ---------- loaders ---------- */
 export async function studentRow(id: string): Promise<any | null> {
-  return must(await sb.from('profiles').select('*').eq('id', id).maybeSingle()) as any
+  const r = must(await sb.from('profiles').select('*').eq('id', id).maybeSingle()) as any
+  if (!r) return null
+  // The matcher reads r.resume_profile (parsed from the CV). A résumé can live in two
+  // places: the legacy profile column (set during onboarding) or the resume_profiles
+  // table (the Résumés tab). If the column is empty, pull the active resume_profiles
+  // entry in so the readiness gate doesn't falsely report "no résumé".
+  if (!r.resume_profile) {
+    const { data: rp } = (await sb.from('resume_profiles').select('*').eq('student_id', id).eq('active', true).maybeSingle()) as any
+    if (rp) r.resume_profile = asResumeProfile(rp)
+  }
+  // Last resort: extract text from an uploaded CV file so cv_text is populated and the
+  // gate recognises a résumé that was uploaded but not yet parsed.
+  if (!r.resume_profile && !r.cv_text?.trim() && r.cv_url) {
+    await ensureCvText(r)
+  }
+  return r
 }
 export function toMatchStudent(r: any, rp: ResumeProfile | null): MatchStudent {
   return {
