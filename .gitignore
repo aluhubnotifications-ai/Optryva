@@ -37,3 +37,7 @@ coverage/
 
 # Local supabase CLI temp
 **/supabase/.temp/
+
+# local supabase artifacts
+server/supabase/supabase/
+*.bak
