@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { Building2, Save, Link2, Crown, Globe, ShieldCheck, Lock, Gauge, Briefcase, CheckCircle2, Circle } from 'lucide-react'
@@ -25,6 +25,34 @@ export default function CompanyProfile() {
   const { toast } = useToast()
   const [saving, setSaving] = useState(false)
   const isSchool = user.user_type === 'school'
+
+  // Per-field autosave (same discipline as the student Profile page): each edit
+  // writes its own value immediately, debounced 600ms so fast typing doesn't
+  // multiply requests. The manual "Save changes" button below still exists as a
+  // fallback. A small status line shows "Saving…/All changes saved" inline.
+  const AUTOSAVE_DELAY = 600
+  const saveTimers = useRef<Map<string, number>>(new Map())
+  const [saved, setSaved] = useState<'idle' | 'saving' | 'saved'>('idle')
+  function setField<K extends keyof typeof f>(key: K, value: (typeof f)[K]) {
+    setF((prev) => ({ ...prev, [key]: value }))
+    autoSave({ [key]: value } as Partial<ProfileT>)
+  }
+  function autoSave(patch: Partial<ProfileT>) {
+    setSaved('saving')
+    const k = Object.keys(patch)[0]!
+    clearTimeout(saveTimers.current.get(k))
+    saveTimers.current.set(k, window.setTimeout(async () => {
+      saveTimers.current.delete(k)
+      try {
+        const updated = await profilesApi.update(user.id, patch)
+        if (updated) useSession.getState().setProfile(updated)
+        setSaved('saved')
+        setTimeout(() => setSaved('idle'), 2500)
+      } catch {
+        setSaved('idle')
+      }
+    }, AUTOSAVE_DELAY))
+  }
 
   async function changeLogo(avatar_url: string) {
     const updated = await profilesApi.update(user.id, { avatar_url })
@@ -110,22 +138,22 @@ export default function CompanyProfile() {
       <Card>
         <CardBody className="space-y-4">
           <div className="flex items-center gap-2"><Building2 className="h-5 w-5 text-primary" /><h2 className="font-semibold">{isSchool ? 'Organization' : 'Company'} details</h2></div>
-          <div><Label>{isSchool ? 'Organization' : 'Company'} name</Label><Input value={f.company_name} onChange={(e) => setF({ ...f, company_name: e.target.value })} /></div>
-          <div><Label>About</Label><Textarea value={f.bio} onChange={(e) => setF({ ...f, bio: e.target.value })} placeholder="What you do, mission, culture…" /></div>
+          <div><Label>{isSchool ? 'Organization' : 'Company'} name</Label><Input value={f.company_name} onChange={(e) => { const v = e.target.value; setF((p) => ({ ...p, company_name: v })); autoSave({ company_name: v, full_name: v }) }} /></div>
+          <div><Label>About</Label><Textarea value={f.bio} onChange={(e) => setField('bio', e.target.value)} placeholder="What you do, mission, culture…" /></div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div><Label>Industry</Label><Select value={f.industry} onChange={(e) => setF({ ...f, industry: e.target.value })}>{INDUSTRIES.map((i) => <option key={i}>{i}</option>)}</Select></div>
-            <div><Label>Size</Label><Select value={f.company_size} onChange={(e) => setF({ ...f, company_size: e.target.value })}>{SIZES.map((s) => <option key={s}>{s}</option>)}</Select></div>
-            <div><Label>Location</Label><Input value={f.location} onChange={(e) => setF({ ...f, location: e.target.value })} placeholder="City / Remote" /></div>
+            <div><Label>Industry</Label><Select value={f.industry} onChange={(e) => setField('industry', e.target.value)}>{INDUSTRIES.map((i) => <option key={i}>{i}</option>)}</Select></div>
+            <div><Label>Size</Label><Select value={f.company_size} onChange={(e) => setField('company_size', e.target.value)}>{SIZES.map((s) => <option key={s}>{s}</option>)}</Select></div>
+            <div><Label>Location</Label><Input value={f.location} onChange={(e) => setField('location', e.target.value)} placeholder="City / Remote" /></div>
             <div>
               <Label>Country</Label>
-              <CountryCombobox value={f.country} onChange={(v) => setF({ ...f, country: v })} placeholder="Select or type a country" />
+              <CountryCombobox value={f.country} onChange={(v) => setField('country', v)} placeholder="Select or type a country" />
               <p className="mt-1 text-xs text-muted-foreground">Your listings use this country. Pick from the list or type your own — companies are locked to it when creating opportunities.</p>
             </div>
             <div><Label>Email</Label><Input value={f.email} disabled /></div>
             {!isSchool && (
               <div>
                 <Label>Work preference</Label>
-                <Select value={f.work_type} onChange={(e) => setF({ ...f, work_type: e.target.value as WorkType })}>
+                <Select value={f.work_type} onChange={(e) => setField('work_type', e.target.value as WorkType)}>
                   <option value="any">Any</option>
                   <option value="remote">Remote</option>
                   <option value="hybrid">Hybrid</option>
@@ -147,7 +175,14 @@ export default function CompanyProfile() {
               <Label>Student email domains</Label>
               <Input
                 value={f.student_domains}
-                onChange={(e) => setF({ ...f, student_domains: e.target.value })}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setField('student_domains', v)
+                  autoSave({
+                    student_domains: v.split(',').map((s) => s.trim().replace(/^@/, '').replace(/^www\./, '').toLowerCase()).filter(Boolean),
+                    is_private: f.is_private,
+                  })
+                }}
                 placeholder="e.g. alueducation.com, alustudent.com"
               />
               <p className="mt-1 text-xs text-muted-foreground">
@@ -158,7 +193,14 @@ export default function CompanyProfile() {
               <input
                 type="checkbox"
                 checked={f.is_private}
-                onChange={(e) => setF({ ...f, is_private: e.target.checked })}
+                onChange={(e) => {
+                  const v = e.target.checked
+                  setField('is_private', v)
+                  autoSave({
+                    is_private: v,
+                    student_domains: f.student_domains.split(',').map((s) => s.trim().replace(/^@/, '').replace(/^www\./, '').toLowerCase()).filter(Boolean),
+                  })
+                }}
                 className="mt-0.5 h-4 w-4 accent-primary"
               />
               <span>
@@ -177,13 +219,17 @@ export default function CompanyProfile() {
         <CardBody className="space-y-4">
           <div className="flex items-center gap-2"><Link2 className="h-5 w-5 text-primary" /><h2 className="font-semibold">Links</h2></div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div><Label><Globe className="mr-1 inline h-3.5 w-3.5" />Website</Label><Input value={f.website} onChange={(e) => setF({ ...f, website: e.target.value })} placeholder="https://…" /></div>
-            <div><Label>LinkedIn</Label><Input value={f.linkedin} onChange={(e) => setF({ ...f, linkedin: e.target.value })} placeholder="https://linkedin.com/company/…" /></div>
+            <div><Label><Globe className="mr-1 inline h-3.5 w-3.5" />Website</Label><Input value={f.website} onChange={(e) => setField('website', e.target.value)} placeholder="https://…" /></div>
+            <div><Label>LinkedIn</Label><Input value={f.linkedin} onChange={(e) => setField('linkedin', e.target.value)} placeholder="https://linkedin.com/company/…" /></div>
           </div>
         </CardBody>
       </Card>
 
-      <div className="flex justify-end"><Button onClick={save} loading={saving} className="gap-1.5"><Save className="h-4 w-4" /> Save changes</Button></div>
+      <div className="flex items-center justify-end gap-2">
+        {saved === 'saving' && <span className="text-xs text-muted-foreground">Saving…</span>}
+        {saved === 'saved' && <span className="text-xs text-foreground">All changes saved</span>}
+        <Button onClick={save} loading={saving} className="gap-1.5"><Save className="h-4 w-4" /> Save changes</Button>
+      </div>
         </div>
 
         <aside className="space-y-5 lg:sticky lg:top-6 self-start">
