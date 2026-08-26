@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
-import { Loader2, Mail, Lock, User, Building2, School, AlertCircle } from 'lucide-react'
+import { Loader2, Mail, Lock, User, AlertCircle } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/Button'
 import { Input, Label } from '@/components/ui/primitives'
@@ -28,18 +28,10 @@ function passwordStrength(pw: string): { score: number; label: string } {
   return { score, label }
 }
 
-const ROLES: { value: UserType; label: string; hint: string; icon: typeof User }[] = [
-  { value: 'student', label: 'Student', hint: 'Find roles', icon: User },
-  { value: 'company', label: 'Company', hint: 'Hire talent', icon: Building2 },
-  { value: 'school', label: 'School', hint: 'Manage students', icon: School },
-]
-
-const NAME_FIELD: Record<UserType, { label: string; placeholder: string }> = {
-  student: { label: 'Full name', placeholder: 'Your name' },
-  company: { label: 'Company name', placeholder: 'e.g. Acme Inc.' },
-  school: { label: 'School / organization name', placeholder: 'e.g. University of Rwanda' },
-}
-
+// NOTE: The user's role (student / company / school) is chosen ONCE, on the
+// onboarding "What brings you here?" step — NOT here on signup. Keeping it off
+// this first page avoids asking the same question twice (the prior duplicate
+// selector lived here and again in onboarding's about step).
 export default function Register() {
   const navigate = useTransitionNavigate()
   const login = useSession((s) => s.login)
@@ -57,8 +49,6 @@ export default function Register() {
   const strength = passwordStrength(form.password)
   const pwOk = strength.score >= 2
   const pwMismatch = confirm.length > 0 && confirm !== form.password
-
-  const nameField = NAME_FIELD[form.user_type]
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -165,42 +155,14 @@ export default function Register() {
 
           {/* Email/Password Form — Secondary method */}
           <form onSubmit={submit} className="space-y-4">
-            {/* Who are you? */}
             <div>
-              <Label>I'm signing up as a…</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {ROLES.map((r) => {
-                  const on = form.user_type === r.value
-                  return (
-                    <button
-                      key={r.value}
-                      type="button"
-                      onClick={() => setForm({ ...form, user_type: r.value })}
-                      aria-pressed={on}
-                      className={cn(
-                        'flex flex-col items-center gap-1 rounded-xl border p-3 text-center transition-colors',
-                        on
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground',
-                      )}
-                    >
-                      <r.icon className="h-5 w-5" />
-                      <span className="text-sm font-medium">{r.label}</span>
-                      <span className="text-[11px] text-muted-foreground">{r.hint}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            <div>
-              <Label>{nameField.label}</Label>
+              <Label>Full name</Label>
               <div className="relative mt-1">
                 <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder={nameField.placeholder}
+                  placeholder="e.g. Alex Rivera"
                   className="pl-9"
                 />
               </div>
