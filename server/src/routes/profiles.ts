@@ -115,6 +115,18 @@ async function graduatedColExists(): Promise<boolean> {
   return hasGraduatedCol
 }
 
+// onboarding_goal arrives with migration 0051 (the user's first goal, captured by
+// the onboarding "What brings you here?" step). It is sent on EVERY profile PATCH
+// during onboarding, so if the live DB predates that migration a naive update 500s.
+// Detect the column so saves degrade gracefully until the migration is applied.
+let hasOnboardingGoalCol = false
+async function onboardingGoalColExists(): Promise<boolean> {
+  if (hasOnboardingGoalCol) return true
+  const { error } = await sb.from('profiles').select('onboarding_goal').limit(1)
+  hasOnboardingGoalCol = !error
+  return hasOnboardingGoalCol
+}
+
 profiles.patch('/:id', async (req, res) => {
   if (req.params.id !== req.user!.id) return res.status(403).json({ error: 'forbidden' })
   const b = req.body ?? {}
@@ -136,6 +148,9 @@ profiles.patch('/:id', async (req, res) => {
     if (!(f in b)) continue
     if (f === 'cv_url' && !cvUrlOk) continue // skip until migration 0007 is run
     if (f === 'cv_url' && incomingCvUrl) continue
+    // onboarding_goal (migration 0051) — skip the update until the column exists
+    // so a live DB that hasn't been migrated yet doesn't 500 on every save.
+    if (f === 'onboarding_goal' && !(await onboardingGoalColExists())) continue
     update[f] = b[f] ?? null
     if (MATCH_AFFECTING.has(f)) affectsMatch = true
   }
