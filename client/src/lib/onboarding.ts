@@ -100,12 +100,12 @@ export function profileCompletion(p: Profile | null | undefined, resumeCount = 0
       section: 'about',
     },
     {
-      key: 'companyInfo',
-      label: 'Industry & company size',
-      done: p.user_type === 'company' ? !!(p.industry?.trim() && p.company_size?.trim()) : true,
-      required: true,
-      section: 'about',
-    },
+       key: 'companyInfo',
+       label: 'Industry & company size',
+       done: p.user_type === 'company' || p.user_type === 'school' ? !!(p.industry?.trim() && p.company_size?.trim()) : true,
+       required: true,
+       section: 'about',
+     },
     { key: 'resume', label: 'Résumé or basic profile', done: p.user_type === 'student' ? hasCv : true, required: true, section: 'resumes' },
     { key: 'evidence', label: 'Evidence of your work (required)', done: hasEvidence, required: true, section: 'evidence' },
   ]

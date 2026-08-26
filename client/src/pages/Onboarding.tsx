@@ -377,17 +377,21 @@ function OnboardingContent() {
           ...(graduated ? { graduated: true, year: '' } : { graduated: false, year }),
         })
         goNext()
-      } else if (current.id === 'school') {
-        if (!bio.trim()) return toast({ title: 'Add a short description', tone: 'error' })
-        await patchProfile({
-          bio: bio.trim(),
-          student_domains: studentDomains
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean),
-        })
-        goNext()
-      } else if (current.id === 'company') {
+        } else if (current.id === 'school') {
+          if (!bio.trim()) return toast({ title: 'Add a short description', tone: 'error' })
+          if (!industry) return toast({ title: 'Choose an industry', tone: 'error' })
+          if (!companySize) return toast({ title: 'Choose an institution size', tone: 'error' })
+          await patchProfile({
+            bio: bio.trim(),
+            student_domains: studentDomains
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean),
+            industry,
+            company_size: companySize,
+          })
+          goNext()
+        } else if (current.id === 'company') {
         if (!industry) return toast({ title: 'Choose an industry', tone: 'error' })
         if (!companySize) return toast({ title: 'Choose a company size', tone: 'error' })
         await patchProfile({ industry, company_size: companySize })
@@ -490,7 +494,7 @@ function OnboardingContent() {
               student_domains: studentDomains.split(',').map((s) => s.trim()).filter(Boolean),
             }
           : {}),
-        ...(userType === 'company' ? { industry, company_size: companySize } : {}),
+        ...(userType === 'company' || userType === 'school' ? { industry, company_size: companySize } : {}),
         ...(userType === 'student'
           ? {
               desired_roles: desiredRoles,
@@ -718,6 +722,43 @@ function OnboardingContent() {
                   Optional. List the email domains your students use (e.g. student.ALU.edu, alu.ac.rw). We use them to privately verify and match
                   your students — your institution stays visible to everyone either way. You can add this later from your profile.
                 </p>
+              </div>
+
+              {/* Schools, like companies, describe themselves by industry + size so their
+                  public profile reads "Technology · 11-50 employees" instead of a blank line. */}
+              <div>
+                <Label>Industry</Label>
+                <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
+                  {INDUSTRIES.map((ind) => (
+                    <button
+                      key={ind}
+                      type="button"
+                      onClick={() => setIndustry(ind)}
+                      className={`rounded-xl border p-3 text-left text-sm font-medium transition-colors ${
+                        industry === ind ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border hover:border-primary/40 hover:bg-muted/50'
+                      }`}
+                    >
+                      {ind}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <Label>Institution size</Label>
+                <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
+                  {COMPANY_SIZES.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setCompanySize(s)}
+                      className={`rounded-xl border p-3 text-sm font-medium transition-colors ${
+                        companySize === s ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border hover:border-primary/40 hover:bg-muted/50'
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
