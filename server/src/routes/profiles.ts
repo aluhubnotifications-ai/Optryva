@@ -127,6 +127,27 @@ async function onboardingGoalColExists(): Promise<boolean> {
   return hasOnboardingGoalCol
 }
 
+// Best-effort update that tolerates schema drift on the live DB. If a column we
+// try to write doesn't exist yet (a migration hasn't been applied), PostgREST
+// errors with "Could not find the 'X' column of '<table>' in the schema cache".
+// We strip that key and retry so a drifted schema can NEVER 500 the whole
+// request — the remaining, valid columns are still saved.
+async function resilientUpdate(
+  table: string,
+  payload: Record<string, any>,
+  match: { column: string; value: string },
+): Promise<{ error: any }> {
+  let body = { ...payload }
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const res = await sb.from(table).update(body).eq(match.column, match.value)
+    if (!res.error) return res
+    const m = String(res.error.message ?? '').match(/find the '([^']+)' column/)
+    if (!m) return res // not a missing-column error → caller decides what to do
+    delete (body as any)[m[1]]
+  }
+  return await sb.from(table).update(body).eq(match.column, match.value)
+}
+
 profiles.patch('/:id', async (req, res) => {
   if (req.params.id !== req.user!.id) return res.status(403).json({ error: 'forbidden' })
   const b = req.body ?? {}
@@ -213,9 +234,15 @@ profiles.patch('/:id', async (req, res) => {
     if ('is_private' in b) update.is_private = willPrivate
   }
 
-  if (Object.keys(update).length) must(await sb.from('profiles').update(update).eq('id', req.params.id))
+  if (Object.keys(update).length) {
+    const res = await resilientUpdate('profiles', update, { column: 'id', value: req.params.id })
+    if (res.error) throw new Error(res.error.message ?? String(res.error))
+  }
   if (affectsMatch) {
-    must(await sb.from('ai_match_cache').update({ stale: 1 }).eq('student_id', req.params.id))
+    // ai_match_cache is a best-effort cache-invalidation; never let its absence
+    // (or a missing column) fail an otherwise-successful profile save.
+    const mres = await resilientUpdate('ai_match_cache', { stale: 1 }, { column: 'student_id', value: req.params.id })
+    if (mres.error) console.warn('[profiles] ai_match_cache stale update skipped:', mres.error?.message ?? mres.error)
     // Re-parse the résumé + recompute the embedding in the background so the next
     // match scores on fresh evidence. Best-effort: the lazy parse in the matcher
     // covers it if this hasn't finished yet.
