@@ -37,6 +37,7 @@ import { Logo } from '@/components/Logo'
 import { AiActivityPanel } from '@/components/AiActivityPanel'
 import { NotificationsMenu } from '@/components/NotificationsMenu'
 import { GlobalProgress } from '@/components/GlobalProgress'
+import { AssistantWidget } from '@/components/AssistantWidget'
 
 interface NavItem {
   to: string
@@ -156,6 +157,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Always-on AI activity window (students) — shows what matching/research
           is doing in real time so it's never a black box. */}
       {!isCompany && <AiActivityPanel />}
+
+      {/* Global Optryva Assistant — follows the user across every page. */}
+      <AssistantWidget />
     </div>
   )
 }

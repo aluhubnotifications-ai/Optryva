@@ -100,6 +100,67 @@ export async function mistralJsonBlocks<T>(opts: {
 }
 
 /**
+ * Multi-turn chat completion with optional JSON-mode structured output.
+ * Accepts a full messages array (system, user, assistant, tool) — used by the
+ * agentic loop where tool results are fed back between turns. When `schema`
+ * is provided, the response is steered to JSON-object mode and parsed; otherwise
+ * plain text is returned.
+ *
+ * Message roles follow the OpenAI/Mistral convention:
+ *   { role: 'system', content: string }
+ *   { role: 'user',   content: string }
+ *   { role: 'assistant', content: string }
+ */
+export async function mistralChat<T>(opts: {
+  model?: string
+  system: string
+  messages: Array<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string; tool_call_id?: string; tool_name?: string }>
+  schema?: unknown
+  maxTokens?: number
+  temperature?: number
+}): Promise<T | null> {
+  if (!hasMistral()) return null
+  const model = opts.model ?? MISTRAL_MODEL
+  const systemPrompt = opts.schema
+    ? `${opts.system}\n\nReturn ONLY valid JSON matching this schema (no prose, no code fences):\n${JSON.stringify(opts.schema)}`
+    : opts.system
+  try {
+    const res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.MISTRAL_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'system', content: systemPrompt }, ...opts.messages],
+        ...(opts.schema ? { response_format: { type: 'json_object' } } : {}),
+        max_tokens: opts.maxTokens ?? 2000,
+        ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
+      }),
+    })
+    if (!res.ok) return null
+    const data: any = await res.json()
+    const usage = data?.usage
+    if (usage) {
+      recordUsage(model, {
+        input_tokens: usage.prompt_tokens ?? 0,
+        output_tokens: usage.completion_tokens ?? 0,
+      })
+    }
+    const text: string | undefined = data?.choices?.[0]?.message?.content
+    if (!text) return null
+    try {
+      return JSON.parse(text) as T
+    } catch {
+      return extractJson<T>(text)
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
  * Plain-text completion (no JSON coercion). Used for free-form employer research
  * answers where we want prose, not structured output. Returns the trimmed text, or
  * null on any failure (no key, network, empty response) so the caller can fall back

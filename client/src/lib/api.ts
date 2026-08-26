@@ -319,9 +319,13 @@ export const profilesApi = {
       return null
     }
   },
-  async update(id: string, patch: Partial<Profile>): Promise<Profile | null> {
+   async update(id: string, patch: Partial<Profile>): Promise<Profile | null> {
     invalidateCache('profiles:list:all', 'profiles:list:company', 'profiles:list:school')
     return (await apiFetch(`/profiles/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })) as Profile
+  },
+  async updateSkills(id: string, skills: string[]): Promise<Profile | null> {
+    invalidateCache('profiles:list:all', 'profiles:list:company', 'profiles:list:school')
+    return (await apiFetch(`/profiles/${id}`, { method: 'PATCH', body: JSON.stringify({ skills }) })) as Profile
   },
   async list(
     type?: Profile['user_type'],
@@ -1527,5 +1531,109 @@ export const evidenceApi = {
     return (await apiFetch(`/evidence/student/${studentId}/chat`, {
       method: 'DELETE',
     })) as { ok: boolean }
+  },
+}
+
+/* ----------------------------- Optryva Assistant ----------------------------- */
+export type AssistantAction = {
+  type: 'inject_data' | 'navigate' | 'update_profile' | 'add_evidence'
+  target: string
+  data: Record<string, unknown>
+}
+export interface AssistantChatResponse {
+  text: string
+  session_id: string
+  actions: AssistantAction[]
+}
+
+export const assistantApi = {
+  /** Chat with the Optryva Assistant. Returns the reply + immediate-injection actions. */
+  async chat(
+    message: string,
+    opts?: { sessionId?: string; mode?: string; pageContext?: string },
+  ): Promise<AssistantChatResponse> {
+    return (await trackAi('Thinking…', () =>
+      apiFetch('/assistant/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message,
+          session_id: opts?.sessionId,
+          mode: opts?.mode,
+          context: opts?.pageContext ? { pageContext: opts.pageContext } : undefined,
+        }),
+      }),
+    )) as AssistantChatResponse
+  },
+
+  /** List the user's assistant sessions (newest first). */
+  async sessions(): Promise<any[]> {
+    return (await apiFetch('/assistant/sessions')) as any[]
+  },
+
+  /** Fetch a session's message history (newest-first → reversed by API). */
+  async messages(sessionId: string): Promise<{ session_id: string; messages: any[] }> {
+    return (await apiFetch(`/assistant/sessions/${sessionId}/messages`)) as { session_id: string; messages: any[] }
+  },
+
+  /** Demo: Fixed-40 match results for a student (mock data). */
+  async fixed40Matches(studentId: string): Promise<any[]> {
+    return ((await apiFetch(`/assistant/match/${studentId}`)) as { matches: any[] }).matches
+  },
+
+   /** Demo-aware employer shortlist. */
+  async shortlist(jobId: string): Promise<any | null> {
+    try {
+      return (await apiFetch(`/assistant/jobs/${jobId}/shortlist`)) as any
+    } catch {
+      return null
+    }
+  },
+
+  /**
+   * Run an autonomous agentic task (streaming SSE). The AI can call tools
+   * autonomously to complete multi-step requests like "Create a Frontend
+   * intern job in Nairobi". Each SSE frame is one of:
+   *   { event: 'text', text }        — a text delta
+   *   { event: 'tool_use', name, input }
+   *   { event: 'tool_result', name, result }
+   *   { event: 'action', action }    — immediate-injection action for the widget
+   *   { event: 'done', summary }
+   *   { event: 'error', message }
+   *   { event: 'end' }
+   */
+  async runTask(
+    message: string,
+    opts: { sessionId?: string; mode?: string; pageContext?: string },
+    onEvent: (ev: any) => void,
+  ): Promise<void> {
+    const res = await rawFetchAuthed('/assistant/task', {
+      method: 'POST',
+      body: JSON.stringify({
+        message,
+        session_id: opts?.sessionId,
+        mode: opts?.mode,
+        context: opts?.pageContext ? { pageContext: opts.pageContext } : undefined,
+      }),
+    })
+    if (!res.ok || !res.body) throw new Error(`task_failed_${res.status}`)
+    const reader = res.body.getReader()
+    const dec = new TextDecoder()
+    let buf = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += dec.decode(value, { stream: true })
+      const chunks = buf.split('\n\n')
+      buf = chunks.pop() ?? ''
+      for (const chunk of chunks) {
+        const line = chunk.trim()
+        if (!line.startsWith('data:')) continue
+        try {
+          onEvent(JSON.parse(line.slice(5).trim()))
+        } catch {
+          /* ignore partial frames */
+        }
+      }
+    }
   },
 }

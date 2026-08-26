@@ -20,6 +20,7 @@ import { social, notifications, messages } from '@/routes/social'
 import { resumes } from '@/routes/resumes'
 import { documents } from '@/routes/documents'
 import { evidence } from '@/routes/evidence'
+import { assistant } from '@/routes/assistant'
 import { hasClaude } from '@/lib/claude'
 
 export const app = new Hono()
@@ -67,6 +68,7 @@ app.route('/api/messages', messages.hono)
 app.route('/api/resumes', resumes.hono)
 app.route('/api/documents', documents.hono)
 app.route('/api/evidence', evidence.hono)
+app.route('/api/assistant', assistant.hono)
 
 app.onError((err, c) => {
   // Log the full error server-side (visible in `wrangler tail`) and surface a
