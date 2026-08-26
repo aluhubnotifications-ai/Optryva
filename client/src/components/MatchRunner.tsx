@@ -1,11 +1,13 @@
 import { useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
-import { Sparkles, AlertTriangle, FileText, SlidersHorizontal } from 'lucide-react'
+import { Sparkles, AlertTriangle, FileText, SlidersHorizontal, Check, Loader2, User, FileSearch, BarChart3, ListOrdered } from 'lucide-react'
 import { Card, CardBody, Progress } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { useMatchProgress } from '@/lib/matchProgress'
 import { useCurrentUser } from '@/lib/store'
 import { matchReadiness, type MatchMissing } from '@/lib/matchReady'
+import { cn } from '@/lib/utils'
 
 /**
  * The "Run AI matching" gate + REAL progress. Driven by the global match-progress
@@ -38,7 +40,7 @@ export function MatchRunner({
    *  gate recognise résumés that live in the new résumé system, not just legacy cv_text. */
   resumePresent?: boolean
 }) {
-  const { phase, done, total, label, missing } = useMatchProgress()
+  const { phase, done, total, label, missing, activity } = useMatchProgress()
   const user = useCurrentUser()
   const navigate = useTransitionNavigate()
   const pct = total > 0 ? Math.round((done / total) * 100) : 0
@@ -130,25 +132,129 @@ export function MatchRunner({
     )
   }
 
-  // Running — honest percentage + the role currently being scored.
+  // Running — a live, animated "AI is working" pipeline so the wait feels alive
+  // (like a file-copy dialog): it shows exactly what's happening, step by step.
+  const PIPELINE = [
+    { key: 'reading', label: 'Reading your profile', icon: User },
+    { key: 'resume', label: 'Extracting & understanding your résumé', icon: FileSearch },
+    { key: 'scoring', label: 'Scoring open roles', icon: BarChart3 },
+    { key: 'ranking', label: 'Ranking your best fits', icon: ListOrdered },
+  ] as const
+  const stepKey = phase === 'done' ? 'ranking' : activity?.step ?? (total > 0 ? 'scoring' : 'reading')
+  const activeIdx = PIPELINE.findIndex((s) => s.key === stepKey)
+  const pctNow = total > 0 ? Math.round((done / total) * 100) : pct
+
   return (
-    <Card>
-      <CardBody className="py-14">
-        <div className="mx-auto max-w-md">
-          <div className="mb-5 flex justify-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/12 text-primary">
-              <Sparkles className="h-8 w-8 animate-pulse" />
+    <Card className="overflow-hidden border-primary/20">
+      <CardBody className="mesh-bg py-10">
+        <div className="mx-auto max-w-lg">
+          {/* Header */}
+          <div className="mb-7 flex items-center gap-3">
+            <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-accent text-white shadow-glow">
+              <Sparkles className="h-6 w-6 animate-pulse" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold tracking-tight">Matching you to open roles</h2>
+              <p className="text-sm text-muted-foreground">
+                {activity?.label ?? (total > 0 ? 'Scoring open roles…' : 'Reading your profile…')}
+              </p>
             </div>
           </div>
-          <div className="mb-2 flex items-center justify-between text-sm">
-            <span className="font-medium">Scoring your matches…</span>
-            <span className="font-bold text-primary">{pct}%</span>
+
+          {/* Pipeline steps */}
+          <ol className="relative ml-1 space-y-3">
+            {PIPELINE.map((s, i) => {
+              const status = phase === 'done' || i < activeIdx ? 'done' : i === activeIdx ? 'active' : 'pending'
+              const Icon = s.icon
+              return (
+                <li key={s.key} className="flex items-center gap-3">
+                  <motion.div
+                    initial={false}
+                    animate={{ scale: status === 'active' ? [1, 1.08, 1] : 1 }}
+                    transition={{ duration: 1.1, repeat: status === 'active' ? Infinity : 0, ease: 'easeInOut' }}
+                    className={cn(
+                      'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 transition-colors',
+                      status === 'done' && 'border-success bg-success text-white',
+                      status === 'active' && 'border-primary bg-primary/15 text-primary shadow-glow',
+                      status === 'pending' && 'border-border bg-muted text-muted-foreground',
+                    )}
+                  >
+                    {status === 'done' ? (
+                      <Check className="h-4 w-4" />
+                    ) : status === 'active' ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Icon className="h-4 w-4" />
+                    )}
+                  </motion.div>
+                  <span
+                    className={cn(
+                      'text-sm',
+                      status === 'pending' ? 'text-muted-foreground' : 'font-medium',
+                      status === 'done' && 'text-success',
+                    )}
+                  >
+                    {s.label}
+                  </span>
+                  {s.key === 'scoring' && total > 0 && (
+                    <span className="ml-auto text-xs font-semibold text-primary">{done}/{total}</span>
+                  )}
+                </li>
+              )
+            })}
+          </ol>
+
+          {/* Live "what's happening right now" + progress */}
+          <div className="mt-6">
+            <div className="mb-2 flex items-center justify-between text-sm">
+              <span className="truncate font-medium text-foreground/80">
+                {label ? `Scoring: ${label}` : total > 0 ? `Scoring ${done} of ${total} roles…` : 'Preparing your profile…'}
+              </span>
+              <span className="ml-3 shrink-0 font-bold text-primary">{pctNow}%</span>
+            </div>
+            <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
+              {total > 0 ? (
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-primary via-accent to-primary"
+                  animate={{ width: `${pctNow}%` }}
+                  transition={{ ease: 'easeOut', duration: 0.4 }}
+                />
+              ) : (
+                <motion.div
+                  className="h-full w-1/3 rounded-full bg-gradient-to-r from-primary/40 via-accent to-primary/40"
+                  animate={{ x: ['-100%', '300%'] }}
+                  transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+                />
+              )}
+            </div>
           </div>
-          <Progress value={pct} />
-          <p className="mt-3 truncate text-center text-sm text-muted-foreground">
-            {total > 0 ? `${done} of ${total} roles` : 'Reading your profile…'}
-            {label ? ` · ${label}` : ''}
-          </p>
+
+          {/* AI activity visualization — reflects the live step so the wait feels alive */}
+          <div className="mt-6 rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent/70" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-accent" />
+                </span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-accent">AI activity</span>
+              </div>
+              <span className="max-w-[12rem] truncate text-xs text-muted-foreground">
+                {activity?.label ?? 'Thinking…'}
+              </span>
+            </div>
+            <div className="flex h-12 items-end justify-center gap-1">
+              {Array.from({ length: 20 }).map((_, i) => (
+                <motion.span
+                  key={i}
+                  className="w-1.5 rounded-full bg-gradient-to-t from-primary/40 via-accent to-primary"
+                  initial={{ height: 6 }}
+                  animate={{ height: [6, 40 - (i % 6) * 5, 14, 32 - (i % 5) * 4, 6] }}
+                  transition={{ duration: 0.7 + (i % 6) * 0.12, repeat: Infinity, ease: 'easeInOut' }}
+                />
+              ))}
+            </div>
+          </div>
         </div>
       </CardBody>
     </Card>

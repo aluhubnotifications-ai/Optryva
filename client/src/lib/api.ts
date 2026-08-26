@@ -1208,11 +1208,15 @@ export const aiApi = {
   async matchAllStream(handlers: {
     onMeta?: (total: number) => void
     onProgress?: (done: number, total: number, title: string, match: AiMatch | null) => void
+    /** Live pipeline stage (reading → résumé → scoring → ranking) so the UI can
+     *  animate "what the AI is doing" instead of a frozen spinner. */
+    onActivity?: (step: string, label: string) => void
     /** The server refused to run because the profile is incomplete (no résumé /
      *  no preferences). The funnel can't rank without something to match on. */
     onNotReady?: (missing: string[]) => void
   }): Promise<void> {
     await consumeSse('/ai/matches/stream', {}, (obj) => {
+      if (obj.activity) handlers.onActivity?.(obj.activity.step, obj.activity.label)
       if (obj.notReady) handlers.onNotReady?.(obj.notReady.missing ?? [])
       if (obj.meta) handlers.onMeta?.(obj.meta.total ?? 0)
       if (obj.progress) handlers.onProgress?.(obj.progress.done, obj.progress.total, obj.progress.title, obj.match ?? null)

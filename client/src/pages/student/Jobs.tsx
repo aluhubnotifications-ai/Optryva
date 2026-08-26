@@ -122,6 +122,10 @@ export default function Jobs() {
   const markRun = useMatchRun((s) => s.markRun)
   const matchReady = matchReadiness(user, hasResume).ready
   const [gateOpen, setGateOpen] = useState(() => !matchReady || needsMatchRun(lastRun))
+  // When matching fails we close the gate and land the student on the board. This
+  // flag stops the "re-open if a re-run is due" effect from immediately re-opening
+  // it (needsMatchRun stays true after a failure), which previously stranded them.
+  const [autoOpen, setAutoOpen] = useState(true)
 
   useEffect(() => {
     let active = true
@@ -176,10 +180,12 @@ export default function Jobs() {
   }, [gateOpen, matchReady, user.id])
 
   // Re-open the gate if matching was invalidated (e.g. CV upload), a new day, or
-  // the profile is missing the résumé/preferences the matcher needs.
+  // the profile is missing the résumé/preferences the matcher needs. Skipped once
+  // the student has dismissed it after a failure (autoOpen=false), so they stay on
+  // the board instead of being bounced back to the match screen.
   useEffect(() => {
-    if (!matchReady || needsMatchRun(lastRun)) setGateOpen(true)
-  }, [lastRun, matchReady])
+    if (autoOpen && (!matchReady || needsMatchRun(lastRun))) setGateOpen(true)
+  }, [lastRun, matchReady, autoOpen])
 
   const filtered = useMemo(() => {
     let list = jobs.filter((j) => {
@@ -331,7 +337,7 @@ export default function Jobs() {
             userId={user.id}
             resumePresent={hasResume}
             onComplete={() => { markRun(user.id); setGateOpen(false) }}
-            onError={() => setGateOpen(false)}
+            onError={() => { setAutoOpen(false); setGateOpen(false) }}
             title="Today's AI matches"
             subtitle={`Welcome back, ${user.full_name.split(' ')[0]} — let's score today's opportunities against your profile and show your best fits first. You can switch tabs while it runs.`}
           />

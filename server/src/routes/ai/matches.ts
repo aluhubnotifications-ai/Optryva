@@ -66,22 +66,27 @@ export function registerMatches(r: Router) {
   /* Streaming matches: scores roles one-by-one and emits live progress so the UI
    * can show "scoring X of N: <title>" with a real percentage — and keep updating
    * even if the user switches tabs (the stream drives a global store, not a view).
-   * Frames: {meta:{total}} · {progress:{done,total,title}, match} per job · {done:true}. */
+   * Frames:
+   *   {activity:{step,label}}      — pipeline stage (reading → résumé → scoring → ranking)
+   *   {meta:{total}}               — how many roles will be scored
+   *   {progress:{done,total,title},match} per job
+   *   {notReady:{missing}} · {error:true} · {done:true} */
   r.post('/matches/stream', async (req, res) => {
     if (!hasClaude()) return res.status(503).json({ error: 'ai_unavailable' })
     const uid = req.user!.id
-    const viewer = await studentRow(uid)
-    const ready = matchReadiness(viewer)
-    const rp = ready.ready ? await ensureResumeProfile(viewer) : null
-    const [visible, cm] = ready.ready
-      ? await Promise.all([candidateJobs(viewer, rp), cacheMap(uid)])
-      : [[] as any[], new Map<string, AiMatch>()]
     const enc = new TextEncoder()
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         const send = (o: unknown) => controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`))
         try {
+          send({ activity: { step: 'reading', label: 'Reading your profile…' } })
+          const viewer = await studentRow(uid)
+          send({ activity: { step: 'resume', label: 'Extracting & understanding your résumé…' } })
+          const ready = matchReadiness(viewer)
           if (!ready.ready) { send({ notReady: { missing: ready.missing } }); send({ done: true }); return }
+          const rp = await ensureResumeProfile(viewer)
+          send({ activity: { step: 'scoring', label: 'Scoring open roles against your profile…' } })
+          const [visible, cm] = await Promise.all([candidateJobs(viewer, rp), cacheMap(uid)])
           const total = visible.length
           send({ meta: { total } })
           // Score concurrently in a bounded pool: progress stays per-role granular, but
@@ -103,6 +108,7 @@ export function registerMatches(r: Router) {
             }
           })())
           await Promise.all(pool)
+          send({ activity: { step: 'ranking', label: 'Ranking your best fits…' } })
           send({ done: true })
         } catch {
           send({ error: true })

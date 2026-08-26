@@ -23,6 +23,7 @@ interface MatchProgressState {
   label: string // the role currently being scored
   matches: AiMatch[] // accumulated, by arrival
   missing: string[] // what's blocking matching when phase==='notReady' (resume/preferences)
+  activity: { step: string; label: string } | null // live pipeline stage from the server
   scoring: string[] // job ids being scored on demand right now
   /** Start a run. Idempotent: no-op if a run is already in flight for this user,
    *  or already finished with results (so navigating between pages reuses the
@@ -50,6 +51,7 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
   label: '',
   matches: [],
   missing: [],
+  activity: null,
   scoring: [],
 
   hydrate: async (userId) => {
@@ -105,18 +107,29 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
       return
     }
 
-    set({ userId, phase: 'running', done: 0, total: 0, label: 'Reading your profile…', matches: [], missing: [], scoring: [] })
+    set({ userId, phase: 'running', done: 0, total: 0, label: 'Reading your profile…', matches: [], missing: [], scoring: [], activity: { step: 'reading', label: 'Reading your profile…' } })
 
     const act = useAiActivity.getState()
     const taskId = act.start('Matching you to open roles')
     act.update(taskId, { done: 0, total: 0, label: 'Reading your profile…' })
 
+    // Safety net: if the run is still going after 120s with no completion (e.g. the
+    // AI request hangs), fail it so the student returns to the board with a fallback
+    // instead of being stranded on the match screen.
+    const watchdog = setTimeout(() => {
+      if (get().phase === 'running') {
+        set({ phase: 'error', label: '', activity: null })
+        act.finish(taskId, 'matching unavailable')
+      }
+    }, 120000)
+
     let notReady = false
     try {
       await aiApi.matchAllStream({
+        onActivity: (step, label) => set({ activity: { step, label } }),
         onNotReady: (missing) => {
           notReady = true
-          set({ phase: 'notReady', missing, label: '', done: 0, total: 0 })
+          set({ phase: 'notReady', missing, label: '', done: 0, total: 0, activity: null })
           act.finish(taskId, 'complete your profile first')
         },
         onMeta: (total) => {
@@ -135,20 +148,22 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
       })
       if (notReady) return // server refused — leave phase==='notReady' for the UI to prompt.
       act.finish(taskId)
-      set({ phase: 'done', label: '' })
+      set({ phase: 'done', label: '', activity: null })
       useMatchRun.getState().markRun(userId)
     } catch {
       // Streaming unavailable → fall back to the one-shot endpoint so the user
       // still gets matches (just without per-role progress).
       try {
         const matches = await aiApi.matchAll({ id: userId } as any, [])
-        set({ matches, phase: matches.length ? 'done' : 'error', label: '' })
+        set({ matches, phase: matches.length ? 'done' : 'error', label: '', activity: null })
         act.finish(taskId, matches.length ? undefined : 'matching unavailable')
         if (matches.length) useMatchRun.getState().markRun(userId)
       } catch {
-        set({ phase: 'error', label: '' })
+        set({ phase: 'error', label: '', activity: null })
         act.finish(taskId, 'matching unavailable')
       }
+    } finally {
+      clearTimeout(watchdog)
     }
   },
 
