@@ -1,6 +1,6 @@
 import { Router } from '@/lib/http'
 import { sb, must, j } from '@/db'
-import { requireAuth } from '@/lib/auth'
+import { requireAuth, loadUserType } from '@/lib/auth'
 import { rowToApplication } from '@/lib/serialize'
 import { uid, now, notify } from '@/lib/util'
 import { isAdminEmail } from '@/lib/admin'
@@ -134,7 +134,14 @@ applications.get('/job/:jobId', async (req, res) => {
 })
 
 applications.get('/company', async (req, res) => {
-  if (req.user!.user_type !== 'company' && req.user!.user_type !== 'school' && !isAdminEmail(req.user!.email)) {
+  // Trust the live profile over the (possibly stale) JWT `user_type`. The access
+  // token signs the role at login time, but a role can change — e.g. a student who
+  // selects "school"/"company" during onboarding, or an account whose persisted
+  // token predates the role update. Re-resolving here prevents valid companies and
+  // schools from being 403'd while their token still carries an old role.
+  const liveType = await loadUserType(req.user!.id)
+  const userType = liveType ?? req.user!.user_type
+  if (userType !== 'company' && userType !== 'school' && !isAdminEmail(req.user!.email)) {
     return res.status(403).json({ error: 'forbidden' })
   }
   const jobs = must(await sb.from('job_listings').select('id').eq('company_id', req.user!.id)) as any[]
