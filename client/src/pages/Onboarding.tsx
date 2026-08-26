@@ -279,8 +279,10 @@ function OnboardingContent() {
     steps.push({ id: 'company', label: 'Your company' })
   }
   // Students answer country + work preference inside the Preferences step, so
-  // they don't get a duplicate Location step. Schools/companies still do.
-  if (userType !== 'student') steps.push({ id: 'location', label: 'Location & work' })
+  // they don't get a duplicate Location step. Companies get country + work
+  // preference; schools get country only (no work preference).
+  if (userType !== 'student')
+    steps.push({ id: 'location', label: userType === 'school' ? 'Your location' : 'Location & work' })
 
   const current = steps[Math.min(step, steps.length) - 1]
   const isLast = step === steps.length
@@ -374,8 +376,14 @@ function OnboardingContent() {
         goNext()
       } else if (current.id === 'location') {
         if (!country.trim()) return toast({ title: 'Choose your country', tone: 'error' })
-        if (!workType) return toast({ title: 'Choose a work preference', tone: 'error' })
-        await patchProfile({ country: country.trim(), location: country.trim(), work_type: workType })
+        if (userType === 'company' && !workType) return toast({ title: 'Choose a work preference', tone: 'error' })
+        await patchProfile({
+          country: country.trim(),
+          location: country.trim(),
+          // Work preference (remote/onsite/hybrid) is a student concept. Companies
+          // may set it as their own working model; schools never need it.
+          ...(userType === 'company' ? { work_type: workType } : {}),
+        })
         goNext()
       } else if (current.id === 'skills') {
         if (skills.length === 0) return toast({ title: 'Add at least one skill', tone: 'error' })
@@ -446,7 +454,7 @@ function OnboardingContent() {
         onboarding_goal: goal,
         country: baseCountry,
         location: baseCountry,
-        work_type: workType,
+        ...(userType === 'company' ? { work_type: workType } : {}),
         school: school.trim(),
         major: major.trim(),
         gpa: gpa.trim(),
@@ -588,23 +596,27 @@ function OnboardingContent() {
                 <Label htmlFor="country">Country</Label>
                 <CountryCombobox id="country" value={country} onChange={setCountry} placeholder="Search countries…" className="mt-1.5 bg-background" />
               </div>
-              <div>
-                <Label>Work preference</Label>
-                <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
-                  {WORK_OPTIONS.map((w) => (
-                    <button
-                      key={w.value}
-                      type="button"
-                      onClick={() => setWorkType(w.value)}
-                      className={`rounded-xl border p-3 text-sm font-medium transition-colors ${
-                        workType === w.value ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border hover:border-primary/40 hover:bg-muted/50'
-                      }`}
-                    >
-                      {w.label}
-                    </button>
-                  ))}
+              {/* Work preference (remote/onsite/hybrid) only applies to companies
+                  — it describes their working model. Schools never need it. */}
+              {userType === 'company' && (
+                <div>
+                  <Label>Work preference</Label>
+                  <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
+                    {WORK_OPTIONS.map((w) => (
+                      <button
+                        key={w.value}
+                        type="button"
+                        onClick={() => setWorkType(w.value)}
+                        className={`rounded-xl border p-3 text-sm font-medium transition-colors ${
+                          workType === w.value ? 'border-primary bg-primary/5 ring-2 ring-primary/30' : 'border-border hover:border-primary/40 hover:bg-muted/50'
+                        }`}
+                      >
+                        {w.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 

@@ -31,11 +31,11 @@ function tone(freq: number, start: number, dur: number, type: OscillatorType = '
 
 /** Soft tick when advancing to the next onboarding step. */
 export function playStep() {
-  tone(540, 0, 0.12, 'triangle', 0.04)
+  tone(540, 0, 0.12, 'triangle', 0.16)
 }
 
 /** Celebratory arpeggio (C5–E5–G5–C6) when onboarding is completed. */
 export function playSuccess() {
   const notes = [523.25, 659.25, 783.99, 1046.5]
-  notes.forEach((f, i) => tone(f, i * 0.1, 0.28, 'triangle', 0.07))
+  notes.forEach((f, i) => tone(f, i * 0.1, 0.28, 'triangle', 0.22))
 }

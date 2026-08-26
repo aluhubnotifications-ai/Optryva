@@ -75,7 +75,16 @@ export function profileCompletion(p: Profile | null | undefined, resumeCount = 0
     { key: 'role', label: 'Who you are — Student, Employer, or University', done: !!p.user_type, required: true, section: 'intro' },
     { key: 'goal', label: 'Your first goal', done: !!p.onboarding_goal?.trim(), required: true, section: 'intro' },
     { key: 'country', label: 'Country', done: !!(p.country?.trim() || p.location?.trim()), required: true, section: 'about' },
-    { key: 'work', label: 'Work preferences', done: !!p.work_type && p.work_type !== 'any', required: true, section: 'about' },
+    {
+      key: 'work',
+      label: 'Work preferences',
+      // Work preference (remote/onsite/hybrid) is a student concept — where they
+      // want to work. Schools/companies never set it, so it's neither required
+      // nor "incomplete" for them (otherwise the router would loop them in onboarding).
+      done: p.user_type === 'student' ? !!p.work_type && p.work_type !== 'any' : true,
+      required: p.user_type === 'student',
+      section: 'about',
+    },
     { key: 'skills', label: 'Your skills', done: p.user_type === 'student' ? (p.skills?.length ?? 0) > 0 : true, required: true, section: 'about' },
     {
       key: 'education',
