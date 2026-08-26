@@ -321,9 +321,7 @@ export default function CompanyProfile() {
          </aside>
        </div>
 
-      <div className="mt-6 flex items-center justify-end gap-2 border-t border-border pt-4">
-        {saved === 'saving' && <span className="text-xs text-muted-foreground">Saving…</span>}
-        {saved === 'saved' && <span className="text-xs text-foreground">All changes saved</span>}
+       <div className="mt-6 flex justify-end">
         <Button onClick={save} loading={saving} className="gap-1.5"><Save className="h-4 w-4" /> Save changes</Button>
       </div>
     </motion.div>
