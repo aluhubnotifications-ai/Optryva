@@ -15,7 +15,10 @@ function loadJwtSecret(name: 'JWT_ACCESS_SECRET' | 'JWT_REFRESH_SECRET', devFall
 const ACCESS_SECRET = loadJwtSecret('JWT_ACCESS_SECRET', 'dev-access-secret')
 const REFRESH_SECRET = loadJwtSecret('JWT_REFRESH_SECRET', 'dev-refresh-secret')
 const ACCESS_TTL = '15m'
-const REFRESH_TTL = '30d'
+// Sessions are capped at 5 hours. The access token rotates every 15 min via the
+// refresh flow; the refresh token/cookie (and this TTL) live no longer than 5h,
+// so after 5h `/auth/refresh` returns 401 and the client logs the user out.
+const REFRESH_TTL = '5h'
 
 export interface AuthUser {
   id: string

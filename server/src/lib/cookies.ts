@@ -17,9 +17,11 @@ import type { ShimReq } from './http'
 //     + Secure, which is only valid over HTTPS — and production is HTTPS.
 // ----------------------------------------------------------------------------
 
-const DAY_MS = 24 * 60 * 60 * 1000
+// Session cap: the refresh cookie outlives the access token, but not beyond 5h —
+// matches REFRESH_TTL in lib/auth.ts so a 5h-old session can no longer refresh.
+const SESSION_TTL_MS = 5 * 60 * 60 * 1000
 
-export function authCookieOptions(req: ShimReq, maxAgeMs = 30 * DAY_MS) {
+export function authCookieOptions(req: ShimReq, maxAgeMs = SESSION_TTL_MS) {
   const reqUrl = new URL(req.raw.req.url ?? 'http://localhost')
   const apiHost = reqUrl.hostname
   const clientOrigin = process.env.CLIENT_ORIGIN
