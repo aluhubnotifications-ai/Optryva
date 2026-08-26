@@ -195,7 +195,11 @@ function OnboardingContent() {
   // flags the user while onboarding is incomplete; once `finished` is true the
   // finish() flow clears the flag, and we must not re-set it here.
   useEffect(() => {
-    if (userId && !finished) setNeedsOnboarding(userId, true)
+    if (!userId) return
+    // Flag the user as owing onboarding only while still incomplete; clear it the
+    // moment they're finished so a stale flag can't bounce them back later.
+    if (!finished) setNeedsOnboarding(userId, true)
+    else setNeedsOnboarding(userId, false)
   }, [userId, finished, setNeedsOnboarding])
 
   // Transition-wrapped state for all form fields to prevent React #300

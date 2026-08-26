@@ -126,9 +126,14 @@ function RequireAuth() {
   // held in the wizard until the required steps are done. Returning users who
   // never started onboarding, or who already finished it, are NOT bounced — they
   // land on their Profile / dashboard and complete optional fields at leisure.
+  // Only bounce to the wizard when the profile is genuinely incomplete. A profile
+  // that already satisfies completion must never be sent to /onboarding — otherwise
+  // a stale `needsOnboarding` flag would bounce completed users to the wizard, which
+  // then immediately pushes them on to /app/profile on login.
   if (
     location.pathname !== '/onboarding' &&
-    (needsOnb || (requiresProfileCompletion(profile) && isNewAccount()))
+    requiresProfileCompletion(profile) &&
+    (needsOnb || isNewAccount())
   ) {
     return <Navigate to="/onboarding" replace />
   }
