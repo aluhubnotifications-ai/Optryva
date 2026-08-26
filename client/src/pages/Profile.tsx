@@ -23,7 +23,7 @@ import {
   CheckCircle2,
   Circle,
 } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import { useCurrentUser, useSession } from '@/lib/store'
 import { useMatchRun } from '@/lib/matchRun'
@@ -56,7 +56,20 @@ export default function Profile() {
   const [skillInput, setSkillInput] = useState('')
   const [countryInput, setCountryInput] = useState('')
   const [confirmRemoveCv, setConfirmRemoveCv] = useState(false)
-  const [tab, setTab] = useState<'profile' | 'resumes' | 'gallery'>('profile')
+  const [params] = useSearchParams()
+  const [tab, setTab] = useState<'profile' | 'resumes' | 'gallery'>(() => {
+    const t = params.get('tab')
+    return t === 'resumes' || t === 'gallery' ? t : 'profile'
+  })
+  // Deep-link support so the reminder modal can jump straight to the exact field:
+  // ?tab=gallery → portfolio, ?tab=resumes → résumés, ?focus=preferences → prefs.
+  useEffect(() => {
+    const focus = params.get('focus')
+    if (!focus) return
+    const id = `${focus}-section`
+    const t = setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80)
+    return () => clearTimeout(t)
+  }, [params])
   const TABS = [
     { id: 'profile', label: 'Profile', Icon: User },
     { id: 'resumes', label: 'Résumés', Icon: FileText },
@@ -375,7 +388,7 @@ export default function Profile() {
         <p className="mt-2.5 flex items-center gap-1.5 text-xs text-muted-foreground"><Sparkles className="h-3.5 w-3.5 text-primary" /> Your CV is the #1 signal our AI uses to find your best-fit roles.</p>
       </Section>}
       {/* Legacy profile preferences are replaced by per-résumé preferences above. */}
-      {false && <Section icon={Briefcase} title="Career preferences" hint="Feeds the AI matching engine">
+      <Section id="preferences-section" icon={Briefcase} title="Career preferences" hint="Feeds the AI matching engine">
         <Label>Roles I'm interested in</Label>
         <ChipGroup options={ROLES} selected={roles} onToggle={(v) => toggle(roles, setRoles, v)} />
         <Label className="mt-4">Industries</Label>
@@ -437,10 +450,10 @@ export default function Profile() {
           <Input value={skillInput} onChange={(e) => setSkillInput(e.target.value)} placeholder="Add a skill…" className="max-w-xs" />
           <Button type="submit" variant="outline" size="icon"><Plus className="h-4 w-4" /></Button>
         </form>
-      </Section>}
+      </Section>
 
       {/* Social */}
-      <Section icon={Link2} title="Links">
+      <Section id="links-section" icon={Link2} title="Links">
         <div className="grid gap-4 sm:grid-cols-2">
           <div><Label>LinkedIn</Label><Input value={form.linkedin} onChange={(e) => setForm({ ...form, linkedin: e.target.value })} placeholder="https://linkedin.com/in/…" /></div>
           <div><Label>GitHub</Label><Input value={form.github} onChange={(e) => setForm({ ...form, github: e.target.value })} placeholder="https://github.com/…" /></div>

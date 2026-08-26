@@ -80,11 +80,11 @@ function StudentDashboard({ user }: { user: Profile }) {
   const [nudgeHidden, setNudgeHidden] = useState(false)
   const nudgeItems = useMemo<NudgeItem[]>(() => {
     const map: Record<string, { label: string; cta: string; to: string }> = {
-      work: { label: 'Set your work preferences', cta: 'Add', to: '/app/profile' },
-      skills: { label: 'Add your skills', cta: 'Add', to: '/app/profile' },
-      resume: { label: 'Upload your résumé', cta: 'Add', to: '/app/profile' },
-      evidence: { label: 'Build your portfolio & evidence', cta: 'Add', to: '/app/profile' },
-      bio: { label: 'Write a short bio', cta: 'Add', to: '/app/profile' },
+      work: { label: 'Set your work preferences', cta: 'Add', to: '/app/profile?focus=preferences' },
+      skills: { label: 'Add your skills', cta: 'Add', to: '/app/profile?focus=preferences' },
+      resume: { label: 'Upload your résumé', cta: 'Add', to: '/app/profile?tab=resumes' },
+      evidence: { label: 'Build your portfolio & evidence', cta: 'Add', to: '/app/profile?tab=gallery' },
+      bio: { label: 'Write a short bio', cta: 'Add', to: '/app/profile?focus=about' },
     }
     const c = profileCompletion(user)
     return Object.entries(map)
@@ -672,12 +672,12 @@ function profileCompleteness(u: Profile) {
 // CV first — it's the strongest matching signal.
 function profileGaps(u: Profile): { label: string; to: string; icon: typeof FileText }[] {
   const gaps: { label: string; to: string; icon: typeof FileText }[] = []
-  if (!u.cv_text && !u.cv_filename) gaps.push({ label: 'Upload your CV', to: '/app/profile', icon: FileText })
-  if (!u.skills?.length) gaps.push({ label: 'Add your skills', to: '/app/profile', icon: Sparkles })
-  if (!u.desired_roles?.length) gaps.push({ label: 'Add desired roles', to: '/app/profile', icon: Briefcase })
-  if (!u.bio) gaps.push({ label: 'Write a short bio', to: '/app/profile', icon: FileText })
-  if (!u.major) gaps.push({ label: 'Add your major', to: '/app/profile', icon: GraduationCap })
-  if (!u.year && !u.graduated) gaps.push({ label: 'Add your study year', to: '/app/profile', icon: GraduationCap })
-  if (!u.linkedin) gaps.push({ label: 'Link your LinkedIn', to: '/app/profile', icon: Users })
+  if (!u.cv_text && !u.cv_filename) gaps.push({ label: 'Upload your CV', to: '/app/profile?tab=resumes', icon: FileText })
+  if (!u.skills?.length) gaps.push({ label: 'Add your skills', to: '/app/profile?focus=preferences', icon: Sparkles })
+  if (!u.desired_roles?.length) gaps.push({ label: 'Add desired roles', to: '/app/profile?focus=preferences', icon: Briefcase })
+  if (!u.bio) gaps.push({ label: 'Write a short bio', to: '/app/profile?focus=about', icon: FileText })
+  if (!u.major) gaps.push({ label: 'Add your major', to: '/app/profile?focus=about', icon: GraduationCap })
+  if (!u.year && !u.graduated) gaps.push({ label: 'Add your study year', to: '/app/profile?focus=about', icon: GraduationCap })
+  if (!u.linkedin) gaps.push({ label: 'Link your LinkedIn', to: '/app/profile?focus=links', icon: Users })
   return gaps
 }
