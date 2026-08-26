@@ -29,11 +29,13 @@
   }
 
   .dark {
-    --background: 0 0% 4%;
+    --background: 0 0% 0%;
     --foreground: 0 0% 96%;
-    --card: 0 0% 8%;
+    /* Cards/surfaces sit slightly above the pure-black app bg so containers are
+     * clearly visible (not the same black "as fuck") while borders blend in. */
+    --card: 0 0% 6%;
     --card-foreground: 0 0% 96%;
-    --muted: 0 0% 14%;
+    --muted: 0 0% 10%;
     --muted-foreground: 0 0% 62%;
     --primary: 0 0% 100%;
     --primary-foreground: 0 0% 7%;
@@ -47,8 +49,10 @@
     --warning-foreground: 40 100% 8%;
     --danger: 0 80% 62%;
     --danger-foreground: 0 0% 100%;
-    --border: 0 0% 13%;
-    --input: 0 0% 16%;
+    /* Borders/inputs blend into the background so there is no visible
+     * inconsistency between surfaces (no stray gray lines on black). */
+    --border: 0 0% 0%;
+    --input: 0 0% 0%;
     --ring: 0 0% 88%;
   }
 
@@ -112,6 +116,7 @@
   }
 
   .mesh-bg {
+    background-color: hsl(var(--background));
     background-image:
       radial-gradient(at 0% 0%, hsl(var(--primary) / 0.18) 0px, transparent 50%),
       radial-gradient(at 98% 10%, hsl(var(--accent) / 0.14) 0px, transparent 45%),
