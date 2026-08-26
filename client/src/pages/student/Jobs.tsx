@@ -331,6 +331,7 @@ export default function Jobs() {
             userId={user.id}
             resumePresent={hasResume}
             onComplete={() => { markRun(user.id); setGateOpen(false) }}
+            onError={() => setGateOpen(false)}
             title="Today's AI matches"
             subtitle={`Welcome back, ${user.full_name.split(' ')[0]} — let's score today's opportunities against your profile and show your best fits first. You can switch tabs while it runs.`}
           />

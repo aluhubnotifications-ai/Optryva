@@ -21,12 +21,17 @@ import { matchReadiness, type MatchMissing } from '@/lib/matchReady'
 export function MatchRunner({
   userId,
   onComplete,
+  onError,
   title = 'Run your AI matches',
   subtitle,
   resumePresent,
 }: {
   userId: string
   onComplete: () => void
+  /** Called when the AI is unavailable/failed — lets the parent return the student
+   *  to the opportunities board (with a basic fallback) instead of stranding them
+   *  on the match screen. */
+  onError?: () => void
   title?: string
   subtitle?: string
   /** True when the user has an active structured résumé (resume_profiles). Lets the
@@ -38,9 +43,11 @@ export function MatchRunner({
   const navigate = useTransitionNavigate()
   const pct = total > 0 ? Math.round((done / total) * 100) : 0
 
-  // Advance the page once the run completes.
+  // When the run finishes, advance to the opportunities. If the AI is unavailable we
+  // also return to the board (with a basic fallback) rather than stranding the user.
   useEffect(() => {
     if (phase === 'done') onComplete()
+    else if (phase === 'error') (onError ?? onComplete)()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase])
 
@@ -98,15 +105,26 @@ export function MatchRunner({
           <div className={`flex h-16 w-16 items-center justify-center rounded-2xl ${errored ? 'bg-danger/12 text-danger' : 'bg-primary/12 text-primary shadow-glow'}`}>
             {errored ? <AlertTriangle className="h-8 w-8" /> : <Sparkles className="h-8 w-8" />}
           </div>
-          <h2 className="text-xl font-bold tracking-tight">{errored ? 'Couldn’t run matching' : title}</h2>
+          <h2 className="text-xl font-bold tracking-tight">{errored ? 'Couldn’t reach the AI' : title}</h2>
           <p className="max-w-md text-sm text-muted-foreground">
             {errored
-              ? 'The AI scorer didn’t respond. This is usually temporary — check your connection and try again.'
+              ? 'The AI scorer is unavailable right now, so we’re showing opportunities without AI ranking. You can browse roles and try matching again later.'
               : subtitle ?? "We'll read your CV & profile and score today's opportunities 0–99 for fit, then show you the best ones first. You can switch tabs — progress keeps running in the AI activity panel."}
           </p>
-          <Button size="lg" variant={errored ? 'outline' : 'default'} className="mt-2 gap-2" onClick={go}>
-            <Sparkles className="h-4 w-4" /> {errored ? 'Try again' : 'Run AI matching'}
-          </Button>
+          {errored ? (
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <Button size="lg" variant="default" className="gap-2" onClick={() => (onError ?? onComplete)()}>
+                <Sparkles className="h-4 w-4" /> Browse opportunities
+              </Button>
+              <Button size="lg" variant="outline" className="gap-2" onClick={go}>
+                <Sparkles className="h-4 w-4" /> Try again
+              </Button>
+            </div>
+          ) : (
+            <Button size="lg" variant="default" className="mt-2 gap-2" onClick={go}>
+              <Sparkles className="h-4 w-4" /> Run AI matching
+            </Button>
+          )}
         </CardBody>
       </Card>
     )
