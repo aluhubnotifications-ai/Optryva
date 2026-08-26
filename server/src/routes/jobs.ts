@@ -530,6 +530,16 @@ jobs.get('/:id', async (req, res) => {
     const gates = await schoolGates([r.company_id])
     if (!jobVisibleTo(r, viewer, gates)) return res.status(404).json({ error: 'not_found' })
   }
+  // Attach the posting entity's display name + avatar (same as GET /jobs list
+  // endpoint) so single-job fetches carry company_name/company_avatar_url
+  // without the client needing a separate profiles query.
+  if (r.company_id) {
+    const c = (await sb.from('profiles').select('company_name,avatar_url,full_name').eq('id', r.company_id).maybeSingle()).data as any
+    if (c) {
+      r.company_name = c.company_name ?? c.full_name ?? undefined
+      r.company_avatar_url = c.avatar_url ?? undefined
+    }
+  }
   res.json(rowToJob(r))
 })
 

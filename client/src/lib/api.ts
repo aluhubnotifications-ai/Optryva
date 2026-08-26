@@ -49,7 +49,7 @@ async function postJson(path: string, body: unknown) {
     body: JSON.stringify(body),
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error((data as any)?.error ?? `request_failed_${res.status}`)
+  if (!res.ok) throw new Error((data as any)?.message ?? (data as any)?.error ?? `request_failed_${res.status}`)
   return data
 }
 
@@ -293,7 +293,7 @@ async function apiFetch(path: string, init: RequestInit = {}) {
     const ms = Math.round((performance.now() - start) * 10) / 10
     console.log(`[Optryva perf] api ${init.method ?? 'GET'} ${path}  →  ${res.status} ${ms}ms`)
   }
-  if (!res.ok) throw new Error((data as any)?.error ?? `request_failed_${res.status}`)
+  if (!res.ok) throw new Error((data as any)?.message ?? (data as any)?.error ?? `request_failed_${res.status}`)
   return data
   } finally {
     endLoad()

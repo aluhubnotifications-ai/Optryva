@@ -69,6 +69,10 @@ app.route('/api/documents', documents.hono)
 app.route('/api/evidence', evidence.hono)
 
 app.onError((err, c) => {
-  console.error(err)
-  return c.json({ error: 'server_error' }, 500)
+  // Log the full error server-side (visible in `wrangler tail`) and surface a
+  // short reason to the client so forms like the Apply modal can show "missing
+  // column X" instead of a bare "server_error". The message comes from a Postgres
+  // driver error string, not a secret, so it's safe to return.
+  console.error('[api] unhandled error:', err)
+  return c.json({ error: 'server_error', message: err?.message ?? String(err) }, 500)
 })

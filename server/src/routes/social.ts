@@ -132,46 +132,69 @@ messages.get('/conversations', async (req, res) => {
   const safeId = meId.replace(/[^a-zA-Z0-9_-]/g, '')
   const dmRows = safeId
     ? (must(
-        await sb
-          .from('messages')
-          .select('thread_id')
-          .eq('scope', 'dm')
-          .or(`thread_id.like.${safeId}__*,thread_id.like.*__${safeId}`),
-      ) as any[])
+         await sb
+           .from('messages')
+           .select('thread_id')
+           .eq('scope', 'dm')
+           .or(`thread_id.like.${safeId}__*,thread_id.like.*__${safeId}`),
+       ) as any[])
     : []
-  const seen = new Set<string>()
+  const seenDm = new Set<string>()
   for (const d of dmRows) {
-    if (seen.has(d.thread_id)) continue
-    seen.add(d.thread_id)
+    if (seenDm.has(d.thread_id)) continue
+    seenDm.add(d.thread_id)
     const parts = d.thread_id.split('__')
     if (!parts.includes(meId)) continue
     convos.push({ thread_id: d.thread_id, scope: 'dm', counterpartId: parts.find((x: string) => x !== meId) })
   }
 
-  // 3) Fetch every relevant message in ONE query, then group + summarise in memory.
+  // 3) Summarise each conversation thread (last message + unread count) in as
+  // few round-trips as possible. We do NOT pull full message bodies for every
+  // historical row: instead one indexed latest-message lookup per thread (the
+  // messages table carries idx_msgs_thread_created on (thread_id, deleted,
+  // created_at)), plus one small query for only the unread rows.
   const threadIds = convos.map((c) => c.thread_id)
-  const allMsgs = threadIds.length
-    ? (must(await sb.from('messages').select('thread_id, body, attachment, read, sender_id, created_at').in('thread_id', threadIds).eq('deleted', 0).order('created_at', { ascending: true })) as any[])
-    : []
-  const byThread = new Map<string, any[]>()
-  for (const m of allMsgs) {
-    const arr = byThread.get(m.thread_id)
-    if (arr) arr.push(m)
-    else byThread.set(m.thread_id, [m])
-  }
-  for (const c of convos) {
-    const msgs = byThread.get(c.thread_id) ?? []
-    const last = msgs[msgs.length - 1]
-    c.lastBody = last?.body ?? (last?.attachment ? '📎 Attachment' : undefined)
-    c.lastAt = last?.created_at
-    c.unread = msgs.filter((m) => m.read === 0 && m.sender_id !== meId).length
+  if (threadIds.length) {
+    // Latest message per thread: order DESC by created_at and take the first
+    // row we see for each thread (the index makes this cheap per thread).
+    const latest = (must(
+      await sb
+        .from('messages')
+        .select('thread_id, body, attachment, sender_id, created_at')
+        .in('thread_id', threadIds)
+        .eq('deleted', 0)
+        .order('created_at', { ascending: false }),
+    ) as any[])
+    const seen = new Set<string>()
+    for (const m of latest) {
+      if (seen.has(m.thread_id)) continue
+      seen.add(m.thread_id)
+      const c = convos.find((x) => x.thread_id === m.thread_id)
+      if (c) {
+        c.lastBody = m.body ?? (m.attachment ? '📎 Attachment' : undefined)
+        c.lastAt = m.created_at
+      }
+    }
+    // Unread tally: only unread rows addressed to me (usually a tiny slice).
+    const unreadRows = (must(
+      await sb
+        .from('messages')
+        .select('thread_id')
+        .in('thread_id', threadIds)
+        .eq('deleted', 0)
+        .eq('read', 0)
+        .neq('sender_id', meId),
+    ) as any[])
+    const unread = new Map<string, number>()
+    for (const r of unreadRows) unread.set(r.thread_id, (unread.get(r.thread_id) ?? 0) + 1)
+    for (const c of convos) c.unread = unread.get(c.thread_id) ?? 0
   }
   convos.sort((a, b) => (b.lastAt ? +new Date(b.lastAt) : 0) - (a.lastAt ? +new Date(a.lastAt) : 0))
   // Optional cap (e.g. ?limit=50) so a power user with hundreds of threads
   // doesn't pull them all at once.
   const limit = parseInt((req.query.limit as string) || '0', 10)
   if (limit > 0) convos = convos.slice(0, limit)
-  cacheSet(cacheKey, convos, 10_000)
+  cacheSet(cacheKey, convos, 30_000)
   res.json(convos)
 })
 
