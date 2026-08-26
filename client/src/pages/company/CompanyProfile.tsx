@@ -242,13 +242,9 @@ export default function CompanyProfile() {
           </div>
         </CardBody>
       </Card>
+    </div>
 
-      <div className="flex items-center justify-end gap-2">
-        <Button onClick={save} loading={saving} className="gap-1.5"><Save className="h-4 w-4" /> Save changes</Button>
-      </div>
-        </div>
-
-        <aside className="space-y-5 lg:sticky lg:top-6 self-start">
+      <aside className="space-y-5 lg:sticky lg:top-6 self-start">
           {/* Quick actions */}
           <Card>
             <CardBody className="space-y-2">
@@ -322,7 +318,13 @@ export default function CompanyProfile() {
 
           {/* Account & Security (incl. delete account) */}
           <AccountSecurity />
-        </aside>
+         </aside>
+       </div>
+
+      <div className="mt-6 flex items-center justify-end gap-2 border-t border-border pt-4">
+        {saved === 'saving' && <span className="text-xs text-muted-foreground">Saving…</span>}
+        {saved === 'saved' && <span className="text-xs text-foreground">All changes saved</span>}
+        <Button onClick={save} loading={saving} className="gap-1.5"><Save className="h-4 w-4" /> Save changes</Button>
       </div>
     </motion.div>
   )
