@@ -49,11 +49,18 @@ export function MatchRunner({
   // Profile completeness gate — checked client-side up front, and again via the
   // server's `notReady` signal (phase === 'notReady') as the source of truth.
   const local = matchReadiness(user, resumePresent)
-  const blocked = phase === 'notReady' || !local.ready
+  // If we already know a CV file or active résumé exists, treat the résumé as present
+  // even though the server's text extraction (a slow Claude call) may not have run yet.
+  // This prevents a false "no résumé" prompt while the server is still parsing.
+  const clientHasResume = !!((user?.cv_text ?? '').trim() || user?.cv_filename || user?.cv_url || resumePresent)
+  const serverMissing = phase === 'notReady' ? ((missing as MatchMissing[] | undefined) ?? []) : []
+  const effectiveMissing = Array.from(new Set([...local.missing, ...serverMissing])).filter(
+    (m) => (m === 'resume' ? !clientHasResume : true),
+  )
+  const blocked = effectiveMissing.length > 0
   if (blocked && phase !== 'running') {
-    const need = (phase === 'notReady' ? (missing as MatchMissing[]) : local.missing) ?? []
-    const needsResume = need.includes('resume')
-    const needsPrefs = need.includes('preferences')
+    const needsResume = effectiveMissing.includes('resume')
+    const needsPrefs = effectiveMissing.includes('preferences')
     return (
       <Card>
         <CardBody className="mesh-bg flex flex-col items-center justify-center gap-3 rounded-2xl py-16 text-center">

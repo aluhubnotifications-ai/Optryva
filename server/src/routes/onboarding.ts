@@ -2,6 +2,7 @@ import { Router } from '@/lib/http'
 import { sb, must, j } from '@/db'
 import { requireAuth } from '@/lib/auth'
 import { uid, now } from '@/lib/util'
+import { ensureCvText } from '@/lib/enrich'
 
 export const onboarding = Router()
 onboarding.use(requireAuth)
@@ -115,7 +116,14 @@ onboarding.post('/step/resume', async (req, res) => {
   if (cv_url) update.cv_uploaded_at = ts
   
   must(await sb.from('profiles').update(update).eq('id', id))
-  
+
+  // Extract the CV text up-front (once) so matching/compass don't pay a slow Claude
+  // call on the first run — the résumé is recognised immediately afterwards.
+  if (cv_url && !cv_text?.trim()) {
+    const prof = (await sb.from('profiles').select('*').eq('id', id).maybeSingle()) as any
+    if (prof?.cv_url) await ensureCvText(prof).catch(() => {})
+  }
+
   // Update onboarding progress
   must(await sb.from('onboarding_progress').upsert({
     account_id: id,

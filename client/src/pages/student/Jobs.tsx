@@ -106,7 +106,9 @@ export default function Jobs() {
   // New pages are revealed automatically as the user scrolls (infinite scroll).
   const PAGE = 10
   const [shown, setShown] = useState(PAGE)
-  const [hasResume, setHasResume] = useState(false)
+  const [hasResume, setHasResume] = useState(
+    () => !!(user?.cv_url || user?.cv_text || user?.cv_filename),
+  )
   const listRef = useRef<HTMLDivElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
