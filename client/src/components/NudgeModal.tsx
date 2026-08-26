@@ -54,13 +54,11 @@ export function NudgeModal({ items, onClose }: { items: NudgeItem[]; onClose: ()
             <X className="h-4 w-4" />
           </button>
 
-          <motion.div
-            className="mx-auto mb-3"
-            animate={{ rotate: [0, -8, 8, -5, 0], y: [0, -6, 0] }}
-            transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
-          >
-            <OnboardingMascot celebrating className="h-20 w-20" />
-          </motion.div>
+          <div className="relative mb-2 h-24 w-full overflow-hidden">
+            <div className="flex h-full items-center justify-center">
+              <OnboardingMascot walk className="h-20 w-20" />
+            </div>
+          </div>
 
           <h2 className="text-xl font-extrabold tracking-tight">You&apos;re almost there! 🚀</h2>
           <p className="mt-1 text-sm text-muted-foreground">

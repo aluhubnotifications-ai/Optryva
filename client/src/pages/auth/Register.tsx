@@ -84,7 +84,7 @@ export default function Register() {
     setError(null)
     setGoogleLoading(true)
     try {
-      const { url } = await authApi.googleAuthUrl('/app')
+      const { url } = await authApi.googleAuthUrl('/onboarding?new=1')
       window.location.href = url
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google sign-up failed')

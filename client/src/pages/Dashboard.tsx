@@ -19,7 +19,7 @@ import { useCurrentUser } from '@/lib/store'
 import { applicationsApi, followsApi, jobsApi } from '@/lib/api'
 import { useMatchProgress } from '@/lib/matchProgress'
 import { profileCompletion } from '@/lib/onboarding'
-import { NudgeModal, dismissNudge, nudgeDismissed, type NudgeItem } from '@/components/NudgeModal'
+import { NudgeModal, type NudgeItem } from '@/components/NudgeModal'
 import type { AiMatch, Application, JobListing, Profile } from '@/types'
 import { Card, CardBody, Badge, Avatar, Progress, Skeleton } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
@@ -74,7 +74,10 @@ function StudentDashboard({ user }: { user: Profile }) {
   // back into the wizard, so by the time we're here the required steps are done.
   // This only surfaces the still-missing *important optional* items (portfolio,
   // preferences, skills…) as a friendly animated modal.
-  const [nudgeHidden, setNudgeHidden] = useState(() => nudgeDismissed())
+  // Re-shown on every login: this state resets when the Dashboard mounts (i.e. on
+  // each fresh login / page load), so the reminder always comes back until the
+  // student has actually completed the important optional items.
+  const [nudgeHidden, setNudgeHidden] = useState(false)
   const nudgeItems = useMemo<NudgeItem[]>(() => {
     const map: Record<string, { label: string; cta: string; to: string }> = {
       work: { label: 'Set your work preferences', cta: 'Add', to: '/app/profile' },
@@ -225,15 +228,7 @@ function StudentDashboard({ user }: { user: Profile }) {
 
   return (
     <div className="space-y-6">
-      {showNudge && (
-        <NudgeModal
-          items={nudgeItems}
-          onClose={() => {
-            setNudgeHidden(true)
-            dismissNudge()
-          }}
-        />
-      )}
+      {showNudge && <NudgeModal items={nudgeItems} onClose={() => setNudgeHidden(true)} />}
       <Hero user={user} completeness={completeness} />
       <NextBestAction hasCv={hasCv} gaps={gaps} matches={matches} />
 
