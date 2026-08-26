@@ -38,6 +38,11 @@ app.use('/api/*', cors({
   credentials: true,
 }))
 
+app.onError((err, c) => {
+  console.error('[api] unhandled error:', err)
+  return c.json({ error: 'internal_error', message: err?.message ?? String(err) }, 500)
+})
+
 app.get('/api/health', (c) => c.json({ ok: true, claude: hasClaude() }))
 
 // Google Search Console site-verification for the workers.dev property.

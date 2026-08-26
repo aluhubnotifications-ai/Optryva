@@ -460,8 +460,10 @@ function OnboardingContent() {
         school: school.trim(),
         major: major.trim(),
         gpa: gpa.trim(),
-        year: graduated ? '' : year,
-        graduated,
+        // `year` / `graduated` are student-only concepts. Schools and companies have
+        // no Education step, so their `year` state is '' — sending that to the
+        // integer `year` column 500s. Only students write these.
+        ...(userType === 'student' ? { year: graduated ? '' : year, graduated } : {}),
         skills,
         ...(userType === 'school'
           ? {
@@ -479,7 +481,12 @@ function OnboardingContent() {
             }
           : {}),
       })
-      await onboardingApi.saveResume(cvText.trim() || undefined, cvUrl, cvFilename ?? undefined)
+      // Only students have a résumé step. Employers/universities must NOT call the
+      // student résumé endpoint — an empty payload returns HTTP 400 (missing_resume)
+      // and would abort onboarding for them.
+      if (userType === 'student') {
+        await onboardingApi.saveResume(cvText.trim() || undefined, cvUrl, cvFilename ?? undefined)
+      }
       // Refresh the cached profile so the completion gate sees the résumé and
       // doesn't bounce us straight back to onboarding.
       const refreshed = await authApi.me()

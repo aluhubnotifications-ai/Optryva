@@ -172,6 +172,11 @@ profiles.patch('/:id', async (req, res) => {
     // onboarding_goal (migration 0051) — skip the update until the column exists
     // so a live DB that hasn't been migrated yet doesn't 500 on every save.
     if (f === 'onboarding_goal' && !(await onboardingGoalColExists())) continue
+    // `year` is an integer column. A non-student (school/company) has no Education
+    // step so its `year` is ''; a graduated student also sends '' (year is moot).
+    // `'' ?? null` is still '' (only null/undefined trigger ??), so writing '' to
+    // an int4 column 500s. Map empty → NULL so the save succeeds.
+    if (f === 'year' && (b.year === '' || b.year == null)) { update.year = null; continue }
     update[f] = b[f] ?? null
     if (MATCH_AFFECTING.has(f)) affectsMatch = true
   }
@@ -211,7 +216,7 @@ profiles.patch('/:id', async (req, res) => {
   // Graduated flag (migration 0038) — a student who already finished their degree.
   // Persisted as a boolean once the column exists.
   if ('graduated' in b && (await graduatedColExists())) {
-    update.graduated = b.graduated ? 1 : 0
+    update.graduated = !!b.graduated
   }
 
   // School domain/privacy fields (migration 0011) — only persisted once present.
