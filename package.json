@@ -9,7 +9,7 @@
     "build": "npm run build:api && npm run build:client",
     "dev": "wrangler dev",
     "deploy:api": "npm run build:api && wrangler deploy",
-    "deploy:client": "VITE_API_URL=/api npm run build:client && wrangler pages deploy client/dist --project-name optryva",
+    "deploy:client": "npm run build:client && wrangler pages deploy client/dist --project-name optryva",
     "deploy": "npm run deploy:api",
     "tail": "wrangler tail",
     "cf-typegen": "wrangler types"
