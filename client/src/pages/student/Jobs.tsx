@@ -31,8 +31,7 @@ import type { AiMatch, JobListing, Profile, ResumeProfile } from '@/types'
 import { AIResearchPanel } from '@/components/AIResearchPanel'
 import { TrajectorySimulator } from '@/components/TrajectorySimulator'
 import { ShowYourWork } from '@/components/ShowYourWork'
-import { MatchRunner } from '@/components/MatchRunner'
-import { useMatchRun, needsMatchRun } from '@/lib/matchRun'
+import { useMatchRun } from '@/lib/matchRun'
 import { useMatchProgress } from '@/lib/matchProgress'
 import { matchReadiness } from '@/lib/matchReady'
 import { Drawer } from '@/components/ui/Drawer'
@@ -115,17 +114,11 @@ export default function Jobs() {
     setShown(PAGE)
   }, [country, tab, typeKey, listQ, jobs])
 
-  // Daily "run AI matching" gate. We also hold the gate OPEN (and never auto-run)
-  // until the student has a résumé + preferences — the funnel can't pick a top-40
-  // without them, so MatchRunner shows a "complete your profile" prompt instead.
+  // We no longer show a "Run AI matching" card on the Opportunities page — the board
+  // is the whole view. Matching runs quietly in the background and scores stream in;
+  // if it fails, the listings are simply shown without AI ranking.
   const lastRun = useMatchRun((s) => s.lastRun[user.id])
-  const markRun = useMatchRun((s) => s.markRun)
   const matchReady = matchReadiness(user, hasResume).ready
-  const [gateOpen, setGateOpen] = useState(() => !matchReady || needsMatchRun(lastRun))
-  // When matching fails we close the gate and land the student on the board. This
-  // flag stops the "re-open if a re-run is due" effect from immediately re-opening
-  // it (needsMatchRun stays true after a failure), which previously stranded them.
-  const [autoOpen, setAutoOpen] = useState(true)
 
   useEffect(() => {
     let active = true
@@ -169,23 +162,14 @@ export default function Jobs() {
     }
   }, [user.id])
 
-  // When the daily gate is already closed, make sure scores are loaded — the
-  // global runner is idempotent (reuses cached results, no duplicate activity
-  // task), and streams a live percentage if anything needs re-scoring.
+  // Run matching quietly in the background as soon as the profile is ready. The runner
+  // is idempotent (reuses cached results, streams a live percentage only when needed),
+  // so the listings are usable immediately and scores fill in as they arrive — or, if
+  // the AI fails, the board is simply shown without AI ranking.
   useEffect(() => {
-    // Never auto-run for a student who isn't ready — keep the gate open so they
-    // get the "add your résumé / preferences" prompt instead of a 40-job run.
-    if (!gateOpen && matchReady) void useMatchProgress.getState().run(user.id)
+    if (matchReady) void useMatchProgress.getState().run(user.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gateOpen, matchReady, user.id])
-
-  // Re-open the gate if matching was invalidated (e.g. CV upload), a new day, or
-  // the profile is missing the résumé/preferences the matcher needs. Skipped once
-  // the student has dismissed it after a failure (autoOpen=false), so they stay on
-  // the board instead of being bounced back to the match screen.
-  useEffect(() => {
-    if (autoOpen && (!matchReady || needsMatchRun(lastRun))) setGateOpen(true)
-  }, [lastRun, matchReady, autoOpen])
+  }, [matchReady, user.id])
 
   const filtered = useMemo(() => {
     let list = jobs.filter((j) => {
@@ -331,21 +315,8 @@ export default function Jobs() {
         </div>
       </div>
 
-      {gateOpen && (
-        <div className="mt-2">
-          <MatchRunner
-            userId={user.id}
-            resumePresent={hasResume}
-            onComplete={() => { markRun(user.id); setGateOpen(false) }}
-            onError={() => { setAutoOpen(false); setGateOpen(false) }}
-            title="Today's AI matches"
-            subtitle={`Welcome back, ${user.full_name.split(' ')[0]} — let's score today's opportunities against your profile and show your best fits first. You can switch tabs while it runs.`}
-          />
-        </div>
-      )}
-
-      {/* The opportunities board is ALWAYS visible — matching runs above it, so a
-          slow or failed AI run never strands the student away from the listings. */}
+      {/* The opportunities board is the whole view. Matching runs in the background
+          and scores stream in; if the AI fails, the listings are simply shown. */}
       <>
       {/* Sticky tabs */}
       <div className="sticky top-16 z-20 -mx-4 mb-4 border-b border-border bg-background/95 px-4 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
