@@ -264,10 +264,7 @@ export function MatchRunner({
                     </feMerge>
                   </filter>
                 </defs>
-                <motion.g
-                  animate={{ x: [0, -100] }}
-                  transition={{ duration: 1.8, repeat: Infinity, ease: 'linear' }}
-                >
+                <g>
                   <path
                     d="M0 30 H28 l5 -3 l5 6 l7 -22 l7 40 l6 -18 l5 2 H100 M100 30 H128 l5 -3 l5 6 l7 -22 l7 40 l6 -18 l5 2 H200 M200 30 H228 l5 -3 l5 6 l7 -22 l7 40 l6 -18 l5 2 H300"
                     fill="none"
@@ -277,7 +274,15 @@ export function MatchRunner({
                     strokeLinecap="round"
                     filter="url(#ecgGlow)"
                   />
-                </motion.g>
+                  <animateTransform
+                    attributeName="transform"
+                    type="translate"
+                    from="0 0"
+                    to="-100 0"
+                    dur="1.8s"
+                    repeatCount="indefinite"
+                  />
+                </g>
               </svg>
             </div>
           </div>
