@@ -72,6 +72,13 @@ export const authApi = {
   async deleteAccount(): Promise<void> {
     await apiFetch('/auth/delete-account', { method: 'POST' })
   },
+  /** Set or change the account password. For Google-only accounts
+   *  (password_hash is null) `current` is not required — the user is setting a
+   *  password for the first time. For email/password accounts, `current` must
+   *  verify the existing password before it can be changed. */
+  async changePassword(payload: { current?: string; next: string }): Promise<void> {
+    await apiFetch('/auth/change-password', { method: 'POST', body: JSON.stringify(payload) })
+  },
   /** Fresh profile for the current token — used to refresh a persisted session
    *  (e.g. so is_admin / plan changes show up without re-logging-in). */
   async me(): Promise<Profile | null> {

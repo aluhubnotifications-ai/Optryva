@@ -56,6 +56,12 @@ export interface Profile {
   plan_activated_at?: string
   /** True when the account's email is in the server's ADMIN_EMAILS allowlist. */
   is_admin?: boolean
+  /** Non-null only on the user's own full profile (includePrivate). True when
+   *  the account already has an email/password; false for Google-only accounts
+   *  so the client shows "Set password" instead of "Change password". */
+  has_password?: boolean
+  /** 'google' for Google-only accounts; undefined otherwise. */
+  auth_provider?: string
   created_at: string
 }
 

@@ -626,6 +626,7 @@ function AccountSecurity() {
   const { toast } = useToast()
   const navigate = useTransitionNavigate()
   const logout = useSession((s) => s.logout)
+  const user = useCurrentUser() ?? ({} as ProfileT)
   const [modal, setModal] = useState<null | 'email' | 'password' | 'delete'>(null)
   const [busy, setBusy] = useState(false)
 
@@ -653,7 +654,7 @@ function AccountSecurity() {
         </div>
         <div className="divide-y divide-border">
           <Row icon={Mail} title="Change email" desc="Update your sign-in email" onClick={() => setModal('email')} />
-          <Row icon={Lock} title="Change password" desc="Use a strong, unique password" onClick={() => setModal('password')} />
+          <Row icon={Lock} title={user.has_password ? 'Change password' : 'Set password'} desc={user.has_password ? 'Use a strong, unique password' : 'Create a password for email/password sign-in (no current password needed)'} onClick={() => setModal('password')} />
           <Row icon={Trash2} title="Delete account" desc="Permanently remove your account & data" danger onClick={() => setModal('delete')} />
         </div>
       </CardBody>
@@ -668,11 +669,24 @@ function AccountSecurity() {
       </Modal>
 
       {/* Change password */}
-      <Modal open={modal === 'password'} onClose={() => setModal(null)} size="sm" title="Change password">
-        <form onSubmit={(e) => { e.preventDefault(); setModal(null); toast({ title: 'Password changed (demo)', tone: 'success' }) }} className="space-y-3">
-          <div><Label>Current password</Label><Input type="password" required /></div>
-          <div><Label>New password</Label><Input type="password" required /></div>
-          <div className="flex justify-end gap-2 pt-2"><Button variant="ghost" type="button" onClick={() => setModal(null)}>Cancel</Button><Button type="submit">Update</Button></div>
+      <Modal open={modal === 'password'} onClose={() => setModal(null)} size="sm" title={user.has_password ? 'Change password' : 'Set password'}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            const form = e.currentTarget
+            const next = (form.elements.namedItem('next') as HTMLInputElement).value
+            const current = (form.elements.namedItem('current') as HTMLInputElement | null)?.value
+            setModal(null)
+            authApi
+              .changePassword({ current: user.has_password ? current : undefined, next })
+              .then(() => toast({ title: user.has_password ? 'Password changed' : 'Password set', tone: 'success' }))
+              .catch((err) => toast({ title: err instanceof Error ? err.message : 'Could not update password', tone: 'error' }))
+          }}
+          className="space-y-3"
+        >
+          {user.has_password && <div><Label>Current password</Label><Input type="password" name="current" required /></div>}
+          <div><Label>New password</Label><Input type="password" name="next" required minLength={6} /></div>
+          <div className="flex justify-end gap-2 pt-2"><Button variant="ghost" type="button" onClick={() => setModal(null)}>Cancel</Button><Button type="submit">Save</Button></div>
         </form>
       </Modal>
 

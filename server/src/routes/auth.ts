@@ -106,7 +106,15 @@ auth.post('/change-password', requireAuth, async (req, res) => {
   const { current, next } = req.body ?? {}
   if (!next || next.length < 6) return res.status(400).json({ error: 'invalid' })
   const u = must(await sb.from('app_users').select('*').eq('id', req.user!.id).maybeSingle()) as any
-  if (!u || !(await bcrypt.compare(current ?? '', u.password_hash))) return res.status(401).json({ error: 'bad_current' })
+  if (!u) return res.status(404).json({ error: 'no_user' })
+  // Google-only accounts have password_hash=null (no password set yet): they
+  // set a brand-new password without needing to prove the current one (there
+  // isn't one). Accounts that already have a password must verify `current`
+  // before changing it, so a stolen access token can't silently rotate an
+  // existing password.
+  if (u.password_hash) {
+    if (!(await bcrypt.compare(current ?? '', u.password_hash))) return res.status(401).json({ error: 'bad_current' })
+  }
   must(await sb.from('app_users').update({ password_hash: await bcrypt.hash(next, BCRYPT_COST) }).eq('id', u.id))
   res.json({ ok: true })
 })

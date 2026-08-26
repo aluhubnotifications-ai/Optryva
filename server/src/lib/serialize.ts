@@ -42,6 +42,11 @@ export function rowToProfile(r: any, includePrivate = false) {
       cv_uploaded_at: r.cv_uploaded_at ?? undefined,
       cv_text: r.cv_text ?? undefined,
       cv_url: r.cv_url ?? undefined,
+      // Whether the account already has a password set (email/password login).
+      // Google-only accounts have password_hash=null, so the client can show a
+      // "Set password" flow (no current-password prompt) vs "Change password".
+      has_password: !!r.password_hash,
+      auth_provider: r.auth_provider ?? undefined,
     } : {}),
     desired_roles: arr<string>(r.desired_roles),
     preferred_industries: arr<string>(r.preferred_industries),
