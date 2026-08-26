@@ -15,12 +15,12 @@ import {
   Trash2,
   X,
   Plus,
-  Save,
   Camera,
   Eye,
   Compass,
   CheckCircle2,
   Circle,
+  Loader2,
 } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
@@ -50,7 +50,6 @@ export default function Profile() {
   const { toast } = useToast()
   const cvRef = useRef<HTMLInputElement>(null)
   const [, force] = useState(0)
-  const [saving, setSaving] = useState(false)
   const [skillInput, setSkillInput] = useState('')
   const [confirmRemoveCv, setConfirmRemoveCv] = useState(false)
   const [params] = useSearchParams()
@@ -120,7 +119,7 @@ export default function Profile() {
     toast({ title: cover_url ? 'Cover updated' : 'Cover removed', tone: 'success' })
   }
 
-  // editable copy
+  // Editable copy
   const [form, setForm] = useState({
     full_name: user.full_name,
     bio: user.bio ?? '',
@@ -144,8 +143,39 @@ export default function Profile() {
   const [prefCountries, setPrefCountries] = useState<string[]>(user.pref_countries ?? [])
   const [monitorConsent, setMonitorConsent] = useState<boolean>(user.monitoring_consent ?? false)
 
-  function toggle(list: string[], set: (v: string[]) => void, v: string) {
-    set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v])
+  // Per-field autosave. A single in-flight timer per field so fast typing
+  // doesn't hammer the API; each debounced write updates the persisted session
+  // so the rest of the app sees the new value immediately.
+  const AUTOSAVE_DELAY = 600
+  const saveTimers = useRef<Map<string, number>>(new Map())
+  const [saved, setSaved] = useState<'idle' | 'saving' | 'saved'>('idle')
+
+  function setFormField<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
+    setForm((f) => ({ ...f, [key]: value }))
+    autoSave({ [key]: value } as Partial<ProfileT>)
+  }
+
+  function autoSave(patch: Partial<ProfileT>) {
+    setSaved('saving')
+    const k = Object.keys(patch)[0]!
+    clearTimeout(saveTimers.current.get(k))
+    saveTimers.current.set(k, window.setTimeout(async () => {
+      saveTimers.current.delete(k)
+      try {
+        const updated = await profilesApi.update(user.id, patch)
+        if (updated) useSession.getState().setProfile(updated)
+        setSaved('saved')
+        setTimeout(() => setSaved('idle'), 2500)
+      } catch {
+        setSaved('idle')
+      }
+    }, AUTOSAVE_DELAY))
+  }
+
+  function toggle<T extends string>(list: T[], set: (v: T[]) => void, v: T, field: keyof ProfileT) {
+    const next = list.includes(v) ? list.filter((x) => x !== v) : [...list, v]
+    set(next)
+    autoSave({ [field]: next } as Partial<ProfileT>)
   }
 
   // Jump the student to whichever field the onboarding step is about.
@@ -160,40 +190,6 @@ export default function Profile() {
     }
     setTab('profile')
     setTimeout(() => document.getElementById('about-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60)
-  }
-
-  async function save() {
-    setSaving(true)
-    const patch: Partial<ProfileT> = {
-      full_name: form.full_name,
-      bio: form.bio,
-      school: form.school,
-      major: form.major,
-      year: form.year ? Number(form.year) : undefined,
-      graduated: form.graduated,
-      country: form.country || undefined,
-      location: form.location,
-      gpa: form.gpa.trim() || undefined,
-      linkedin: form.linkedin,
-      github: form.github,
-      twitter: form.twitter,
-      website: form.website,
-      work_type: form.work_type,
-      // Keep the legacy flags in sync with the richer type preferences below
-      // (empty selection = open to everything) so anything still reading them works.
-      open_to_internship: prefTypes.length === 0 || prefTypes.includes('Internship'),
-      open_to_fulltime: prefTypes.length === 0 || prefTypes.some((t) => t !== 'Internship'),
-      pref_listing_types: prefTypes as ListingType[],
-      pref_countries: prefCountries,
-      monitoring_consent: monitorConsent,
-      desired_roles: roles,
-      preferred_industries: industries,
-      skills,
-    }
-    const updated = await profilesApi.update(user.id, patch)
-    if (updated) useSession.getState().setProfile(updated)
-    setSaving(false)
-    toast({ title: 'Profile saved', tone: 'success' })
   }
 
   async function uploadCv(file?: File | null) {
@@ -249,8 +245,18 @@ export default function Profile() {
 
   function addSkill() {
     const s = skillInput.trim()
-    if (s && !skills.includes(s)) setSkills([...skills, s])
+    if (s && !skills.includes(s)) {
+      const next = [...skills, s]
+      setSkills(next)
+      autoSave({ skills: next })
+    }
     setSkillInput('')
+  }
+
+  function removeSkill(s: string) {
+    const next = skills.filter((x) => x !== s)
+    setSkills(next)
+    autoSave({ skills: next })
   }
 
 
@@ -269,7 +275,7 @@ export default function Profile() {
         <CardBody className="-mt-12 pt-0">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <AvatarEditor name={user.full_name} src={user.avatar_url} size={96} rounded="rounded-2xl" className="ring-4 ring-card" onChange={changePicture} />
-            <Button onClick={save} loading={saving} className="mb-1 gap-1.5"><Save className="h-4 w-4" /> Save changes</Button>
+            <ProfileSaveStatus saved={saved} />
           </div>
           <div className="mt-3 min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -308,17 +314,24 @@ export default function Profile() {
       {/* About */}
       <Section id="about-section" icon={User} title="About">
         <div className="space-y-4">
-          <div><Label>Full name</Label><Input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
-          <div><Label>Bio</Label><Textarea value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} placeholder="A short intro about you…" /></div>
+          <div><Label>Full name</Label><Input value={form.full_name} onChange={(e) => setFormField('full_name', e.target.value)} /></div>
+          <div><Label>Bio</Label><Textarea value={form.bio} onChange={(e) => setFormField('bio', e.target.value)} placeholder="A short intro about you…" /></div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div><Label>School / University</Label><Input value={form.school} onChange={(e) => setForm({ ...form, school: e.target.value })} /></div>
-            <div><Label>Major</Label><Input value={form.major} onChange={(e) => setForm({ ...form, major: e.target.value })} /></div>
+            <div><Label>School / University</Label><Input value={form.school} onChange={(e) => setFormField('school', e.target.value)} /></div>
+            <div><Label>Major</Label><Input value={form.major} onChange={(e) => setFormField('major', e.target.value)} /></div>
             <div>
               <Label>Year of study</Label>
               <Select value={form.graduated ? 'grad' : form.year} onChange={(e) => {
                 const v = e.target.value
-                if (v === 'grad') setForm({ ...form, graduated: true, year: '' })
-                else setForm({ ...form, graduated: false, year: v })
+                if (v === 'grad') {
+                  setFormField('graduated', true)
+                  setForm((f) => ({ ...f, year: '' }))
+                  autoSave({ graduated: true, year: undefined })
+                } else {
+                  setFormField('graduated', false)
+                  setForm((f) => ({ ...f, year: v }))
+                  autoSave({ graduated: false, year: Number(v) })
+                }
               }}>
                 <option value="">—</option>
                 {[1, 2, 3, 4].map((y) => <option key={y} value={y}>Year {y}</option>)}
@@ -327,10 +340,10 @@ export default function Profile() {
             </div>
             <div>
               <Label>Country</Label>
-              <CountryCombobox value={form.country} onChange={(v) => setForm({ ...form, country: v })} placeholder="Select your country" />
+              <CountryCombobox value={form.country} onChange={(v) => setFormField('country', v)} placeholder="Select your country" />
             </div>
-            <div><Label>Location</Label><Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="City, Country" /></div>
-            <div><Label>GPA</Label><Input value={form.gpa} onChange={(e) => setForm({ ...form, gpa: e.target.value })} placeholder="e.g. 3.8/4.0 or Second Class Upper" /></div>
+            <div><Label>Location</Label><Input value={form.location} onChange={(e) => setFormField('location', e.target.value)} placeholder="City, Country" /></div>
+            <div><Label>GPA</Label><Input value={form.gpa} onChange={(e) => setFormField('gpa', e.target.value)} placeholder="e.g. 3.8/4.0 or Second Class Upper" /></div>
           </div>
         </div>
       </Section>
@@ -381,21 +394,29 @@ export default function Profile() {
       {/* Legacy profile preferences are replaced by per-résumé preferences above. */}
       <Section id="preferences-section" icon={Briefcase} title="Career preferences" hint="Feeds the AI matching engine">
         <Label>Roles I'm interested in</Label>
-        <ChipGroup options={ROLES} selected={roles} onToggle={(v) => toggle(roles, setRoles, v)} />
+        <ChipGroup options={ROLES} selected={roles} onToggle={(v) => toggle(roles, setRoles, v, 'desired_roles')} />
         <Label className="mt-4">Industries</Label>
-        <ChipGroup options={INDUSTRIES} selected={industries} onToggle={(v) => toggle(industries, setIndustries, v)} />
+        <ChipGroup options={INDUSTRIES} selected={industries} onToggle={(v) => toggle(industries, setIndustries, v, 'preferred_industries')} />
 
         <Label className="mt-4">Opportunity types I want</Label>
         <p className="mb-1.5 text-xs text-muted-foreground">We'll only match these. Leave empty to consider every type.</p>
-        <ChipGroup options={LISTING_TYPES} selected={prefTypes} onToggle={(v) => toggle(prefTypes, setPrefTypes, v)} />
+        <ChipGroup options={LISTING_TYPES} selected={prefTypes} onToggle={(v) => {
+          const next = prefTypes.includes(v) ? prefTypes.filter((x) => x !== v) : [...prefTypes, v]
+          setPrefTypes(next)
+          autoSave({
+            pref_listing_types: next as ListingType[],
+            open_to_internship: next.length === 0 || next.includes('Internship'),
+            open_to_fulltime: next.length === 0 || next.some((t) => t !== 'Internship'),
+          })
+        }} />
 
         <Label className="mt-4">Countries I'd work in</Label>
         <p className="mb-1.5 text-xs text-muted-foreground">Pick where you'd like to work — we won't match roles outside these. Remote roles always count, and leaving this empty means anywhere.</p>
-        <CountryMultiSelect value={prefCountries} onChange={setPrefCountries} includeRemote placeholder="Search countries to add…" />
+        <CountryMultiSelect value={prefCountries} onChange={(v) => { setPrefCountries(v); autoSave({ pref_countries: v }) }} includeRemote placeholder="Search countries to add…" />
 
         <div className="mt-4">
           <Label>Work type</Label>
-          <Select value={form.work_type} onChange={(e) => setForm({ ...form, work_type: e.target.value as WorkType })} className="max-w-xs">
+          <Select value={form.work_type} onChange={(e) => setFormField('work_type', e.target.value as WorkType)} className="max-w-xs">
             <option value="any">Any</option>
             <option value="remote">Remote</option>
             <option value="hybrid">Hybrid</option>
@@ -407,7 +428,11 @@ export default function Profile() {
           <input
             type="checkbox"
             checked={monitorConsent}
-            onChange={(e) => setMonitorConsent(e.target.checked)}
+            onChange={(e) => {
+              const v = e.target.checked
+              setMonitorConsent(v)
+              autoSave({ monitoring_consent: v })
+            }}
             className="mt-0.5 h-4 w-4 accent-primary"
           />
           <span className="text-sm">
@@ -435,16 +460,14 @@ export default function Profile() {
       {/* Social */}
       <Section id="links-section" icon={Link2} title="Links">
         <div className="grid gap-4 sm:grid-cols-2">
-          <div><Label>LinkedIn</Label><Input value={form.linkedin} onChange={(e) => setForm({ ...form, linkedin: e.target.value })} placeholder="https://linkedin.com/in/…" /></div>
-          <div><Label>GitHub</Label><Input value={form.github} onChange={(e) => setForm({ ...form, github: e.target.value })} placeholder="https://github.com/…" /></div>
-          <div><Label>Twitter / X</Label><Input value={form.twitter} onChange={(e) => setForm({ ...form, twitter: e.target.value })} /></div>
-          <div><Label>Website</Label><Input value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} /></div>
+          <div><Label>LinkedIn</Label><Input value={form.linkedin} onChange={(e) => setFormField('linkedin', e.target.value)} placeholder="https://linkedin.com/in/…" /></div>
+          <div><Label>GitHub</Label><Input value={form.github} onChange={(e) => setFormField('github', e.target.value)} placeholder="https://github.com/…" /></div>
+          <div><Label>Twitter / X</Label><Input value={form.twitter} onChange={(e) => setFormField('twitter', e.target.value)} /></div>
+          <div><Label>Website</Label><Input value={form.website} onChange={(e) => setFormField('website', e.target.value)} /></div>
         </div>
       </Section>
 
-      <div className="flex justify-end">
-        <Button onClick={save} loading={saving} className="w-full gap-1.5 sm:w-auto"><Save className="h-4 w-4" /> Save changes</Button>
-      </div>
+      <ProfileSaveStatus saved={saved} />
 
       <AccountSecurity />
 
@@ -546,6 +569,25 @@ export default function Profile() {
         </div>
       )}
     </motion.div>
+  )
+}
+
+function ProfileSaveStatus({ saved }: { saved: 'idle' | 'saving' | 'saved' }) {
+  if (saved === 'idle') return null
+  return (
+    <div className="inline-flex items-center gap-2 rounded-full bg-muted/60 px-3 py-1.5 text-sm">
+      {saved === 'saving' ? (
+        <>
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+          <span className="text-muted-foreground">Saving…</span>
+        </>
+      ) : (
+        <>
+          <CheckCircle2 className="h-4 w-4 text-accent" />
+          <span className="text-foreground">All changes saved</span>
+        </>
+      )}
+    </div>
   )
 }
 
