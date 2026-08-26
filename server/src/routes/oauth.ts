@@ -325,14 +325,14 @@ oauth.get('/google/callback', async (req, res) => {
     res.cookie('optryva_rt', refreshToken, authCookieOptions(req))
     
     // New accounts (just created here) go to the onboarding wizard, flagged
-    // with ?new=1 so the client knows to hold them there. Returning users
-    // (existing Google or auto-linked email accounts) skip onboarding and go
-    // to their intended destination / profile.
+    // with ?new=1 so the client knows to hold them there. Returning users go to
+    // the destination they asked for (`returnTo`, which is `/app` for login). The
+    // client-side route guard still bounces anyone who is genuinely incomplete
+    // back into the onboarding wizard — so we must NOT hard-code /app/profile
+    // here, or completed users would always land on the profile page.
     const redirectUrl = isNew
       ? `${clientOrigin}/onboarding?new=1`
-      : progress && progress.completed_steps > 0 && progress.current_step <= progress.completed_steps
-        ? `${clientOrigin}${returnTo}`
-        : `${clientOrigin}/app/profile`
+      : `${clientOrigin}${returnTo}`
     return res.redirect(redirectUrl)
   } catch (err) {
     console.error('Google OAuth callback error:', err)
