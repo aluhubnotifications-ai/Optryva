@@ -22,7 +22,6 @@ import {
   Compass,
   CheckCircle2,
   Circle,
-  ArrowRight,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
@@ -96,10 +95,8 @@ export default function Profile() {
 
   const completion = profileCompletion(user, resumeCount, evidenceCount)
   const isStudent = user.user_type === 'student'
-  // Guidance shows for EVERY incomplete account — student, company, school, or a
-  // Google sign-in that hasn't picked a role yet — not only students.
-  const showGate = !completion.requiredComplete
-  const showReminder = completion.requiredComplete && completion.overallPercent < 100
+  // Guidance lives in the sidebar (ProfileCompletionCard) — not as a top banner —
+  // so it never eats the upper area like the company profile.
 
   async function changePicture(avatar_url: string) {
     const updated = await profilesApi.update(user.id, { avatar_url })
@@ -259,83 +256,25 @@ export default function Profile() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: 'easeOut' }}
     >
-      {/* Onboarding gate / progress banner — always visible until the profile is
-          complete. Keeps the student oriented on what to do next. */}
-      {(showGate || showReminder) && (
-        <div className={cn(
-          'mb-5 rounded-2xl border p-4',
-          showGate ? 'border-primary/30 bg-primary/5' : 'border-border bg-muted/40',
-        )}>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0">
-              {showGate ? (
-                <>
-                  <p className="font-semibold">A few quick details and you&apos;re in:</p>
-                  <p className="mt-0.5 text-sm text-muted-foreground">
-                    Still needed &mdash; {completion.required.filter((s) => !s.done).map((s) => s.label).join(', ')}.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="font-semibold">Your profile is {completion.overallPercent}% complete.</p>
-                  <p className="mt-0.5 text-sm text-muted-foreground">
-                    {completion.optional.filter((s) => !s.done).length > 0
-                      ? `Optional to add: ${completion.optional.filter((s) => !s.done).map((s) => s.label).join(', ')}.`
-                      : 'Nicely done — your profile is complete.'}
-                  </p>
-                </>
-              )}
+      {/* Cover + identity — mirrors the company profile: one rounded card with the
+          cover inside and the avatar overlapping, so nothing eats the upper area. */}
+      <Card className="overflow-hidden">
+        <CoverEditor src={user.cover_url} isSchool={false} onChange={changeCover} />
+        <CardBody className="-mt-10">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="flex items-end gap-3">
+              <AvatarEditor name={user.full_name} src={user.avatar_url} size={72} rounded="rounded-2xl" onChange={changePicture} />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-bold tracking-tight">{user.full_name}</h1>
+                  {user.plan !== 'free' && <Badge tone="primary" className="gap-1"><Crown className="h-3 w-3" /> {user.plan.toUpperCase()}</Badge>}
+                </div>
+                <p className="text-sm text-muted-foreground">{user.major}{user.school ? ` · ${user.school}` : ''}</p>
+                <p className="text-xs text-muted-foreground">{user.email}</p>
+              </div>
             </div>
-            {completion.nextStep && (
-              <Button onClick={() => focusStep(completion.nextStep!)} className="gap-1.5">
-                {showGate ? 'Finish setup' : 'Add more'} <ArrowRight className="h-4 w-4" />
-              </Button>
-            )}
+            <Button onClick={save} loading={saving} className="gap-1.5"><Save className="h-4 w-4" /> Save changes</Button>
           </div>
-          <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-primary transition-all"
-              style={{ width: `${showGate ? completion.requiredPercent : completion.overallPercent}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      {isStudent && evidenceCount === 0 && (
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-500/40 dark:bg-amber-500/10">
-          <div className="flex min-w-0 items-start gap-3">
-            <div className="mt-0.5 rounded-full bg-amber-100 p-2 text-amber-600 dark:bg-amber-500/20 dark:text-amber-300">
-              <Sparkles className="h-4 w-4" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-semibold text-amber-900 dark:text-amber-100">Build your portfolio</p>
-              <p className="mt-0.5 text-sm text-amber-800 dark:text-amber-200/90">
-                Add evidence of your work — projects, certificates, research, links — so employers can see the proof behind your skills. It only takes a minute.
-              </p>
-            </div>
-          </div>
-          <Button onClick={() => setTab('gallery')} className="shrink-0 gap-1.5">
-            <Plus className="h-4 w-4" /> Add to portfolio
-          </Button>
-        </div>
-      )}
-
-      {/* Cover */}
-      <CoverEditor src={user.cover_url} isSchool={false} onChange={changeCover} />
-
-      {/* Header */}
-      <Card className="-mt-12 relative z-10">
-        <CardBody className="flex flex-wrap items-center gap-4">
-          <AvatarEditor name={user.full_name} src={user.avatar_url} size={72} rounded="rounded-2xl" onChange={changePicture} />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight">{user.full_name}</h1>
-              {user.plan !== 'free' && <Badge tone="primary" className="gap-1"><Crown className="h-3 w-3" /> {user.plan.toUpperCase()}</Badge>}
-            </div>
-            <p className="text-sm text-muted-foreground">{user.major}{user.school ? ` · ${user.school}` : ''}</p>
-            <p className="text-xs text-muted-foreground">{user.email}</p>
-          </div>
-          <Button onClick={save} loading={saving} className="w-full gap-1.5 sm:w-auto"><Save className="h-4 w-4" /> Save changes</Button>
         </CardBody>
       </Card>
 
