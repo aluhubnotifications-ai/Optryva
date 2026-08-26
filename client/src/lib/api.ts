@@ -67,10 +67,11 @@ export const authApi = {
       /* ignore network errors on logout */
     }
   },
-  /** Permanently delete the current account. The server cascades the delete to
-   *  profiles, jobs, applications, etc. via FK. Clears the refresh cookie. */
-  async deleteAccount(): Promise<void> {
-    await apiFetch('/auth/delete-account', { method: 'POST' })
+  /** Permanently delete the current account. Requires proof of identity:
+   *  - password account: pass `current` (must match).
+   *  - Google-only account: pass `confirm` equal to the account email. */
+  async deleteAccount(payload: { current?: string; confirm?: string } = {}): Promise<void> {
+    await apiFetch('/auth/delete-account', { method: 'POST', body: JSON.stringify(payload) })
   },
   /** Set or change the account password. For Google-only accounts
    *  (password_hash is null) `current` is not required — the user is setting a

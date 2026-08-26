@@ -120,6 +120,21 @@ auth.post('/change-password', requireAuth, async (req, res) => {
 })
 
 auth.post('/delete-account', requireAuth, async (req, res) => {
+  const { current, confirm } = req.body ?? {}
+  const u = must(await sb.from('app_users').select('*').eq('id', req.user!.id).maybeSingle()) as any
+  if (!u) return res.status(404).json({ error: 'no_user' })
+  // Proof of identity before a destructive, irreversible delete:
+  //  - email/password account: must supply the current password (a stolen access
+  //    token can't nuke an account it can't authorize to delete).
+  //  - Google-only account (no password_hash): confirm by typing the account's
+  //    email, since there's no password to prove against.
+  if (u.password_hash) {
+    if (!(await bcrypt.compare(current ?? '', u.password_hash))) return res.status(401).json({ error: 'bad_current' })
+  } else {
+    if ((confirm ?? '').toLowerCase() !== (u.email ?? '').toLowerCase()) {
+      return res.status(401).json({ error: 'bad_confirm' })
+    }
+  }
   // Cascades via FK to profiles, jobs, applications, etc.
   must(await sb.from('app_users').delete().eq('id', req.user!.id))
   res.clearCookie(REFRESH_COOKIE, authCookieOptions(req))

@@ -630,21 +630,6 @@ function AccountSecurity() {
   const [modal, setModal] = useState<null | 'email' | 'password' | 'delete'>(null)
   const [busy, setBusy] = useState(false)
 
-  async function doDelete() {
-    if (busy) return
-    setBusy(true)
-    try {
-      await authApi.deleteAccount()
-      setModal(null)
-      logout()
-      toast({ title: 'Account deleted', tone: 'info' })
-      navigate('/')
-    } catch (e) {
-      setBusy(false)
-      toast({ title: 'Could not delete account', description: e instanceof Error ? e.message : undefined, tone: 'error' })
-    }
-  }
-
   return (
     <Card>
       <CardBody>
@@ -692,10 +677,42 @@ function AccountSecurity() {
 
       {/* Delete */}
       <Modal open={modal === 'delete'} onClose={() => setModal(null)} size="sm" title="Delete account?" description="This is irreversible and removes all your applications, messages, and data.">
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => setModal(null)}>Cancel</Button>
-          <Button variant="danger" loading={busy} onClick={doDelete}>Delete forever</Button>
-        </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (busy) return
+            const f = e.currentTarget
+            const current = (f.elements.namedItem('current') as HTMLInputElement | null)?.value
+            const confirm = (f.elements.namedItem('confirm') as HTMLInputElement | null)?.value
+            setBusy(true)
+            authApi
+              .deleteAccount({ current, confirm })
+              .then(() => {
+                setModal(null)
+                logout()
+                toast({ title: 'Account deleted', tone: 'info' })
+                navigate('/')
+              })
+              .catch((err) => {
+                setBusy(false)
+                const msg = err instanceof Error ? err.message : 'Could not delete account'
+                toast({ title: msg === 'bad_current' ? 'Current password incorrect' : msg === 'bad_confirm' ? 'Confirmation did not match your email' : msg, tone: 'error' })
+              })
+          }}
+          className="space-y-3"
+        >
+          {user.has_password && (
+            <div><Label>Current password</Label><Input type="password" name="current" required autoComplete="current-password" /></div>
+          )}
+          {!user.has_password && (
+            <div>
+              <Label>Type your email to confirm</Label>
+              <Input name="confirm" type="email" required defaultValue={user?.email ?? ''} />
+              <p className="mt-1 text-xs text-muted-foreground">Type the email address you use to sign in with Google to confirm it's really you.</p>
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-2"><Button variant="ghost" type="button" onClick={() => setModal(null)}>Cancel</Button><Button variant="danger" type="submit" loading={busy}>Delete forever</Button></div>
+        </form>
       </Modal>
     </Card>
   )
