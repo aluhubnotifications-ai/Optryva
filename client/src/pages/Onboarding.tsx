@@ -998,7 +998,8 @@ function OnboardingContent() {
             </Button>
           ) : (
             <Button onClick={finish} disabled={saving} className="active:scale-95 transition-transform">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Award className="h-4 w-4" />} Finish & go to profile
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Award className="h-4 w-4" />}
+              {userType === 'company' ? 'Finish & post opportunities' : userType === 'school' ? 'Finish & invite students' : 'Finish & go to profile'}
             </Button>
           )}
         </div>
@@ -1017,9 +1018,15 @@ function OnboardingContent() {
             <OnboardingMascot celebrating className="h-20 w-20" />
           </div>
           <h1 className="text-center text-3xl font-extrabold tracking-tight animate-slide-up">
-            Welcome to Optryva! <span className="inline-block animate-bounce">🎉</span>
+            {userType === 'company' ? 'Ready to hire! 🎉' : userType === 'school' ? "You're live! 🎉" : 'Welcome to Optryva! 🎉'}
           </h1>
-          <p className="text-center text-sm text-muted-foreground">Your profile is ready — taking you there…</p>
+          <p className="text-center text-sm text-muted-foreground">
+            {userType === 'company'
+              ? 'Post your first opportunity and connect with top students — taking you there…'
+              : userType === 'school'
+                ? 'Invite your students and share opportunities — taking you there…'
+                : 'Your profile is ready — taking you there…'}
+          </p>
           <div className="mt-1">
             <Spinner label="Loading your profile…" />
           </div>
