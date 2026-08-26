@@ -9,13 +9,18 @@ import type { Profile } from '@/types'
 
 export type MatchMissing = 'resume' | 'preferences'
 
-export function matchReadiness(user: Profile | null | undefined): { ready: boolean; missing: MatchMissing[] } {
+export function matchReadiness(
+  user: Profile | null | undefined,
+  resumePresent?: boolean,
+): { ready: boolean; missing: MatchMissing[] } {
   // Keyed on EXTRACTED text, not just a filename: the matcher reads cv_text, so an
   // uploaded file only counts once the server has pulled text out of it (it may
   // fail on scanned PDFs / legacy .doc). This mirrors the server gate exactly
   // (cv_text || resume_profile) so the two never disagree — a bare cv_filename
   // would let the client think "ready" while the server refuses to match.
-  const hasResume = !!(user?.cv_text ?? '').trim()
+  // `resumePresent` lets callers inject the new résumé system's "active résumé"
+  // status (resume_profiles), which the user object itself doesn't carry.
+  const hasResume = resumePresent ?? !!((user?.cv_text ?? '').trim())
   const hasPreferences =
     (user?.pref_listing_types?.length ?? 0) > 0 ||
     (user?.pref_countries?.length ?? 0) > 0 ||

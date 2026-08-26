@@ -26,8 +26,8 @@ import {
 } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
 import { useGeo, useCountryStats } from '@/lib/geo'
-import { jobsApi, profilesApi } from '@/lib/api'
-import type { AiMatch, JobListing, Profile } from '@/types'
+import { jobsApi, profilesApi, resumesApi } from '@/lib/api'
+import type { AiMatch, JobListing, Profile, ResumeProfile } from '@/types'
 import { AIResearchPanel } from '@/components/AIResearchPanel'
 import { TrajectorySimulator } from '@/components/TrajectorySimulator'
 import { ShowYourWork } from '@/components/ShowYourWork'
@@ -106,6 +106,7 @@ export default function Jobs() {
   // New pages are revealed automatically as the user scrolls (infinite scroll).
   const PAGE = 10
   const [shown, setShown] = useState(PAGE)
+  const [hasResume, setHasResume] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -117,7 +118,7 @@ export default function Jobs() {
   // without them, so MatchRunner shows a "complete your profile" prompt instead.
   const lastRun = useMatchRun((s) => s.lastRun[user.id])
   const markRun = useMatchRun((s) => s.markRun)
-  const matchReady = matchReadiness(user).ready
+  const matchReady = matchReadiness(user, hasResume).ready
   const [gateOpen, setGateOpen] = useState(() => !matchReady || needsMatchRun(lastRun))
 
   useEffect(() => {
@@ -144,6 +145,23 @@ export default function Jobs() {
       active = false
     }
   }, [user])
+
+  // Know whether the student has an ACTIVE structured résumé (resume_profiles) —
+  // the new résumé system the matcher actually reads. The user object only carries
+  // the legacy cv_text, so we fetch the list to recognise résumés added via the
+  // Résumés tab / onboarding and stop showing a false "upload your résumé" prompt.
+  useEffect(() => {
+    let active = true
+    resumesApi
+      .list()
+      .then((rs: ResumeProfile[]) => {
+        if (active) setHasResume(rs.some((r) => r.active))
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [user.id])
 
   // When the daily gate is already closed, make sure scores are loaded — the
   // global runner is idempotent (reuses cached results, no duplicate activity
@@ -309,6 +327,7 @@ export default function Jobs() {
         <div className="mt-2">
           <MatchRunner
             userId={user.id}
+            resumePresent={hasResume}
             onComplete={() => { markRun(user.id); setGateOpen(false) }}
             title="Today's AI matches"
             subtitle={`Welcome back, ${user.full_name.split(' ')[0]} — let's score today's opportunities against your profile and show your best fits first. You can switch tabs while it runs.`}

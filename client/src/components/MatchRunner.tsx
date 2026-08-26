@@ -23,11 +23,15 @@ export function MatchRunner({
   onComplete,
   title = 'Run your AI matches',
   subtitle,
+  resumePresent,
 }: {
   userId: string
   onComplete: () => void
   title?: string
   subtitle?: string
+  /** True when the user has an active structured résumé (resume_profiles). Lets the
+   *  gate recognise résumés that live in the new résumé system, not just legacy cv_text. */
+  resumePresent?: boolean
 }) {
   const { phase, done, total, label, missing } = useMatchProgress()
   const user = useCurrentUser()
@@ -44,7 +48,7 @@ export function MatchRunner({
 
   // Profile completeness gate — checked client-side up front, and again via the
   // server's `notReady` signal (phase === 'notReady') as the source of truth.
-  const local = matchReadiness(user)
+  const local = matchReadiness(user, resumePresent)
   const blocked = phase === 'notReady' || !local.ready
   if (blocked && phase !== 'running') {
     const need = (phase === 'notReady' ? (missing as MatchMissing[]) : local.missing) ?? []
