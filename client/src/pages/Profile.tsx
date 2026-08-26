@@ -36,6 +36,7 @@ import { CountryCombobox } from '@/components/ui/CountryCombobox'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { AvatarEditor } from '@/components/AvatarEditor'
+import { CoverEditor } from '@/components/CoverEditor'
 import { useToast } from '@/components/ui/toast'
 import { formatDate, cn, fileToDataUrl } from '@/lib/utils'
 import { ResumeWorkspace } from '@/components/ResumeWorkspace'
@@ -106,19 +107,10 @@ export default function Profile() {
     toast({ title: 'Profile picture updated', tone: 'success' })
   }
 
-  const coverRef = useRef<HTMLInputElement>(null)
-  async function changeCoverFile(file?: File | null) {
-    if (!file) return
-    let cover_url: string
-    try {
-      cover_url = await fileToDataUrl(file)
-    } catch (e) {
-      toast({ title: 'Could not upload that image', description: e instanceof Error ? e.message : undefined, tone: 'error' })
-      return
-    }
+  async function changeCover(cover_url: string) {
     const updated = await profilesApi.update(user.id, { cover_url })
     if (updated) useSession.getState().setProfile(updated)
-    toast({ title: 'Cover updated', tone: 'success' })
+    toast({ title: cover_url ? 'Cover updated' : 'Cover removed', tone: 'success' })
   }
 
   // editable copy
@@ -329,20 +321,12 @@ export default function Profile() {
       )}
 
       {/* Cover */}
-      <div className="relative h-40 w-full overflow-hidden rounded-xl bg-gradient-to-r from-primary/30 via-accent/20 to-primary/30">
-        {user.cover_url && <img src={user.cover_url} alt="Cover" className="h-full w-full object-cover" />}
-        {user.user_type === 'student' && (
-          <button onClick={() => coverRef.current?.click()} className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-lg bg-black/40 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-black/60">
-            <Camera className="h-4 w-4" /> {user.cover_url ? 'Change cover' : 'Add cover'}
-          </button>
-        )}
-        <input ref={coverRef} type="file" accept="image/*" className="hidden" onChange={(e) => changeCoverFile(e.target.files?.[0])} />
-      </div>
+      <CoverEditor src={user.cover_url} isSchool={false} onChange={changeCover} />
 
       {/* Header */}
       <Card className="-mt-12 relative z-10">
         <CardBody className="flex flex-wrap items-center gap-4">
-          <AvatarEditor name={user.full_name} src={user.avatar_url} size={72} onChange={changePicture} />
+          <AvatarEditor name={user.full_name} src={user.avatar_url} size={72} rounded="rounded-2xl" onChange={changePicture} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold tracking-tight">{user.full_name}</h1>
