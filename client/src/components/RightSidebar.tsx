@@ -281,7 +281,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
           break
       }
     },
-    [currentUser?.id, navigate, toast],
+    [currentUser?.id, navigate, toast, chatOrigin],
   )
 
   async function handleCreateJob(detail: Record<string, unknown>) {
