@@ -197,9 +197,15 @@ export async function buildCandidateSummary(
     'present. Write in clear, correct English. Use Markdown: **bold** for titles ' +
     '(**Title:**) and "- " for bullets. Never use single asterisks (*) as ' +
     'decoration. Keep concise.'
-    return (hasGroq()
-      ? groqText({ system: sys, user: `Candidate evidence:\n${bullets}`, maxTokens: 900 })
-      : mistralText({ system: sys, user: `Candidate evidence:\n${bullets}`, maxTokens: 900 }))
+   // Groq first; if it returns null (rate limit, error, etc.), fall through to Mistral.
+   let result = hasGroq()
+     ? await groqText({ system: sys, user: `Candidate evidence:\n${bullets}`, maxTokens: 900 })
+     : null
+   if (!result && hasMistral()) {
+     result = await mistralText({ system: sys, user: `Candidate evidence:\n${bullets}`, maxTokens: 900 })
+   }
+   if (!result) console.warn('[extraction:buildCandidateSummary] both Groq and Mistral returned null')
+   return result
 }
 
 // ---------------------------------------------------------------------------
@@ -244,11 +250,15 @@ export async function answerQuestion(
     '- Professional, recruiter-facing tone. Be specific and concrete. Write in ' +
     'clear, fluent, grammatically correct English. Do NOT use single asterisks ' +
     '(*) for decoration — reserve **bold** for true emphasis only.'
-  return (hasGroq()
-    ? groqText({ system: sys, user: `CANDIDATE EVIDENCE CONTEXT:\n${context}\n\nEMPLOYER QUESTION: ${question}`, maxTokens: 700 })
-    : mistralText({
+    let answer = hasGroq()
+      ? await groqText({ system: sys, user: `CANDIDATE EVIDENCE CONTEXT:\n${context}\n\nEMPLOYER QUESTION: ${question}`, maxTokens: 700 })
+      : null
+    if (!answer && hasMistral()) {
+      answer = await mistralText({
         system: sys,
         user: `CANDIDATE EVIDENCE CONTEXT:\n${context}\n\nEMPLOYER QUESTION: ${question}`,
         maxTokens: 700,
-      }))
-}
+      })
+    }
+    return answer
+ }

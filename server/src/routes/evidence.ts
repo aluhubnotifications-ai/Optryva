@@ -131,10 +131,18 @@ async function getOrRefreshSummary(studentId: string, jobKey: string, jobDescrip
   }
 
   // Stale or missing — regenerate.
+  const evCount = (items ?? []).length
   const summary = jobDescription
     ? await extractionClient.candidateSummary(items ?? [], jobDescription)
     : await extractionClient.candidateSummary(items ?? [])
-  const out = summary ?? 'No evidence submitted yet.'
+  let out: string
+  if (summary) {
+    out = summary
+  } else if (evCount === 0) {
+    out = 'No evidence submitted yet.'
+  } else {
+    out = 'AI summary is temporarily unavailable for this candidate. Please try again in a moment, or ask a question below to dive into the evidence directly.'
+  }
   await sb.from('candidate_summaries').upsert({
     student_id: studentId,
     job_key: jobKey,
