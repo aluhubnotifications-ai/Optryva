@@ -169,13 +169,18 @@ export async function mistralChat<T>(opts: {
       return null
     }
     const data: any = await res.json()
+    console.log('[mistral] raw API response:', {
+      model,
+      has_choices: !!data?.choices,
+      choice_count: data?.choices?.length,
+      first_choice_keys: data?.choices?.[0] ? Object.keys(data.choices[0]) : [],
+      finish_reason: data?.choices?.[0]?.finish_reason,
+      role: data?.choices?.[0]?.message?.role,
+      content_preview: data?.choices?.[0]?.message?.content?.slice(0, 200),
+      data_keys: data ? Object.keys(data) : [],
+      error: data?.error,
+    })
     const usage = data?.usage
-    if (usage) {
-      recordUsage(model, {
-        input_tokens: usage.prompt_tokens ?? 0,
-        output_tokens: usage.completion_tokens ?? 0,
-      })
-    }
     const text: string | undefined = data?.choices?.[0]?.message?.content
     if (!text) {
       console.warn('[mistral] ⚠ empty response from mistralChat:', { model, data: JSON.stringify(data).slice(0, 200) })
