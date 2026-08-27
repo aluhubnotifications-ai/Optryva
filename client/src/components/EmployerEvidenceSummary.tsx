@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Sparkles, ExternalLink, ImageIcon, Loader2 } from 'lucide-react'
-import { evidenceApi } from '@/lib/api'
-import type { JobListing, EvidenceItem } from '@/types'
+import { Sparkles, ExternalLink, ImageIcon, Loader2, User } from 'lucide-react'
+import { evidenceApi, profilesApi } from '@/lib/api'
+import type { JobListing, EvidenceItem, Profile } from '@/types'
 import { Card, CardBody, Badge } from '@/components/ui/primitives'
 
 // Minimal Markdown renderer for the AI summary: handles **bold**, "- " bullets,
@@ -79,6 +79,7 @@ export function EmployerEvidenceSummary({ studentId, job }: { studentId: string;
   const [items, setItems] = useState<EvidenceItem[]>([])
   const [count, setCount] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const [profile, setProfile] = useState<Profile | null>(null)
 
   // Build a single job-role context string so the summary only surfaces what's
   // relevant to THIS posting (not a generic dump of everything).
@@ -90,12 +91,17 @@ export function EmployerEvidenceSummary({ studentId, job }: { studentId: string;
     return parts.filter(Boolean).join('\n\n')
   }, [job])
 
-  useEffect(() => {
+   useEffect(() => {
     let active = true
     setLoading(true)
-    Promise.all([evidenceApi.summary(studentId, jobDescription), evidenceApi.listForStudent(studentId)])
-      .then(([s, fetchedItems]) => {
+    Promise.all([
+      evidenceApi.summary(studentId, jobDescription),
+      evidenceApi.listForStudent(studentId),
+      profilesApi.get(studentId),
+    ])
+      .then(([s, fetchedItems, p]) => {
         if (!active) return
+        if (p) setProfile(p)
         setSummary(s.summary)
         setCount(fetchedItems.length)
         setItems(fetchedItems)
@@ -140,9 +146,12 @@ export function EmployerEvidenceSummary({ studentId, job }: { studentId: string;
           <button
             onClick={() => {
               const ctx = items.map((i) => `${i.title}: ${i.ai_summary || i.description || ''}`).join('\n')
+              const candidateName = profile?.full_name ?? 'this candidate'
+              const candidateMeta = [profile?.school, profile?.major, profile?.year].filter(Boolean).join(', ')
+              const evidenceText = `\n${ctx}\n`
               window.dispatchEvent(new CustomEvent('optryva:open_chat', {
                 detail: {
-                  message: `Candidate ${studentId} applied for "${job?.title ?? 'this role'}". Their evidence:\n${ctx}\n\nCritique this candidate's fit for the role with specific proof from their evidence.`,
+                  message: `You are reviewing ${candidateName}${candidateMeta ? ` (${candidateMeta})` : ''} for the role "${job?.title ?? 'this role'}" at ${job?.company_name ?? 'your company'}. They applied with the following evidence:\n${evidenceText}\nUsing the get_candidate_evidence tool, critique ${candidateName}'s fit for this specific role. For each piece of evidence, quote or paraphrase the specific proof the candidate provides that supports or contradicts the requirements. Highlight gaps — what's missing that would make a stronger case. Be thorough and specific, not generic.`,
                   candidate_id: studentId,
                   origin: 'evidence',
                 },
