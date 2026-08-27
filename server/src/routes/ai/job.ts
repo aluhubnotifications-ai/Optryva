@@ -163,10 +163,12 @@ Rules:
 - "category" MUST be exactly one of: Software Engineering, Data, Design, Marketing, Operations, Finance, Product.
 - "listing_type" MUST be exactly one of: Internship, Full-time, Part-time, Fellowship.
 - "tags" are 4-8 short skills/keywords (e.g. ["React", "TypeScript", "UX research"]).
-- "responsibilities" are 4-8 specific bullet points (one sentence each) of what the candidate will do.
-- "qualifications" are 3-6 specific bullet points of what the candidate should have.
-- "benefits" are 2-5 concrete perks (mentorship, certificate, stipend, learning budget, etc.).
+- "responsibilities" are 4-8 specific bullet points (one sentence each) of what the candidate will do. THIS FIELD IS REQUIRED — never omit it.
+- "qualifications" are 3-6 specific bullet points of what the candidate should have. THIS FIELD IS REQUIRED — never omit it.
+- "benefits" are 2-5 concrete perks (mentorship, certificate, stipend, learning budget, etc.). THIS FIELD IS REQUIRED — never omit it.
 - When revising (CURRENT DRAFT TO REVISE is present), honour the employer instruction and change only what improves it.
+
+CRITICAL: You MUST return ALL fields in the JSON including responsibilities, qualifications, and benefits. These are mandatory. Missing fields will cause user-facing errors.
 
 Return ONLY JSON matching the requested schema.`
 
@@ -225,17 +227,49 @@ function strArr(v: unknown, cap = 10): string[] {
 
 /** Coerce/repair the model output so the client always gets a usable, on-vocabulary draft. */
 function normalize(r: GeneratedJob) {
+  const responsibilities = strArr(r.responsibilities, 8)
+  const qualifications = strArr(r.qualifications, 6)
+  const benefits = strArr(r.benefits, 5)
+
+  // Fallback: auto-generate from description if AI omitted critical fields
+  const desc = (r.description ?? '').toString().trim()
+  if (!responsibilities.length && desc) {
+    // Try to extract responsibility bullets from description if present
+    const bullets = desc.match(/[-•]\s+(.+)/g)
+    if (bullets) {
+      const resp = bullets.slice(0, 8).map((b: string) => b.replace(/^[-•]\s*/, '').trim())
+      if (resp.length) responsibilities.push(...resp)
+    }
+  }
+  if (!responsibilities.length) {
+    responsibilities.push(`Key responsibilities for the ${r.title || 'role'} position.`)
+    responsibilities.push('Collaborate with cross-functional teams on day-to-day operations.')
+    responsibilities.push('Deliver high-quality results in a fast-paced environment.')
+  }
+
+  if (!qualifications.length) {
+    qualifications.push('Currently pursuing a degree in a relevant field.')
+    qualifications.push('Strong communication and problem-solving skills.')
+    qualifications.push('Ability to work independently and as part of a team.')
+  }
+
+  if (!benefits.length) {
+    benefits.push('Professional mentorship and career guidance.')
+    benefits.push('Hands-on experience in a real business environment.')
+    benefits.push('Certificate of completion.')
+  }
+
   return {
     title: (r.title ?? '').toString().trim().slice(0, 160) || 'Untitled role',
-    description: (r.description ?? '').toString().trim().slice(0, 4000),
+    description: desc.slice(0, 4000),
     category: coerceCategory(r.category),
     listing_type: coerceListingType(r.listing_type),
     location: (r.location ?? '').toString().trim().slice(0, 120),
     pay: (r.pay ?? '').toString().trim().slice(0, 80),
     duration: (r.duration ?? '').toString().trim().slice(0, 60),
     tags: strArr(r.tags, 8),
-    responsibilities: strArr(r.responsibilities, 8),
-    qualifications: strArr(r.qualifications, 6),
-    benefits: strArr(r.benefits, 5),
+    responsibilities,
+    qualifications,
+    benefits,
   }
 }
