@@ -497,9 +497,35 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
                     <p className="text-sm font-semibold">{jobGenerated.title}</p>
                     <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">{jobGenerated.description}</p>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {jobGenerated.tags.map((t,i)=>(<span key={i} className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{t}</span>))}
-                  </div>
+                  {jobGenerated.tags?.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {jobGenerated.tags.map((t,i)=>(<span key={i} className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{t}</span>))}
+                    </div>
+                  )}
+                  {jobGenerated.responsibilities?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground">Responsibilities ({jobGenerated.responsibilities.length})</p>
+                      <ul className="mt-1 list-disc list-inside space-y-0.5 text-xs text-muted-foreground">
+                        {jobGenerated.responsibilities.slice(0, 4).map((r: string, i: number) => <li key={i}>{r}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {jobGenerated.benefits?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground">Benefits ({jobGenerated.benefits.length})</p>
+                      <ul className="mt-1 list-disc list-inside space-y-0.5 text-xs text-muted-foreground">
+                        {jobGenerated.benefits.slice(0, 4).map((b: string, i: number) => <li key={i}>{b}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {jobGenerated.qualifications?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground">Qualifications ({jobGenerated.qualifications.length})</p>
+                      <ul className="mt-1 list-disc list-inside space-y-0.5 text-xs text-muted-foreground">
+                        {jobGenerated.qualifications.slice(0, 4).map((q: string, i: number) => <li key={i}>{q}</li>)}
+                      </ul>
+                    </div>
+                  )}
                   <div className="flex justify-end gap-2">
                     <Button type="button" size="sm" variant="ghost" onClick={()=>setJobGenerated(null)}>Discard</Button>
                     <Button type="button" size="sm" onClick={applyGenerated}>Use these details</Button>
