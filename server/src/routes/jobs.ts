@@ -133,7 +133,7 @@ jobs.get('/', async (req, res) => {
     const cacheKey = `jobs:${scopeKey}:${detail ? 'detail' : 'lean'}:${req.user!.id}`
     const cached = cacheGet<any[]>(cacheKey)
     if (cached) return res.json(cached)
-    const cols = detail ? LIST_COLUMNS + ',description' : LIST_COLUMNS
+    const cols = detail ? LIST_COLUMNS + ',description,responsibilities,benefits,qualifications' : LIST_COLUMNS
     let q = sb.from('job_listings').select(cols).eq('status', 'active')
   if (ids) q = q.in('id', ids)
   const rows = must(await q.order('created_at', { ascending: false })) as any[]

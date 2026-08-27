@@ -56,7 +56,7 @@ export function registerSource(r: Router) {
     // Stage 2 — narrow to the LLM set. Voyage rerank by the query when we can;
     // otherwise a cheap keyword overlap, so the scored set is always bounded.
     if (rows.length > SOURCE_RERANK_K) {
-      const docs = rows.map((rr) => jobEmbedText({ title: rr.title, type: rr.type, listing_type: rr.listing_type, tags: j.parse(rr.tags, []), description: rr.description }))
+      const docs = rows.map((rr) => jobEmbedText({ title: rr.title, type: rr.type, listing_type: rr.listing_type, tags: j.parse(rr.tags, []), description: rr.description, responsibilities: j.parse(rr.responsibilities, []), qualifications: j.parse(rr.qualifications, []), benefits: j.parse(rr.benefits, []) }))
       const order = query ? await rerank(query, docs, SOURCE_RERANK_K) : null
       if (order) {
         rows = order.map((i) => rows[i])

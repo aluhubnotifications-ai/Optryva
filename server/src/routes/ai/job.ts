@@ -150,7 +150,13 @@ async function buildGroqContent(brief: string | undefined, docs: any[], instruct
 
   parts.push(
     (instruction?.trim() ? `EMPLOYER INSTRUCTION: ${instruction.trim()}\n\n` : '') +
-    'Draft a complete, ready-to-post job listing from the material above. Return ONLY the JSON requested.',
+    'Draft a complete, ready-to-post job listing from the material above. Return ONLY the JSON requested.\n\n' +
+    'CRITICAL: You MUST include ALL of these fields in your response:\n' +
+    '- "description": 2-4 paragraphs explaining the role\n' +
+    '- "responsibilities": 4-8 specific bullet points of what the candidate will do\n' +
+    '- "qualifications": 3-6 specific bullet points of what the candidate should have\n' +
+    '- "benefits": 2-5 concrete perks or advantages\n' +
+    'If the brief is short, GENERATE these fields — never return empty arrays or null.',
   )
   return parts.join('\n\n')
 }
