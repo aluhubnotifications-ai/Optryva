@@ -203,10 +203,21 @@ messages.get('/thread/:threadId', async (req, res) => {
   // in ascending order. Pass `before=<created_at>` to fetch the next older page.
   const limit = Math.min(parseInt((req.query.limit as string) || '30', 10) || 30, 100)
   const before = typeof req.query.before === 'string' ? req.query.before : undefined
-  let q = sb.from('messages').select('*').eq('thread_id', req.params.threadId).eq('deleted', 0) as any
+  // Fetch only the page we need from the DB (ordered DESC + LIMIT) and reverse to
+  // ascending for the UI. The previous version did select('*').order(ascending)
+  // then rows.slice(-limit), which pulls the ENTIRE thread history into memory on
+  // every call — and the client re-polls this every 2.5s, so a long thread made
+  // every poll (and every open) pay O(N). This is O(limit) instead.
+  let q = sb
+    .from('messages')
+    .select('*')
+    .eq('thread_id', req.params.threadId)
+    .eq('deleted', 0)
+    .order('created_at', { ascending: false })
+    .limit(limit) as any
   if (before) q = q.lt('created_at', before)
-  const rows = must(await q.order('created_at', { ascending: true })) as any[]
-  const slice = rows.slice(-limit)
+  const rows = must(await q) as any[] // newest-`limit` rows first
+  const slice = rows.reverse() // oldest-first for bottom-scroll semantics
   res.json(slice.map((r: any) => ({ ...r, reactions: JSON.parse(r.reactions ?? '{}'), attachment: r.attachment ? JSON.parse(r.attachment) : undefined, read: r.read === 1, deleted: false })))
 })
 

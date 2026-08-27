@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Send, Sparkles, ExternalLink, Wrench, CheckCircle2, AlertCircle, X, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
@@ -23,6 +23,7 @@ export interface AssistantChatProps {
   onSessionId?: (id: string) => void
   initialMessages?: ChatMessage[]
   pendingMessage?: string | null
+  pendingContext?: Record<string, unknown> | null
   onPendingConsumed?: () => void
 }
 
@@ -34,7 +35,7 @@ interface ToolEvent {
   status: 'calling' | 'done' | 'error'
 }
 
-export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessionId, initialMessages, pendingMessage, onPendingConsumed }: AssistantChatProps) {
+export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessionId, initialMessages, pendingMessage, pendingContext, onPendingConsumed }: AssistantChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages ?? [])
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
@@ -46,8 +47,20 @@ export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessio
   const abortRef = useRef<AbortController | null>(null)
   const { toast } = useToast()
 
-  // Consume pendingMessage — auto-fill the input and focus it so the user
-  // just needs to hit Enter (or click Send). The parent clears it via onPendingConsumed.
+  // Consume pendingMessage + pendingContext — auto-fill the input and build an
+  // enhanced pageContext that includes job_id / candidate_id so the AI can use
+  // them with tools. The parent clears them via onPendingConsumed.
+  const effectivePageContext = useMemo(() => {
+    let base = pageContext || (typeof window !== 'undefined' ? window.location.pathname : '')
+    if (pendingContext) {
+      const parts = [base]
+      if (pendingContext.job_id) parts.push(`job_id: ${pendingContext.job_id}`)
+      if (pendingContext.candidate_id) parts.push(`candidate_id: ${pendingContext.candidate_id}`)
+      base = parts.join('\n')
+    }
+    return base
+  }, [pageContext, pendingContext])
+
   useEffect(() => {
     if (pendingMessage && onPendingConsumed) {
       setInput(pendingMessage)
@@ -96,17 +109,17 @@ export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessio
         await trackAi('Autonomous agent running…', () =>
           assistantApi.runTask(
             userText,
-            { sessionId: currentSessionId, mode, pageContext },
-            (ev) => handleEvent(ev, aiMsgId),
-            controller.signal,
-          ),
-        )
-      } else {
-        // Normal chat — single AI request, non-streaming
-        const resp = await trackAi('Thinking…', () =>
-          assistantApi.chat(
-            userText,
-            { sessionId: currentSessionId, mode, pageContext },
+             { sessionId: currentSessionId, mode, pageContext: effectivePageContext },
+             (ev) => handleEvent(ev, aiMsgId),
+             controller.signal,
+           ),
+         )
+       } else {
+         // Normal chat — single AI request, non-streaming
+         const resp = await trackAi('Thinking…', () =>
+           assistantApi.chat(
+             userText,
+             { sessionId: currentSessionId, mode, pageContext: effectivePageContext },
             controller.signal,
           ),
         )

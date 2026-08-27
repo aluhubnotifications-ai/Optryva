@@ -85,6 +85,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
   const [sessions, setSessions] = useState<HistorySession[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
+  const [pendingContext, setPendingContext] = useState<Record<string, unknown> | null>(null)
   const { toast } = useToast()
   const navigate = useTransitionNavigate()
   const currentUser = useCurrentUser()
@@ -104,6 +105,12 @@ export function RightSidebar({ mode }: RightSidebarProps) {
       setActiveTab('assistant')
       setAssistantView('chat')
       if (e.detail?.message) setPendingMessage(e.detail.message)
+      if (e.detail?.job_id || e.detail?.candidate_id) {
+        setPendingContext({
+          job_id: e.detail.job_id,
+          candidate_id: e.detail.candidate_id,
+        })
+      }
     }
     window.addEventListener('optryva:open_chat', handler as EventListener)
     return () => window.removeEventListener('optryva:open_chat', handler as EventListener)
@@ -379,7 +386,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
                     currentSessionId={sessionId}
                   />
                 ) : (
-                  <AssistantChat
+                   <AssistantChat
                     key={sessionId ?? 'new'}
                     mode={mode}
                     sessionId={sessionId}
@@ -388,7 +395,11 @@ export function RightSidebar({ mode }: RightSidebarProps) {
                     onSessionId={setSessionId}
                     initialMessages={messages}
                     pendingMessage={pendingMessage}
-                    onPendingConsumed={() => setPendingMessage(null)}
+                    pendingContext={pendingContext}
+                    onPendingConsumed={() => {
+                      setPendingMessage(null)
+                      setPendingContext(null)
+                    }}
                   />
                 )}
               </TabPanel>
@@ -604,11 +615,14 @@ export function ChatOpenButton({
   candidateId?: string
 }) {
   const handleClick = () => {
-    let msg = message
-    if (candidateId) msg = `${message} (candidate: ${candidateId})`
-    if (jobId) msg = `${msg} (job: ${jobId})`
     window.dispatchEvent(
-      new CustomEvent('optryva:open_chat', { detail: { message: msg } }),
+      new CustomEvent('optryva:open_chat', {
+        detail: {
+          message,
+          job_id: jobId,
+          candidate_id: candidateId,
+        },
+      }),
     )
   }
   const Icon = icon ?? MessageSquare
