@@ -41,7 +41,7 @@ export async function groqChatJson<T>(opts: GroqChatOpts & { _retry?: boolean })
   }
   const model = groqModel()
   const systemPrompt = opts.schema
-    ? `${opts.system}\n\nReturn ONLY valid JSON matching this schema (no prose, no code fences):\n${JSON.stringify(opts.schema)}`
+    ? `${opts.system}\n\nYou MUST output valid JSON. Do not include any text outside the JSON object. The JSON must match this schema:\n${JSON.stringify(opts.schema)}`
     : opts.system
 
   try {
@@ -58,7 +58,7 @@ export async function groqChatJson<T>(opts: GroqChatOpts & { _retry?: boolean })
         messages: [{ role: 'system', content: systemPrompt }, ...opts.messages],
         ...(opts.schema ? { response_format: { type: 'json_object' } } : {}),
         max_tokens: opts.maxTokens ?? 2000,
-        ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
+        ...(opts.temperature != null ? { temperature: opts.temperature } : { temperature: 0.1 }),
       }),
       signal: controller.signal,
     }).finally(() => clearTimeout(timeoutId))
