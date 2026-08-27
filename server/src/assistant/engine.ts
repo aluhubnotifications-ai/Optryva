@@ -146,7 +146,7 @@ async function fallbackIntentHandler(
 ): Promise<{ text: string; actions: AssistantAction[] } | null> {
   const lower = message.toLowerCase().trim()
 
-  if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) {
+  if (/\b(hello|hi|hey)\b/i.test(message) && !lower.includes('shortlist') && !lower.includes('candidate') && !lower.includes('job') && !lower.includes('intern')) {
     return { text: "Hi! I'm the Optryva Assistant. Ask me about your jobs, applications, skills, or profile.", actions: [] }
   }
 
