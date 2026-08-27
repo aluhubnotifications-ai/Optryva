@@ -262,20 +262,22 @@ create table if not exists consents (
 create index if not exists idx_consents_account on consents(account_id);
 
 -- ---------- seed ------------------------------------------------------------
--- bcrypt('Demo2026!', 12) — the same hash is inlined for every demo account.
+-- bcrypt('Demo2026!', 10) — the same hash is inlined for every demo account.
+-- Cost 10 (not 12) to keep pure-JS bcryptjs login fast on the edge (Workers can't
+-- use native bcrypt); cost 10 is the OWASP minimum and matches auth.ts BCRYPT_COST.
 
 -- users (all accounts)
 insert into app_users (id, email, password_hash, email_verified, created_at) values
-  ('u_student',  'amara@student.dev',        '$2a$12$P5sBYErQ1/g5vp4fvothmOTbeinj4st/K2Hax31bHTKD0cogUr8Aq', 1, (now() - interval '40 days')::text),
-  ('u_student2', 'eric@student.dev',         '$2a$12$P5sBYErQ1/g5vp4fvothmOTbeinj4st/K2Hax31bHTKD0cogUr8Aq', 1, (now() - interval '40 days')::text),
-  ('u_student3', 'aisha@student.dev',        '$2a$12$P5sBYErQ1/g5vp4fvothmOTbeinj4st/K2Hax31bHTKD0cogUr8Aq', 1, (now() - interval '40 days')::text),
-  ('c_bk',       'careers@bk.rw',            '$2a$12$P5sBYErQ1/g5vp4fvothmOTbeinj4st/K2Hax31bHTKD0cogUr8Aq', 1, (now() - interval '40 days')::text),
-  ('c_andela',   'jobs@andela.com',          '$2a$12$P5sBYErQ1/g5vp4fvothmOTbeinj4st/K2Hax31bHTKD0cogUr8Aq', 1, (now() - interval '40 days')::text),
-  ('c_zipline',  'careers@zipline.rw',       '$2a$12$P5sBYErQ1/g5vp4fvothmOTbeinj4st/K2Hax31bHTKD0cogUr8Aq', 1, (now() - interval '40 days')::text),
-  ('c_irembo',   'people@irembo.rw',         '$2a$12$P5sBYErQ1/g5vp4fvothmOTbeinj4st/K2Hax31bHTKD0cogUr8Aq', 1, (now() - interval '40 days')::text),
-  ('c_mtn',      'careers@mtn.rw',           '$2a$12$P5sBYErQ1/g5vp4fvothmOTbeinj4st/K2Hax31bHTKD0cogUr8Aq', 1, (now() - interval '40 days')::text),
-  ('c_kasha',    'jobs@kasha.rw',            '$2a$12$P5sBYErQ1/g5vp4fvothmOTbeinj4st/K2Hax31bHTKD0cogUr8Aq', 1, (now() - interval '40 days')::text),
-  ('s_careers',  'careers@ur.ac.rw',         '$2a$12$P5sBYErQ1/g5vp4fvothmOTbeinj4st/K2Hax31bHTKD0cogUr8Aq', 1, (now() - interval '40 days')::text)
+  ('u_student',  'amara@student.dev',        '$2a$10$vPgXr6JpcHdSmA54I2JZTuG7c9RU0BSvJYWN2DmhESD4h7g27ncfu', 1, (now() - interval '40 days')::text),
+  ('u_student2', 'eric@student.dev',         '$2a$10$vPgXr6JpcHdSmA54I2JZTuG7c9RU0BSvJYWN2DmhESD4h7g27ncfu', 1, (now() - interval '40 days')::text),
+  ('u_student3', 'aisha@student.dev',        '$2a$10$vPgXr6JpcHdSmA54I2JZTuG7c9RU0BSvJYWN2DmhESD4h7g27ncfu', 1, (now() - interval '40 days')::text),
+  ('c_bk',       'careers@bk.rw',            '$2a$10$vPgXr6JpcHdSmA54I2JZTuG7c9RU0BSvJYWN2DmhESD4h7g27ncfu', 1, (now() - interval '40 days')::text),
+  ('c_andela',   'jobs@andela.com',          '$2a$10$vPgXr6JpcHdSmA54I2JZTuG7c9RU0BSvJYWN2DmhESD4h7g27ncfu', 1, (now() - interval '40 days')::text),
+  ('c_zipline',  'careers@zipline.rw',       '$2a$10$vPgXr6JpcHdSmA54I2JZTuG7c9RU0BSvJYWN2DmhESD4h7g27ncfu', 1, (now() - interval '40 days')::text),
+  ('c_irembo',   'people@irembo.rw',         '$2a$10$vPgXr6JpcHdSmA54I2JZTuG7c9RU0BSvJYWN2DmhESD4h7g27ncfu', 1, (now() - interval '40 days')::text),
+  ('c_mtn',      'careers@mtn.rw',           '$2a$10$vPgXr6JpcHdSmA54I2JZTuG7c9RU0BSvJYWN2DmhESD4h7g27ncfu', 1, (now() - interval '40 days')::text),
+  ('c_kasha',    'jobs@kasha.rw',            '$2a$10$vPgXr6JpcHdSmA54I2JZTuG7c9RU0BSvJYWN2DmhESD4h7g27ncfu', 1, (now() - interval '40 days')::text),
+  ('s_careers',  'careers@ur.ac.rw',         '$2a$10$vPgXr6JpcHdSmA54I2JZTuG7c9RU0BSvJYWN2DmhESD4h7g27ncfu', 1, (now() - interval '40 days')::text)
 on conflict (id) do nothing;
 
 -- profiles: students (all African)

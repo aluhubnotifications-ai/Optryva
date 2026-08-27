@@ -22,6 +22,8 @@ export interface AssistantChatProps {
   onAction?: (action: AssistantAction) => void
   onSessionId?: (id: string) => void
   initialMessages?: ChatMessage[]
+  pendingMessage?: string | null
+  onPendingConsumed?: () => void
 }
 
 interface ToolEvent {
@@ -32,7 +34,7 @@ interface ToolEvent {
   status: 'calling' | 'done' | 'error'
 }
 
-export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessionId, initialMessages }: AssistantChatProps) {
+export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessionId, initialMessages, pendingMessage, onPendingConsumed }: AssistantChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages ?? [])
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
@@ -43,6 +45,15 @@ export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessio
   const bottomRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const { toast } = useToast()
+
+  // Consume pendingMessage — auto-fill the input and focus it so the user
+  // just needs to hit Enter (or click Send). The parent clears it via onPendingConsumed.
+  useEffect(() => {
+    if (pendingMessage && onPendingConsumed) {
+      setInput(pendingMessage)
+      onPendingConsumed()
+    }
+  }, [pendingMessage, onPendingConsumed])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })

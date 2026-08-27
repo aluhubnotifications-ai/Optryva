@@ -19,20 +19,20 @@ try {
 }
 
 // Keep the pooled Supabase (PostgREST over HTTPS) connection warm. After the pooler
-// idles out (~15s) the next auth query pays a ~5s reconnect/TLS penalty — the
+// idles out (~10–15s) the next auth query pays a ~5s reconnect penalty — the
 // "login takes so long after the dev server sits idle" symptom. A cheap read
-// every 12s (well under the pooler idle window) keeps the pool hot so login stays
-// fast even after the server has been unused. No-op on Workers (fresh pool per
-// invocation) and if Supabase was unreachable at boot.
+// every 8s (under the pooler's idle window) keeps the pool hot so login stays
+// under ~2s even after the server has been sitting unused. No-op on Workers
+// (fresh pool per invocation) and if Supabase was unreachable at boot. Only cold
+// pings are logged so the warm ones stay silent.
 if (supabaseReady) {
   setInterval(async () => {
     const t = Date.now()
     try { await sb.from('profiles').select('id').limit(1).maybeSingle() }
     catch { /* keepalive is best-effort */ }
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[keepalive] supabase ping in ${Date.now() - t}ms`)
-    }
-  }, 12_000)
+    const ms = Date.now() - t
+    if (ms > 1000) console.log(`[keepalive] supabase cold-ping in ${ms}ms`)
+  }, 8_000)
 }
 
 const port = Number(process.env.PORT ?? 4000)

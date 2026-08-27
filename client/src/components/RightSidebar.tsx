@@ -84,6 +84,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
   })
   const [sessions, setSessions] = useState<HistorySession[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null)
   const { toast } = useToast()
   const navigate = useTransitionNavigate()
   const currentUser = useCurrentUser()
@@ -95,6 +96,18 @@ export function RightSidebar({ mode }: RightSidebarProps) {
       if (sessionId) localStorage.setItem(SESSION_KEY, sessionId)
     }
   }, [open, activeTab, sessionId])
+
+  // Listen for global "open chat" requests from other pages.
+  useEffect(() => {
+    const handler = (e: CustomEvent) => {
+      setOpen(true)
+      setActiveTab('assistant')
+      setAssistantView('chat')
+      if (e.detail?.message) setPendingMessage(e.detail.message)
+    }
+    window.addEventListener('optryva:open_chat', handler as EventListener)
+    return () => window.removeEventListener('optryva:open_chat', handler as EventListener)
+  }, [])
 
   const loadSessions = useCallback(async () => {
     if (!currentUser?.id) return
@@ -374,6 +387,8 @@ export function RightSidebar({ mode }: RightSidebarProps) {
                     onAction={handleAction}
                     onSessionId={setSessionId}
                     initialMessages={messages}
+                    pendingMessage={pendingMessage}
+                    onPendingConsumed={() => setPendingMessage(null)}
                   />
                 )}
               </TabPanel>
@@ -565,6 +580,49 @@ function ActivityPanelCompact() {
         <ActivityRow key={t.id} task={t} />
       ))}
     </div>
+  )
+}
+
+/**
+ * Button that opens the RightSidebar AI assistant with a pre-filled message.
+ * Usage: <ChatOpenButton message="Start a Smart Shortlist for this job." jobId={jobId} />
+ * The button dispatches a global `optryva:open_chat` event that RightSidebar listens for.
+ */
+export function ChatOpenButton({
+  label = 'Ask AI',
+  message,
+  sublabel,
+  icon,
+  jobId,
+  candidateId,
+}: {
+  label?: string
+  message: string
+  sublabel?: string
+  icon?: React.ComponentType<any>
+  jobId?: string
+  candidateId?: string
+}) {
+  const handleClick = () => {
+    let msg = message
+    if (candidateId) msg = `${message} (candidate: ${candidateId})`
+    if (jobId) msg = `${msg} (job: ${jobId})`
+    window.dispatchEvent(
+      new CustomEvent('optryva:open_chat', { detail: { message: msg } }),
+    )
+  }
+  const Icon = icon ?? MessageSquare
+  return (
+    <button
+      onClick={handleClick}
+      className="flex w-full items-center gap-2 rounded-xl border border-border bg-background/60 px-4 py-3 text-left text-sm font-medium hover:bg-muted transition-colors"
+    >
+      <Icon className="h-4 w-4 text-primary" />
+      <div>
+        <span>{label}</span>
+        {sublabel && <p className="mt-0.5 text-xs text-muted-foreground">{sublabel}</p>}
+      </div>
+    </button>
   )
 }
 
