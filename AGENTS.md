@@ -10,11 +10,34 @@ Two layers, both using the LLM abstraction layer (`server/src/assistant/llm.ts`)
 
 1. **Chat mode** (`POST /api/assistant/chat`) — non-streaming, structured output.
    Uses `generateStructured()` which returns `{ text, actions }` as typed JSON.
-   Actions execute immediately on the client (no confirmation cards).
+   **This is the DEFAULT for all messages.** One AI request per message.
+   Actions returned as a list for the client to execute.
 
 2. **Agentic task mode** (`POST /api/assistant/task`) — streaming SSE. The agent
-   calls tools autonomously in a loop. Each step (text, tool_use, tool_result,
-   action) streams back as an SSE frame.
+   calls tools autonomously in a loop (max 3 iterations, max 3 tools per turn).
+   Each step (text delta, tool_use, tool_result, action) streams as an SSE frame.
+   Only triggered when the user clicks "Run task" in the chat UI.
+
+### Key behaviors
+- **Default is chat**: `AssistantChat.tsx` calls `assistantApi.chat()` for normal
+  messages. `runTask()` is opt-in via the ⚡ "Run task" button.
+- **Immediate ack**: Chat shows "I'm checking that now…" instantly while the AI runs.
+- **No auto URL inspection**: URLs in messages are only deep-inspected when the user
+  explicitly asks (keywords: inspect, check, open, analyze, scrape).
+- **Cancel support**: Both `chat()` and `runTask()` accept an optional `AbortSignal`.
+  SSE text events are treated as deltas (replaced), not appended.
+- **Timeouts**: AI calls 8s, tool execution 8s, Supabase queries 5s, external fetches 8s.
+- **Parallel tools**: Independent tool calls within one iteration run via `Promise.all`.
+- **Context cache**: Profile context cached for 30s TTL (`context.ts`).
+- **Mode enforcement**: Server derives mode from `req.user.user_type`, ignoring any
+  client-sent mode that doesn't match the user's role.
+- **Action validation**: `emit_action` inputs validated against an allowlist of
+  navigation targets. `parseAction()` replaces the broken `JSON.parse(tc.input)`.
+
+### Safety fixes
+- `agent.ts` no longer calls `JSON.parse(object)` — uses `parseAction()` validator.
+- Actions in autonomous mode require explicit user opt-in via "Run task" button.
+- TypeScript errors in `auth.ts`, `oauth.ts`, `onboarding.ts` fixed.
 
 ### LLM abstraction (`assistant/llm.ts`)
 - **Primary**: Mistral (`mistral-large-latest`, JSON-mode structured output)
@@ -73,6 +96,14 @@ npm run dev      # Vite dev server
 npm run typecheck
 ```
 Set `VITE_API_URL=http://localhost:4000/api` in `.env` for local dev.
+
+## Deploy
+```bash
+# Server Worker
+npx wrangler deploy --config wrangler.jsonc
+# Client (Pages)
+cd client && npm run build && npx wrangler pages deploy dist --project-name=optryva
+```
 
 ## Testing
 

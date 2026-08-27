@@ -131,6 +131,83 @@ async function saveMessage(
 
 const FALLBACK_REPLY = "I'm here to help with your internship journey. What would you like me to do?"
 
+/**
+ * Simple intent handler for when no AI provider is configured or the AI
+ * returned an unusable response. Answers basic data queries directly from
+ * the database so the assistant isn't just replying with a generic message.
+ */
+async function fallbackIntentHandler(
+  userId: string,
+  mode: AssistantMode,
+  message: string,
+): Promise<{ text: string; actions: AssistantAction[] } | null> {
+  const lower = message.toLowerCase().trim()
+
+  if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) {
+    return { text: "Hi! I'm the Optryva Assistant. Ask me about your jobs, applications, skills, or profile.", actions: [] }
+  }
+
+  // Student: "what jobs/applications do I have", "my skills", "my profile"
+  if (mode === 'student') {
+    if (lower.includes('job') || lower.includes('intern') || lower.includes('opportunit') || lower.includes('application')) {
+      const { data: apps } = await sb
+        .from('applications')
+        .select('id, jobs!inner(title, company_name), status, created_at')
+        .eq('student_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (!apps || apps.length === 0) {
+        return { text: "You haven't applied to any internships yet.", actions: [{ type: 'navigate', target: '/app/jobs', data: {} }] }
+      }
+
+      const summary = apps.slice(0, 5).map((a: any) => `  ${a.jobs?.title ?? 'Role'} — ${a.status}`).join('\n')
+      const more = apps.length > 5 ? `...and ${apps.length - 5} more.` : ''
+      return { text: `You have ${apps.length} application(s):\n${summary}\n${more}`, actions: [{ type: 'navigate', target: '/app/applications', data: {} }] }
+    }
+
+    if (lower.includes('skill')) {
+      const { data: profile } = await sb.from('profiles').select('skills').eq('id', userId).maybeSingle()
+      const skills = j.parse<string[]>(profile?.skills, [])
+      if (!skills.length) return { text: "Your profile doesn't have any skills listed yet.", actions: [] }
+      return { text: `Your skills: ${skills.join(', ')}`, actions: [{ type: 'navigate', target: '/app/profile', data: {} }] }
+    }
+  }
+
+  // Employer/University: "what jobs do I have", "my postings"
+  if (mode === 'employer' || mode === 'university') {
+    if (lower.includes('job') || lower.includes('posting') || lower.includes('internship')) {
+      const { data: jobs } = await sb
+        .from('job_listings')
+        .select('title, status, location, created_at')
+        .eq('company_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (!jobs || jobs.length === 0) {
+        return { text: "You don't have any job postings yet. Would you like me to help you create one?", actions: [] }
+      }
+
+      const summary = jobs.slice(0, 8).map((j: any) => `  ${j.title} (${j.status}, ${j.location ?? 'remote-ok'})`).join('\n')
+      const more = jobs.length > 8 ? `...and ${jobs.length - 8} more.` : ''
+      return { text: `You have ${jobs.length} job posting(s):\n${summary}\n${more}`, actions: [{ type: 'navigate', target: '/app/jobs', data: {} }] }
+    }
+
+    if (lower.includes('applicant') || lower.includes('application') || lower.includes('candidate')) {
+      const { data: apps } = await sb.from('applications').select('id, status').eq('company_id', userId).limit(20)
+      const total = apps?.length ?? 0
+      const byStatus = (apps ?? []).reduce((acc: Record<string, number>, a: any) => {
+        acc[a.status] = (acc[a.status] ?? 0) + 1
+        return acc
+      }, {})
+      const breakdown = Object.entries(byStatus).map(([s, c]) => `${s}: ${c}`).join(', ')
+      return { text: `You have ${total} application(s): ${breakdown || 'no breakdown available'}`, actions: [{ type: 'navigate', target: '/app/insights', data: {} }] }
+    }
+  }
+
+  return null
+}
+
 /** Dev fallback: generates a fake session ID when Supabase is unreachable. */
 function fallbackSession(userId: string, mode: AssistantMode): string {
   return `${userId}_${mode}_${Date.now()}`
@@ -210,8 +287,19 @@ export async function processAssistantMessage(
   // 7. Fallback + deterministic action injection
   const actions: AssistantAction[] = []
 
-  if (!output) {
-    output = { text: FALLBACK_REPLY, actions: [] }
+  if (!output || !output.text?.trim()) {
+    // No AI or empty response — try simple intent handler, then generic fallback
+    let fallback: { text: string; actions: AssistantAction[] } | null
+    try {
+      fallback = await fallbackIntentHandler(userId, mode, message)
+    } catch {
+      fallback = null
+    }
+    if (fallback) {
+      output = { text: fallback.text, actions: fallback.actions }
+    } else {
+      output = { text: FALLBACK_REPLY, actions: [] }
+    }
   } else {
     // Re-run deep inspect results as explicit add_evidence actions (server-side
     // guarantee, not dependent on Claude's output parsing).
