@@ -13,6 +13,7 @@ assistant.use(requireAuth)
 assistant.post('/chat', async (req, res) => {
   const parsed = ChatRequest.safeParse(req.body ?? {})
   if (!parsed.success) {
+    console.error('[assistant:chat] bad request — validation failed:', JSON.stringify(parsed.error.issues))
     return res.status(400).json({ error: 'bad_request', issues: parsed.error.issues })
   }
 
@@ -23,14 +24,35 @@ assistant.post('/chat', async (req, res) => {
    const inferredMode = inferMode(user)
    const mode = parsed.data.mode === inferredMode ? inferredMode : inferredMode
 
+   console.log(`[assistant:chat] ── NEW CHAT ── user=${user.id} mode=${mode} session=${sessionId ?? 'new'} page=${pageContext ?? 'none'}`, {
+     message: message.slice(0, 200),
+     has_context: !!parsed.data.context,
+   })
+
    try {
+     console.log('[assistant:chat] calling processAssistantMessage…')
      const result = await processAssistantMessage(user.id, mode, message, {
       sessionId,
       pageContext,
     })
+    console.log('[assistant:chat] ✓ processAssistantMessage returned:', {
+      text_len: (result.text || '').length,
+      text_preview: (result.text || '').slice(0, 200),
+      actions_count: result.actions?.length ?? 0,
+      actions: result.actions?.map((a: any) => ({ type: a.type, target: a.target })),
+      session_id: result.session_id,
+    })
     res.json(result)
   } catch (e: any) {
-    // Last-resort fallback: never let a DB/AI error crash the request.
+    console.error('[assistant:chat] ✗ ERROR in processAssistantMessage:', {
+      message: e?.message,
+      stack: e?.stack?.split('\n').slice(0, 5),
+      error_name: e?.name,
+      error_cause: e?.cause,
+      user_id: user.id,
+      mode,
+      input_message: message.slice(0, 200),
+    })
     res.json({
       text: "I'm having trouble connecting right now. I've noted your request — please try again in a moment.",
       session_id: sessionId ?? `${user.id}_${mode}_${Date.now()}`,
@@ -113,22 +135,34 @@ assistant.get('/match/:studentId', async (req, res) => {
 /* ---------- Employer shortlist ---------- */
 assistant.get('/jobs/:jobId/shortlist', async (req, res) => {
   const userId = req.user!.id
+  const jobId = req.params.jobId
+  console.log('[assistant:shortlist] request:', { jobId, userId })
   try {
-    const shortlist = await employerShortlist(req.params.jobId, userId)
-    if (!shortlist) return res.status(404).json({ error: 'not_found' })
+    const shortlist = await employerShortlist(jobId, userId)
+    if (!shortlist) {
+      console.warn('[assistant:shortlist] ✗ not found:', { jobId, userId })
+      return res.status(404).json({ error: 'not_found' })
+    }
+    console.log('[assistant:shortlist] ✓ returned:', {
+      jobId, userId, match_count: shortlist.match_count,
+      scores: shortlist.matches?.map((m: any) => ({ score: m.score, name: m.name }))?.slice(0, 5),
+    })
     res.json(shortlist)
-  } catch {
-    res.json({ job_id: req.params.jobId, matches: [] })
+  } catch (e: any) {
+    console.error('[assistant:shortlist] ✗ ERROR:', {
+      message: e?.message,
+      stack: e?.stack?.split('\n').slice(0, 5),
+      jobId, userId,
+    })
+    res.json({ job_id: jobId, matches: [] })
   }
 })
 
 /* ---------- Agentic task (streaming SSE) ---------- */
-/* Runs the AI agent loop: Claude calls tools autonomously, the engine executes
-   them, and results stream back as SSE frames so the client can render live
-   progress + tool outcomes. */
 assistant.post('/task', async (req, res) => {
   const parsed = ChatRequest.safeParse(req.body ?? {})
   if (!parsed.success) {
+    console.error('[assistant:task] bad request — validation failed:', JSON.stringify(parsed.error.issues))
     return res.status(400).json({ error: 'bad_request', issues: parsed.error.issues })
   }
   const user = req.user!
@@ -138,16 +172,37 @@ assistant.post('/task', async (req, res) => {
   const inferredMode = inferMode(user)
   const mode = parsed.data.mode === inferredMode ? inferredMode : inferredMode
 
+  console.log(`[assistant:task] ── NEW AGENTIC TASK ── user=${user.id} mode=${mode} session=${sessionId ?? 'new'} page=${pageContext ?? 'none'}`, {
+    message: message.slice(0, 200),
+  })
+
   const enc = new TextEncoder()
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (obj: unknown) => controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`))
+      let eventCount = 0
       try {
+        console.log('[assistant:task] starting runAgent…')
         for await (const ev of runAgent(user.id, mode, message, { sessionId, pageContext })) {
+          eventCount++
+          console.log('[assistant:task] ← event', eventCount, ev.type, {
+            name: (ev as any).name,
+            text_preview: (ev as any).text?.slice(0, 100),
+            action: (ev as any).action,
+            summary: (ev as any).summary?.slice(0, 100),
+            error: (ev as any).message,
+          })
           send({ event: ev.type, ...ev })
         }
+        console.log(`[assistant:task] ✓ runAgent completed — ${eventCount} events streamed`)
         send({ event: 'end' })
       } catch (e: any) {
+        console.error('[assistant:task] ✗ ERROR in runAgent:', {
+          message: e?.message,
+          stack: e?.stack?.split('\n').slice(0, 5),
+          error_name: e?.name,
+          events_before_error: eventCount,
+        })
         send({ event: 'error', message: e?.message ?? 'agent_error' })
       } finally {
         controller.close()

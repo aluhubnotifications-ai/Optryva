@@ -134,12 +134,17 @@ const TOOL_EXECUTORS: Record<string, (input: ToolInput, userId: string, mode: As
   update_profile_skills: async (input, userId) => {
     const skills = getStrArray(input, 'skills', 'skills_to_add', 'add_skills') ?? []
     const mode = (getStr(input, 'mode', 'action') as 'add' | 'replace') ?? 'replace'
-    const { data: profile } = await sb.from('profiles').select('skills').eq('id', userId).maybeSingle()
+    console.log('[assistant:agent:tool] update_profile_skills', { userId, skills, mode })
+    try {
+    const { data: profile, error: profErr } = await sb.from('profiles').select('skills').eq('id', userId).maybeSingle()
+    if (profErr) { console.error('[assistant:agent:tool] ✗ Supabase error fetching profile skills:', profErr.message); return JSON.stringify({ error: profErr.message }) }
     const current = j.parse<string[]>(profile?.skills, [])
     const updated = mode === 'add' ? Array.from(new Set([...current, ...skills])) : skills
     const { error } = await sb.from('profiles').update({ skills: JSON.stringify(updated) }).eq('id', userId)
-    if (error) return JSON.stringify({ error: error.message })
+    if (error) { console.error('[assistant:agent:tool] ✗ Supabase error updating skills:', error.message); return JSON.stringify({ error: error.message }) }
+    console.log('[assistant:agent:tool] ✓ skills updated:', { count: updated.length, mode })
     return JSON.stringify({ skills: updated, count: updated.length, mode })
+    } catch (e: any) { console.error('[assistant:agent:tool] ✗ update_profile_skills error:', e?.message); return JSON.stringify({ error: e?.message ?? 'tool_execution_failed' }) }
   },
   get_fixed40_matches: async (input) => {
     const studentId = getStr(input, 'student_id', 'id')
@@ -149,10 +154,13 @@ const TOOL_EXECUTORS: Record<string, (input: ToolInput, userId: string, mode: As
   },
   create_job_draft: async (input, userId, mode) => {
     if (mode !== 'employer') {
+      console.warn('[assistant:agent:tool] create_job_draft called in non-employer mode:', mode)
       return JSON.stringify({ error: 'create_job_draft requires employer mode' })
     }
     const title = getStr(input, 'title')
+    console.log('[assistant:agent:tool] create_job_draft', { userId, title, location: getStr(input, 'location'), listing_type: getStr(input, 'listing_type') })
     if (!title) return JSON.stringify({ error: 'title is required' })
+    try {
     const { data: job, error } = await sb
       .from('job_listings')
       .insert({
@@ -171,36 +179,70 @@ const TOOL_EXECUTORS: Record<string, (input: ToolInput, userId: string, mode: As
       })
       .select('id, title, status')
       .single()
-    if (error) return JSON.stringify({ error: error.message })
+    if (error) {
+      console.error('[assistant:agent:tool] ✗ Supabase error creating job draft:', error.message)
+      return JSON.stringify({ error: error.message })
+    }
+    console.log('[assistant:agent:tool] ✓ job draft created:', { job_id: job.id, title: job.title, status: job.status, userId })
     return JSON.stringify({ job_id: job.id, title: job.title, status: job.status })
+    } catch (e: any) {
+      console.error('[assistant:agent:tool] ✗ create_job_draft error:', { message: e?.message, stack: e?.stack?.split('\n').slice(0, 3) })
+      return JSON.stringify({ error: e?.message ?? 'tool_execution_failed' })
+    }
   },
   get_employer_shortlist: async (input, userId) => {
     const { employerShortlist } = await import('./engine')
     const jobId = getStr(input, 'job_id', 'id')
+    console.log('[assistant:agent:tool] get_employer_shortlist', { userId, jobId })
     if (!jobId) return JSON.stringify({ error: 'job_id is required' })
-    const result = await employerShortlist(jobId, userId)
-    if (!result) return JSON.stringify({ error: 'not_found' })
-    return JSON.stringify(result)
+    try {
+      const result = await employerShortlist(jobId, userId)
+      if (!result) {
+        console.warn('[assistant:agent:tool] ✗ shortlist returned null/not found:', { jobId, userId })
+        return JSON.stringify({ error: 'not_found' })
+      }
+      console.log('[assistant:agent:tool] ✓ shortlist returned:', { jobId, match_count: result.match_count, user_id: result.user_id })
+      return JSON.stringify(result)
+    } catch (e: any) {
+      console.error('[assistant:agent:tool] ✗ get_employer_shortlist error:', { message: e?.message, stack: e?.stack?.split('\n').slice(0, 3) })
+      return JSON.stringify({ error: e?.message ?? 'tool_execution_failed' })
+    }
   },
   list_employer_jobs: async (_input, userId) => {
+    console.log('[assistant:agent:tool] list_employer_jobs', { userId })
+    try {
     const { data: jobs, error } = await sb
       .from('job_listings')
       .select('id,title,description,type,location,pay,status,created_at,tags')
       .eq('company_id', userId)
       .order('created_at', { ascending: false })
       .limit(50)
-    if (error) return JSON.stringify({ error: error.message })
+    if (error) {
+      console.error('[assistant:agent:tool] ✗ Supabase error listing jobs:', error.message)
+      return JSON.stringify({ error: error.message })
+    }
+    console.log('[assistant:agent:tool] ✓ jobs listed:', { count: jobs?.length ?? 0, userId })
     return JSON.stringify({ count: jobs?.length ?? 0, jobs: jobs ?? [] })
+    } catch (e: any) {
+      console.error('[assistant:agent:tool] ✗ list_employer_jobs error:', e?.message)
+      return JSON.stringify({ error: e?.message ?? 'tool_execution_failed' })
+    }
   },
   get_job_candidates: async (input, userId) => {
     const jobId = getStr(input, 'job_id', 'id')
+    console.log('[assistant:agent:tool] get_job_candidates', { userId, jobId })
     if (!jobId) return JSON.stringify({ error: 'job_id is required' })
+    try {
     const { data: apps, error } = await sb
       .from('applications')
       .select('id,student_id,full_name,email,school,year,status,match_score,match_rationale,created_at')
       .eq('job_id', jobId)
       .limit(40)
-    if (error) return JSON.stringify({ error: error.message })
+    if (error) {
+      console.error('[assistant:agent:tool] ✗ Supabase error fetching candidates:', error.message)
+      return JSON.stringify({ error: error.message })
+    }
+    console.log('[assistant:agent:tool] ✓ candidates fetched:', { jobId, count: apps?.length ?? 0 })
     const candidates = (apps ?? []).map((a: any) => ({
       id: a.id,
       student_id: a.student_id,
@@ -214,6 +256,10 @@ const TOOL_EXECUTORS: Record<string, (input: ToolInput, userId: string, mode: As
       applied_at: a.created_at,
     }))
     return JSON.stringify({ count: candidates.length, candidates })
+    } catch (e: any) {
+      console.error('[assistant:agent:tool] ✗ get_job_candidates error:', e?.message)
+      return JSON.stringify({ error: e?.message ?? 'tool_execution_failed' })
+    }
   },
   get_candidate_evidence: async (input) => {
     const studentId = getStr(input, 'student_id', 'id')
@@ -240,23 +286,43 @@ const TOOL_EXECUTORS: Record<string, (input: ToolInput, userId: string, mode: As
   },
   shortlist_candidate: async (input) => {
     const appId = getStr(input, 'application_id', 'app_id', 'id')
+    console.log('[assistant:agent:tool] shortlist_candidate', { appId })
     if (!appId) return JSON.stringify({ error: 'application_id is required' })
+    try {
     const { error } = await sb
       .from('applications')
       .update({ status: 'shortlisted' })
       .eq('id', appId)
-    if (error) return JSON.stringify({ error: error.message })
+    if (error) {
+      console.error('[assistant:agent:tool] ✗ Supabase error shortlisting:', error.message)
+      return JSON.stringify({ error: error.message })
+    }
+    console.log('[assistant:agent:tool] ✓ candidate shortlisted:', { appId })
     return JSON.stringify({ ok: true, application_id: appId, new_status: 'shortlisted' })
+    } catch (e: any) {
+      console.error('[assistant:agent:tool] ✗ shortlist_candidate error:', e?.message)
+      return JSON.stringify({ error: e?.message ?? 'tool_execution_failed' })
+    }
   },
   reject_candidate: async (input) => {
     const appId = getStr(input, 'application_id', 'app_id', 'id')
+    console.log('[assistant:agent:tool] reject_candidate', { appId })
     if (!appId) return JSON.stringify({ error: 'application_id is required' })
+    try {
     const { error } = await sb
       .from('applications')
       .update({ status: 'rejected' })
       .eq('id', appId)
-    if (error) return JSON.stringify({ error: error.message })
+    if (error) {
+      console.error('[assistant:agent:tool] ✗ Supabase error rejecting:', error.message)
+      return JSON.stringify({ error: error.message })
+    }
+    console.log('[assistant:agent:tool] ✓ candidate rejected:', { appId })
     return JSON.stringify({ ok: true, application_id: appId, new_status: 'rejected' })
+    } catch (e: any) {
+      console.error('[assistant:agent:tool] ✗ reject_candidate error:', e?.message)
+      return JSON.stringify({ error: e?.message ?? 'tool_execution_failed' })
+    }
   },
   emit_action: async (input) => {
     const action = parseAction(input)
@@ -328,10 +394,17 @@ export async function* runAgent(
   opts?: { sessionId?: string; pageContext?: string },
 ): AsyncGenerator<AgentEvent> {
    if (!hasAI()) {
+     console.error('[assistant:agent] ✗ no AI provider configured — aborting')
      yield { type: 'text', text: "I'm not configured right now. Please try again later." }
      yield { type: 'done', summary: 'No AI provider configured.' }
      return
    }
+
+   console.log('[assistant:agent] ── runAgent START ──', {
+     userId, mode, sessionId: opts?.sessionId ?? 'none',
+     pageContext: opts?.pageContext ?? 'none',
+     message_preview: message.slice(0, 200),
+   })
 
    const maxIters = 3
    const MAX_TOOL_CALLS = 3
@@ -343,19 +416,24 @@ export async function* runAgent(
    let sessionId: string
    try {
      sessionId = await withTimeout(resolveSession(userId, mode, opts?.sessionId), SB_TIMEOUT_MS, 'session_resolve')
-   } catch {
+     console.log('[assistant:agent] ✓ session resolved:', sessionId)
+   } catch (e: any) {
+     console.warn('[assistant:agent] ⚠ session resolve failed, using fallback:', e?.message)
      sessionId = opts?.sessionId ?? `${userId}_${mode}_${Date.now()}`
    }
 
    // 1. Gather context (with fallback)
    let context: string
    try {
+     console.log('[assistant:agent] fetching context for mode:', mode)
      let ctxPromise: Promise<string>
      if (mode === 'student') ctxPromise = getStudentContext(userId)
      else if (mode === 'employer') ctxPromise = getEmployerContext(userId)
      else ctxPromise = getUniversityContext(userId)
      context = await withTimeout(ctxPromise, SB_TIMEOUT_MS, 'context_fetch')
-   } catch {
+     console.log('[assistant:agent] ✓ context built', { ctx_len: context.length })
+   } catch (e: any) {
+     console.warn('[assistant:agent] ⚠ context fetch failed:', e?.message)
      context = `User ${userId} in ${mode} mode (no Supabase context available).`
    }
 
@@ -387,92 +465,126 @@ export async function* runAgent(
      university: 'a university career office',
    }
 
-   for (let iter = 0; iter < maxIters; iter++) {
-      const parsed = await withTimeout(
-        generateTurn<{ text: string; tool_calls: { name: string; input: ToolInput }[] }>({
-          system: SYSTEM_PROMPT.replace('{MODE}', mode).replace('{MODE_DESC}', modeDesc[mode]),
-          messages: turnMessages,
-          schema: AGENT_SCHEMA,
-          maxTokens: 1000,
+    for (let iter = 0; iter < maxIters; iter++) {
+      console.log(`[assistant:agent] ── loop iter ${iter + 1}/${maxIters} ──`)
+      let parsed: { text: string; tool_calls: { name: string; input: ToolInput }[] } | null = null
+      try {
+        parsed = await withTimeout(
+          generateTurn<{ text: string; tool_calls: { name: string; input: ToolInput }[] }>({
+            system: SYSTEM_PROMPT.replace('{MODE}', mode).replace('{MODE_DESC}', modeDesc[mode]),
+            messages: turnMessages,
+            schema: AGENT_SCHEMA,
+            maxTokens: 1000,
+          }),
+          AI_TIMEOUT_MS,
+          'generateTurn',
+        )
+      } catch (e: any) {
+        console.error('[assistant:agent] ✗ generateTurn error or timeout on iter %d:', iter, { message: e?.message, stack: e?.stack?.split('\n').slice(0, 3) })
+        yield { type: 'error', message: e?.message ?? 'AI call failed or timed out' }
+        yield { type: 'done', summary: 'Error: AI call failed.' }
+        return
+      }
+
+      if (!parsed) {
+        console.warn('[assistant:agent] ⚠ AI returned null/empty on iter %d', iter)
+        yield { type: 'error', message: 'The AI provider returned an empty response.' }
+        yield { type: 'done', summary: 'Error: no response from AI provider.' }
+        return
+      }
+
+      console.log('[assistant:agent] ✓ AI response parsed:', {
+        text_preview: (parsed.text || '').slice(0, 150),
+        tool_call_count: parsed.tool_calls?.length ?? 0,
+        tool_names: parsed.tool_calls?.map(tc => tc.name),
+      })
+
+      // Emit text
+      if (parsed.text) {
+        yield { type: 'text', text: parsed.text }
+      }
+
+      // Process tool calls — limit to MAX_TOOL_CALLS
+      const toolCalls = (parsed.tool_calls ?? []).slice(0, MAX_TOOL_CALLS)
+      if (toolCalls.length === 0) {
+        console.log('[assistant:agent] ✓ agent done — no more tool calls')
+        // Agent is done — persist its final text
+        if (parsed.text) {
+          try {
+            await withTimeout(
+              sb.from('assistant_messages').insert({
+                session_id: sessionId,
+                role: 'assistant',
+                content: parsed.text,
+              }),
+              SB_TIMEOUT_MS,
+              'persist_assistant_msg',
+            )
+            console.log('[assistant:agent] ✓ final assistant message persisted')
+          } catch (e: any) {
+            console.error('[assistant:agent] ✗ error persisting assistant message:', e?.message)
+          }
+        }
+        yield { type: 'done', summary: parsed.text || 'Done!' }
+        break
+      }
+
+      console.log('[assistant:agent] processing %d tool call(s):', toolCalls.length, toolCalls.map(tc => tc.name))
+
+      // Assistant's turn (text + tool_calls)
+      const assistantContent = JSON.stringify({ text: parsed.text, tool_calls: parsed.tool_calls })
+      turnMessages.push({ role: 'assistant', content: assistantContent })
+
+      // Announce all tool calls first
+      for (const tc of toolCalls) {
+        console.log('[assistant:agent] → tool_use:', tc.name, JSON.stringify(tc.input).slice(0, 200))
+        yield { type: 'tool_use', name: tc.name, input: tc.input }
+      }
+
+      // Execute tools in parallel (bounded by Promise.all — max MAX_TOOL_CALLS)
+      const toolResults = await Promise.all(
+        toolCalls.map(async (tc) => {
+          const executor = TOOL_EXECUTORS[tc.name]
+          let result: string
+          let action: AssistantAction | null = null
+          try {
+            if (executor) {
+              console.log('[assistant:agent] ⏳ executing tool:', tc.name)
+              result = await withTimeout(executor(tc.input, userId, mode), TOOL_TIMEOUT_MS, tc.name)
+              console.log('[assistant:agent] ✓ tool %s returned:', tc.name, result.slice(0, 200))
+            } else {
+              console.error('[assistant:agent] ✗ unknown tool:', tc.name)
+              result = JSON.stringify({ error: `Unknown tool: ${tc.name}` })
+            }
+          } catch (e: any) {
+            console.error('[assistant:agent] ✗ tool %s FAILED:', tc.name, { message: e?.message, stack: e?.stack?.split('\n').slice(0, 3) })
+            result = JSON.stringify({ error: e?.message ?? 'tool_execution_failed' })
+          }
+          if (tc.name === 'emit_action') {
+            action = parseAction(tc.input)
+            if (action) console.log('[assistant:agent] ✓ emitted action:', action)
+            else console.warn('[assistant:agent] ⚠ emit_action invalid:', tc.input)
+          }
+          return { tc, result, action }
         }),
-        AI_TIMEOUT_MS,
-        'generateTurn',
       )
 
-    if (!parsed) {
-      yield { type: 'error', message: 'The AI provider returned an empty response.' }
-      yield { type: 'done', summary: 'Error: no response from AI provider.' }
-      return
-    }
-
-    // Emit text
-    if (parsed.text) {
-      yield { type: 'text', text: parsed.text }
-    }
-
-     // Process tool calls — limit to MAX_TOOL_CALLS
-     const toolCalls = (parsed.tool_calls ?? []).slice(0, MAX_TOOL_CALLS)
-     if (toolCalls.length === 0) {
-      // Agent is done — persist its final text
-      if (parsed.text) {
-        await withTimeout(
-          sb.from('assistant_messages').insert({
-            session_id: sessionId,
-            role: 'assistant',
-            content: parsed.text,
-          }),
-          SB_TIMEOUT_MS,
-          'persist_assistant_msg',
-        )
+      // Yield results, actions, and feed back into conversation
+      for (const { tc, result, action } of toolResults) {
+        console.log('[assistant:agent] ← tool_result:', tc.name, result.slice(0, 200))
+        yield { type: 'tool_result', name: tc.name, result }
+        if (action) yield { type: 'action', action }
+        turnMessages.push({
+          role: 'user',
+          content: `Tool "${tc.name}" returned:\n${result}`,
+        })
       }
-      yield { type: 'done', summary: parsed.text || 'Done!' }
-      break
+
+      console.log('[assistant:agent] ── iter %d complete, continuing loop ──', iter)
     }
 
-     // Assistant's turn (text + tool_calls)
-     const assistantContent = JSON.stringify({ text: parsed.text, tool_calls: parsed.tool_calls })
-     turnMessages.push({ role: 'assistant', content: assistantContent })
-
-     // Announce all tool calls first
-     for (const tc of toolCalls) {
-       yield { type: 'tool_use', name: tc.name, input: tc.input }
-     }
-
-     // Execute tools in parallel (bounded by Promise.all — max MAX_TOOL_CALLS)
-     const toolResults = await Promise.all(
-       toolCalls.map(async (tc) => {
-         const executor = TOOL_EXECUTORS[tc.name]
-         let result: string
-         let action: AssistantAction | null = null
-         try {
-           if (executor) {
-             result = await withTimeout(executor(tc.input, userId, mode), TOOL_TIMEOUT_MS, tc.name)
-           } else {
-             result = JSON.stringify({ error: `Unknown tool: ${tc.name}` })
-           }
-         } catch (e: any) {
-           result = JSON.stringify({ error: e?.message ?? 'tool_execution_failed' })
-         }
-         if (tc.name === 'emit_action') {
-           action = parseAction(tc.input)
-         }
-         return { tc, result, action }
-       }),
-     )
-
-     // Yield results, actions, and feed back into conversation
-     for (const { tc, result, action } of toolResults) {
-       yield { type: 'tool_result', name: tc.name, result }
-       if (action) yield { type: 'action', action }
-       turnMessages.push({
-         role: 'user',
-         content: `Tool "${tc.name}" returned:\n${result}`,
-       })
-     }
-
-    }
-
-  yield { type: 'end' }
+    console.warn('[assistant:agent] ⚠ max iterations (%d) reached — stopping agent loop', maxIters)
+   yield { type: 'end' }
 }
 
 // Re-export for the route

@@ -147,6 +147,7 @@ async function fallbackIntentHandler(
   const lower = message.toLowerCase().trim()
 
   if (/\b(hello|hi|hey)\b/i.test(message) && !lower.includes('shortlist') && !lower.includes('candidate') && !lower.includes('job') && !lower.includes('intern')) {
+    console.log('[assistant:engine:fallback] ✓ matched greeting intent')
     return { text: "Hi! I'm the Optryva Assistant. Ask me about your jobs, applications, skills, or profile.", actions: [] }
   }
 
@@ -160,33 +161,52 @@ async function fallbackIntentHandler(
     }
 
     if (lower.includes('job') || lower.includes('intern') || lower.includes('opportunit') || lower.includes('application')) {
-      const { data: apps } = await sb
-        .from('applications')
-        .select('id, jobs!inner(title, company_name), status, created_at')
-        .eq('student_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(20)
+      console.log('[assistant:engine:fallback] ✓ matched student job/app query intent')
+      try {
+        const { data: apps, error } = await sb
+          .from('applications')
+          .select('id, jobs!inner(title, company_name), status, created_at')
+          .eq('student_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(20)
 
-      if (!apps || apps.length === 0) {
-        return { text: "You haven't applied to any internships yet.", actions: [{ type: 'navigate', target: '/app/jobs', data: {} }] }
+        if (error) {
+          console.error('[assistant:engine:fallback] ✗ Supabase error querying student applications:', error.message)
+          return { text: "I couldn't fetch your applications right now. Try again later.", actions: [] }
+        }
+
+        if (!apps || apps.length === 0) {
+          return { text: "You haven't applied to any internships yet.", actions: [{ type: 'navigate', target: '/app/jobs', data: {} }] }
+        }
+
+        const summary = apps.slice(0, 5).map((a: any) => `  ${a.jobs?.title ?? 'Role'} — ${a.status}`).join('\n')
+        const more = apps.length > 5 ? `...and ${apps.length - 5} more.` : ''
+        return { text: `You have ${apps.length} application(s):\n${summary}\n${more}`, actions: [{ type: 'navigate', target: '/app/applications', data: {} }] }
+      } catch (e: any) {
+        console.error('[assistant:engine:fallback] ✗ error in student job/app handler:', e?.message)
+        return null
       }
-
-      const summary = apps.slice(0, 5).map((a: any) => `  ${a.jobs?.title ?? 'Role'} — ${a.status}`).join('\n')
-      const more = apps.length > 5 ? `...and ${apps.length - 5} more.` : ''
-      return { text: `You have ${apps.length} application(s):\n${summary}\n${more}`, actions: [{ type: 'navigate', target: '/app/applications', data: {} }] }
     }
 
     if (lower.includes('skill')) {
-      const { data: profile } = await sb.from('profiles').select('skills').eq('id', userId).maybeSingle()
-      const skills = j.parse<string[]>(profile?.skills, [])
-      if (!skills.length) return { text: "Your profile doesn't have any skills listed yet.", actions: [] }
-      return { text: `Your skills: ${skills.join(', ')}`, actions: [{ type: 'navigate', target: '/app/profile', data: {} }] }
+      console.log('[assistant:engine:fallback] ✓ matched student skills intent')
+      try {
+        const { data: profile } = await sb.from('profiles').select('skills').eq('id', userId).maybeSingle()
+        const skills = j.parse<string[]>(profile?.skills, [])
+        if (!skills.length) return { text: "Your profile doesn't have any skills listed yet.", actions: [] }
+        return { text: `Your skills: ${skills.join(', ')}`, actions: [{ type: 'navigate', target: '/app/profile', data: {} }] }
+      } catch (e: any) {
+        console.error('[assistant:engine:fallback] ✗ error fetching student skills:', e?.message)
+        return null
+      }
     }
   }
 
   // Employer/University: handle create requests first, then listing queries
   if (mode === 'employer' || mode === 'university') {
+    console.log('[assistant:engine:fallback] checking employer/university intents…')
     if (lower.includes('create') || lower.includes('new') || lower.includes('draft')) {
+      console.log('[assistant:engine:fallback] ✓ matched employer create intent')
       if (lower.includes('document') || lower.includes('file') || lower.includes('pdf') || lower.includes('upload') || lower.includes('do it for you') || lower.includes('generate')) {
         return {
           text: "Opening the job editor with instructions:\n1. Paste your job description or click the AI generator to create from scratch\n2. Upload a document (PDF/doc) using the file upload in the editor — the AI will extract key requirements\n3. Fill in location, pay, tags\n4. Save the draft, then add an assessment if needed\n5. Preview and post when ready",
@@ -200,63 +220,141 @@ async function fallbackIntentHandler(
     }
 
     if (lower.includes('assessment') || lower.includes('assignment') || lower.includes('test')) {
+      console.log('[assistant:engine:fallback] ✓ matched employer assessment intent')
       return {
         text: "To set up an assessment:\n1. Open an existing job posting in the editor (/app/listings)\n2. Click the Assessment step/tab\n3. Add a practical task with a prompt, time limit, and rubric\n4. Or click 'Generate with AI' to auto-create questions from your job description\n5. Save and preview as a candidate before posting",
         actions: [{ type: 'navigate', target: '/app/listings', data: {} }],
       }
-     }
+    }
 
     // Check shortlist BEFORE "job" — "shortlist for this job" contains "job"
     if (lower.includes('shortlist') || lower.includes('short list')) {
-      const { data: jobs } = await sb
-        .from('job_listings')
-        .select('id, title')
-        .eq('company_id', userId)
-        .eq('status', 'active')
-        .order('created_at', { ascending: false })
-        .limit(1)
+      console.log('[assistant:engine:fallback] ✓ matched employer shortlist intent')
+      try {
+        const { data: jobs, error } = await sb
+          .from('job_listings')
+          .select('id, title')
+          .eq('company_id', userId)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(1)
 
-      if (jobs && jobs.length === 1) {
-        return {
-          text: `Starting Smart Shortlist for "${jobs[0].title}".`,
-          actions: [{ type: 'start_shortlist', target: jobs[0].id, data: { job_id: jobs[0].id } }],
+        if (error) {
+          console.error('[assistant:engine:fallback] ✗ Supabase error in shortlist handler:', error.message)
+          return null
         }
-      }
-      return {
-        text: "Navigate to Insights to view your shortlist.",
-        actions: [{ type: 'navigate', target: '/app/insights', data: {} }],
+
+        if (jobs && jobs.length === 1) {
+          return {
+            text: `Starting Smart Shortlist for "${jobs[0].title}".`,
+            actions: [{ type: 'start_shortlist', target: jobs[0].id, data: { job_id: jobs[0].id } }],
+          }
+        }
+        return {
+          text: "Navigate to Insights to view your shortlist.",
+          actions: [{ type: 'navigate', target: '/app/insights', data: {} }],
+        }
+      } catch (e: any) {
+        console.error('[assistant:engine:fallback] ✗ error in employer shortlist handler:', e?.message)
+        return null
       }
     }
 
     if (lower.includes('job') || lower.includes('posting') || lower.includes('internship')) {
-      const { data: jobs } = await sb
-        .from('job_listings')
-        .select('title, status, location, created_at')
-        .eq('company_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(20)
+      console.log('[assistant:engine:fallback] ✓ matched employer job listing intent')
+      try {
+        const { data: jobs, error } = await sb
+          .from('job_listings')
+          .select('title, status, location, created_at')
+          .eq('company_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(20)
 
-      if (!jobs || jobs.length === 0) {
-        return { text: "You don't have any job postings yet.", actions: [{ type: 'navigate', target: '/app/listings/new', data: {} }] }
+        if (error) {
+          console.error('[assistant:engine:fallback] ✗ Supabase error querying employer jobs:', error.message)
+          return null
+        }
+
+        if (!jobs || jobs.length === 0) {
+          return { text: "You don't have any job postings yet.", actions: [{ type: 'navigate', target: '/app/listings/new', data: {} }] }
+        }
+
+        const summary = jobs.slice(0, 8).map((j: any) => `  ${j.title} (${j.status}, ${j.location ?? 'remote-ok'})`).join('\n')
+        const more = jobs.length > 8 ? `...and ${jobs.length - 8} more.` : ''
+        return { text: `You have ${jobs.length} job posting(s):\n${summary}\n${more}`, actions: [{ type: 'navigate', target: '/app/listings', data: {} }] }
+      } catch (e: any) {
+        console.error('[assistant:engine:fallback] ✗ error in employer job handler:', e?.message)
+        return null
       }
-
-      const summary = jobs.slice(0, 8).map((j: any) => `  ${j.title} (${j.status}, ${j.location ?? 'remote-ok'})`).join('\n')
-      const more = jobs.length > 8 ? `...and ${jobs.length - 8} more.` : ''
-      return { text: `You have ${jobs.length} job posting(s):\n${summary}\n${more}`, actions: [{ type: 'navigate', target: '/app/listings', data: {} }] }
     }
 
     if (lower.includes('applicant') || lower.includes('application') || lower.includes('candidate')) {
-      const { data: apps } = await sb.from('applications').select('id, status').eq('company_id', userId).limit(20)
-      const total = apps?.length ?? 0
-      const byStatus = (apps ?? []).reduce((acc: Record<string, number>, a: any) => {
-        acc[a.status] = (acc[a.status] ?? 0) + 1
-        return acc
-      }, {})
-      const breakdown = Object.entries(byStatus).map(([s, c]) => `${s}: ${c}`).join(', ')
-      return { text: `You have ${total} application(s): ${breakdown || 'no breakdown available'}`, actions: [{ type: 'navigate', target: '/app/insights', data: {} }] }
+      console.log('[assistant:engine:fallback] ✓ matched employer application intent')
+      try {
+        // applications → job_listings → profiles (company_id). The applications
+        // table has no company_id column, so we resolve the employer's jobs first.
+        const { data: jobs, error: jobsErr } = await sb.from('job_listings').select('id, title').eq('company_id', userId)
+        const jobIds = jobs?.map((j: any) => j.id) ?? []
+        const jobTitle = (jid: string) => jobs?.find((j: any) => j.id === jid)?.title ?? 'unknown role'
+        console.log('[assistant:engine:fallback] employer jobs found:', { count: jobs?.length ?? 0, jobIds: jobIds.slice(0, 10) })
+        if (jobsErr) console.error('[assistant:engine:fallback] ✗ Supabase error fetching employer jobs:', jobsErr.message)
+
+        let apps: any[] | null = null
+        if (jobIds.length) {
+          const r = await sb.from('applications')
+            .select('id, job_id, student_id, full_name, status, match_score, assignment_score, assignment_status, created_at')
+            .in('job_id', jobIds)
+            .order('created_at', { ascending: false })
+            .limit(30)
+          apps = r.data ?? null
+          if (r.error) console.error('[assistant:engine:fallback] ✗ Supabase error querying applications:', r.error.message)
+          console.log('[assistant:engine:fallback] applications fetched:', { count: apps?.length ?? 0 })
+        } else {
+          console.log('[assistant:engine:fallback] no job IDs found — employer has no postings')
+        }
+
+        const appsArr = apps ?? []
+        const total = appsArr.length
+        const byStatus = appsArr.reduce((acc: Record<string, number>, a: any) => {
+          acc[a.status] = (acc[a.status] ?? 0) + 1
+          return acc
+        }, {})
+        const breakdown = Object.entries(byStatus).map(([s, c]) => `${s}: ${c}`).join(', ')
+        console.log('[assistant:engine:fallback] status breakdown:', breakdown || 'no breakdown available')
+
+        // Per-application detail: scores + evidence + student name + job title
+        const studentIds = [...new Set(appsArr.map((a: any) => a.student_id).filter(Boolean))]
+        const { data: profiles } = studentIds.length
+          ? await sb.from('profiles').select('id, full_name, evidence_summary').in('id', studentIds)
+          : { data: [] }
+        const pmap = new Map((profiles ?? []).map((p: any) => [p.id, p]))
+
+        let detail = ''
+        if (appsArr.length > 0) {
+          detail = '\n' + appsArr.slice(0, 8).map((a: any) => {
+            const m = a.match_score != null ? `match ${Math.round(a.match_score)}%` : 'match —'
+            const as = a.assignment_score != null ? `test ${a.assignment_score}/100` : 'test —'
+            const nm = a.full_name || pmap.get(a.student_id)?.full_name || 'candidate'
+            const jb = jobTitle(a.job_id)
+            return `  • ${nm} → ${jb} — ${a.status} (${m}, ${as})`
+          }).join('\n')
+          if (appsArr.length > 8) detail += `\n...and ${appsArr.length - 8} more.`
+        }
+        return {
+          text: `You have ${total} application(s): ${breakdown || 'no breakdown available'}.${detail}`,
+          actions: [{ type: 'navigate', target: '/app/insights', data: {} }]
+        }
+      } catch (e: any) {
+        console.error('[assistant:engine:fallback] ✗ ERROR in employer application handler:', {
+          message: e?.message,
+          stack: e?.stack?.split('\n').slice(0, 5),
+          userId,
+        })
+        return null
+      }
     }
   }
-
+  console.log('[assistant:engine:fallback] no intent matched — will fall through to AI')
   return null
 }
 
@@ -271,21 +369,32 @@ export async function processAssistantMessage(
   message: string,
   opts?: { sessionId?: string; pageContext?: string },
 ): Promise<AssistantResponse> {
+  console.log(`[assistant:engine] ── processAssistantMessage START ── user=${userId} mode=${mode}`, {
+    sessionId: opts?.sessionId ?? 'none',
+    pageContext: opts?.pageContext ?? 'none',
+    message_preview: message.slice(0, 200),
+  })
+  try {
   // 1. Session (with DB fallback)
   let sessionId: string
   try {
     sessionId = await resolveSession(userId, mode, opts?.sessionId)
-  } catch {
+    console.log('[assistant:engine] ✓ session resolved:', sessionId)
+  } catch (e: any) {
+    console.warn('[assistant:engine] ⚠ session resolve failed, using fallback:', e?.message)
     sessionId = opts?.sessionId ?? fallbackSession(userId, mode)
   }
 
   // 2. Context (with DB fallback)
   let context: string
   try {
+    console.log('[assistant:engine] fetching context for mode:', mode)
     if (mode === 'student') context = await getStudentContext(userId)
     else if (mode === 'employer') context = await getEmployerContext(userId)
     else context = await getUniversityContext(userId)
-  } catch {
+    console.log('[assistant:engine] ✓ context built', { ctx_len: context.length, ctx_preview: context.slice(0, 200) })
+  } catch (e: any) {
+    console.warn('[assistant:engine] ⚠ context fetch failed:', e?.message)
     context = `User ${userId} in ${mode} mode (no context available).`
   }
 
@@ -294,12 +403,15 @@ export async function processAssistantMessage(
    const inspectResults: { url: string; result: any }[] = []
    const wantsInspect = /\binspect\b|\bcheck\b|\bopen\b|\brun\b|\banaylze\b|\bscrape\b/i.test(message)
    if (urls.length && wantsInspect) {
+     console.log('[assistant:engine] user requested URL inspection:', urls.slice(0, 3))
      for (const url of urls.slice(0, 2)) {
        try {
+         console.log('[assistant:engine] deepInspect:', url)
          const result = await deepInspect(url)
          inspectResults.push({ url, result })
-       } catch {
-         /* non-critical — continue without evidence */
+         console.log('[assistant:engine] ✓ deepInspect result:', { url, skills: result.skills?.length, achievements: result.achievements?.length })
+       } catch (e: any) {
+         console.error('[assistant:engine] ✗ deepInspect error for ' + url + ':', e?.message)
        }
      }
      if (inspectResults.length) {
@@ -316,7 +428,10 @@ export async function processAssistantMessage(
   let history: any[] = []
   try {
     history = await fetchHistory(sessionId)
-  } catch { /* no history — start fresh */ }
+    console.log('[assistant:engine] ✓ fetched history:', { messages: history.length })
+  } catch (e: any) {
+    console.warn('[assistant:engine] ⚠ history fetch failed:', e?.message)
+  }
   const historyStr = formatHistory(history)
 
   // 5. Build prompts
@@ -328,31 +443,58 @@ export async function processAssistantMessage(
   // 6. Deterministic intent handler FIRST — catches simple queries
   // ("shortlist", "my jobs", "my skills") before the AI, so these always work
   // even when an LLM is configured but misinterprets the intent.
+  console.log('[assistant:engine] running fallback intent handler...')
   let fallback: { text: string; actions: AssistantAction[] } | null = null
   try {
     fallback = await fallbackIntentHandler(userId, mode, message)
-  } catch {
+    if (fallback) {
+      console.log('[assistant:engine] ✓ fallback handler matched:', { text_preview: fallback.text.slice(0, 100), actions: fallback.actions?.length })
+    } else {
+      console.log('[assistant:engine] fallback handler did not match — falling through to AI')
+    }
+  } catch (e: any) {
+    console.error('[assistant:engine] ✗ fallback handler threw:', { message: e?.message, stack: e?.stack?.split('\n').slice(0, 3) })
     fallback = null
   }
 
   // 7. LLM structured output — only if the intent handler didn't match
   let output: AssistantAIOutput | null = null
   if (!fallback && hasAI()) {
-    output = await generateStructured<AssistantAIOutput>({
-      system,
-      user: userMsg,
-      schema: RESPONSE_SCHEMA,
-      maxTokens: 1600,
-    })
+    console.log('[assistant:engine] calling LLM (generateStructured)…')
+    try {
+      output = await generateStructured<AssistantAIOutput>({
+        system,
+        user: userMsg,
+        schema: RESPONSE_SCHEMA,
+        maxTokens: 1600,
+      })
+      if (output) {
+        console.log('[assistant:engine] ✓ LLM returned:', {
+          text_len: (output.text || '').length, text_preview: output.text?.slice(0, 200),
+          actions: output.actions?.length ?? 0,
+          actions_detail: output.actions?.map((a: any) => ({ type: a.type, target: a.target })),
+        })
+      } else {
+        console.warn('[assistant:engine] ⚠ LLM returned null/empty response')
+      }
+    } catch (e: any) {
+      console.error('[assistant:engine] ✗ LLM call failed:', { message: e?.message, stack: e?.stack?.split('\n').slice(0, 5) })
+      output = null
+    }
+  } else if (!fallback && !hasAI()) {
+    console.warn('[assistant:engine] ⚠ no AI provider configured (hasAI() = false)')
   }
 
   const actions: AssistantAction[] = []
 
   if (fallback) {
     output = { text: fallback.text, actions: fallback.actions }
+    console.log('[assistant:engine] using fallback handler response')
   } else if (!output || !output.text?.trim()) {
+    console.warn('[assistant:engine] ⚠ output text empty — using FALLBACK_REPLY')
     output = { text: FALLBACK_REPLY, actions: [] }
   } else {
+    console.log('[assistant:engine] using LLM output (no fallback match)')
     // Re-run deep inspect results as explicit add_evidence actions (server-side
     // guarantee, not dependent on Claude's output parsing).
     for (const { result } of inspectResults) {
@@ -368,6 +510,7 @@ export async function processAssistantMessage(
           summary: result.summary,
         },
       })
+      console.log('[assistant:engine] ✓ added add_evidence action:', result.url)
     }
   }
 
@@ -376,34 +519,78 @@ export async function processAssistantMessage(
     const exists = actions.some((x) => x.type === a.type && x.target === a.target)
     if (!exists) actions.push(a)
   }
+  if (actions.length) {
+    console.log('[assistant:engine] final actions:', actions.map((a) => ({ type: a.type, target: a.target })))
+  }
 
   // 8. Persist
-  await saveMessage(sessionId, 'user', message)
-  await saveMessage(sessionId, 'assistant', output.text, actions)
+  try {
+    await saveMessage(sessionId, 'user', message)
+    await saveMessage(sessionId, 'assistant', output.text, actions)
+    console.log('[assistant:engine] ✓ messages persisted to DB')
+  } catch (e: any) {
+    console.error('[assistant:engine] ✗ error persisting messages:', e?.message)
+  }
 
+  console.log('[assistant:engine] ── processAssistantMessage COMPLETE ──')
   return {
     text: output.text || FALLBACK_REPLY,
     session_id: sessionId,
     actions,
   }
+  } catch (e: any) {
+    console.error('[assistant:engine] ✗ UNEXPECTED ERROR in processAssistantMessage:', {
+      message: e?.message,
+      stack: e?.stack?.split('\n').slice(0, 5),
+      user_id: userId,
+      mode,
+    })
+    return {
+      text: FALLBACK_REPLY,
+      session_id: opts?.sessionId ?? `${userId}_${mode}_${Date.now()}`,
+      actions: [],
+    }
+  }
 }
 
 /** One-shot entry point for the employer "Smart Shortlist" demo. */
 export async function employerShortlist(jobId: string, employerId: string): Promise<any> {
-  const { data: job } = await sb.from('job_listings').select('*').eq('id', jobId).eq('company_id', employerId).maybeSingle()
-  if (!job) return null
-  const { data: apps } = await sb.from('applications').select('id, student_id, full_name, email, school, year, status, match_score, match_rationale, created_at').eq('job_id', jobId).limit(40)
-  if (!apps?.length) return { job_title: job.title, matches: [] }
+  console.log('[assistant:engine:employerShortlist] START:', { jobId, employerId })
+  const { data: job, error: jobErr } = await sb.from('job_listings').select('*').eq('id', jobId).eq('company_id', employerId).maybeSingle()
+  if (jobErr) {
+    console.error('[assistant:engine:employerShortlist] ✗ Supabase error fetching job:', jobErr.message)
+    return null
+  }
+  if (!job) {
+    console.warn('[assistant:engine:employerShortlist] ✗ job not found or access denied:', { jobId, employerId })
+    return null
+  }
+  console.log('[assistant:engine:employerShortlist] ✓ job found:', { job_title: job.title })
+
+  const { data: apps, error: appsErr } = await sb.from('applications').select('id, student_id, full_name, email, school, year, status, match_score, match_rationale, created_at').eq('job_id', jobId).limit(40)
+  if (appsErr) {
+    console.error('[assistant:engine:employerShortlist] ✗ Supabase error fetching applications:', appsErr.message)
+    return { job_title: job.title, job_id: job.id, match_count: 0, matches: [] }
+  }
+  console.log('[assistant:engine:employerShortlist] applications fetched:', { count: apps?.length ?? 0 })
+  if (!apps?.length) {
+    console.log('[assistant:engine:employerShortlist] no applications — returning empty matches')
+    return { job_title: job.title, matches: [] }
+  }
 
   const studentIds = [...new Set(apps.map((a) => a.student_id).filter(Boolean))]
+  console.log('[assistant:engine:employerShortlist] student IDs:', studentIds.length)
   // Fetch evidence summaries in a single batch
-  const { data: profiles } = await sb
+  const { data: profiles, error: profErr } = await sb
     .from('profiles')
     .select('id, evidence_summary, skills')
     .in('id', studentIds as string[])
     .limit(40)
+  if (profErr) console.error('[assistant:engine:employerShortlist] ✗ Supabase error fetching profiles:', profErr.message)
 
   const profileMap = new Map((profiles ?? []).map((p: any) => [p.id, p]))
+
+  console.log('[assistant:engine:employerShortlist] profiles fetched:', { count: profiles?.length ?? 0 })
 
   // Sort by match_score (highest first) for ranking
   const sortedApps = [...apps].sort((a: any, b: any) => {
@@ -431,6 +618,10 @@ export async function employerShortlist(jobId: string, employerId: string): Prom
     }
   })
 
+  console.log('[assistant:engine:employerShortlist] COMPLETE:', {
+    job_title: job.title, job_id: job.id, match_count: matches.length,
+    top_scores: matches.slice(0, 5).map((m: any) => ({ score: m.score, name: m.name })),
+  })
   return { job_title: job.title, job_id: job.id, match_count: matches.length, matches }
 }
 

@@ -45,30 +45,40 @@ export interface InspectResult {
 /** Deep Inspection: scrape an external link + AI-extract skills and achievements.
  *  Called when the user drops a URL into the chat (e.g. a GitHub repo or portfolio). */
 export async function deepInspect(url: string): Promise<InspectResult> {
+  console.log('[assistant:tools:deepInspect] START:', { url, len: url.length })
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 8000)
   let res: Response
   try {
+    console.log('[assistant:tools:deepInspect] fetching URL…')
     res = await fetch(url, {
       headers: { 'User-Agent': 'Optryva-Assistant/1.0 (career-analysis)' },
       signal: controller.signal,
     })
+    console.log('[assistant:tools:deepInspect] fetch complete:', res.status)
   } catch (e: any) {
-    if (e?.name === 'AbortError') return { url, title: '', status: 'fetch_timeout', skills: [], achievements: [], summary: `URL load timed out after 8s: ${url}` }
+    if (e?.name === 'AbortError') {
+      console.warn('[assistant:tools:deepInspect] ✗ fetch timed out after 8s:', url)
+      return { url, title: '', status: 'fetch_timeout', skills: [], achievements: [], summary: `URL load timed out after 8s: ${url}` }
+    }
+    console.error('[assistant:tools:deepInspect] ✗ fetch error:', { message: e?.message, url, error_name: e?.name })
     throw e
   } finally {
     clearTimeout(timeout)
   }
   const html = await res.text()
+  console.log('[assistant:tools:deepInspect] response body length:', html.length)
   const text = htmlToText(html)
   const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
   const title = titleMatch ? titleMatch[1].trim() : url
+  console.log('[assistant:tools:deepInspect] extracted title:', title, { text_len: text.length })
 
   let skills: string[] = []
   let achievements: string[] = []
   let summary = ''
 
   if (text && hasAI()) {
+    console.log('[assistant:tools:deepInspect] calling generateText (hasAI = true)')
     const ai = await generateText({
       maxTokens: 1000,
       system:
@@ -79,14 +89,23 @@ export async function deepInspect(url: string): Promise<InspectResult> {
         'Return ONLY a JSON object: {"skills":["..."],"achievements":["..."],"summary":"..."}',
       user: `URL: ${url}\nTitle: ${title}\n\nContent:\n${text.slice(0, 6000)}`,
     })
+    console.log('[assistant:tools:deepInspect] generateText raw result:', ai?.slice(0, 200) ?? 'null')
     const parsed = extractJson<{ skills?: string[]; achievements?: string[]; summary?: string }>(ai)
     if (parsed) {
+      console.log('[assistant:tools:deepInspect] ✓ parsed AI output:', { skills: parsed.skills?.length, achievements: parsed.achievements?.length, summary_len: parsed.summary?.length })
       skills = parsed.skills ?? []
       achievements = parsed.achievements ?? []
       summary = parsed.summary ?? ''
+    } else {
+      console.warn('[assistant:tools:deepInspect] ⚠ extractJson failed to parse AI response')
     }
+  } else if (!hasAI()) {
+    console.warn('[assistant:tools:deepInspect] ⚠ no AI provider — skipping skill extraction')
+  } else if (!text) {
+    console.warn('[assistant:tools:deepInspect] ⚠ no readable text from page')
   }
 
+  console.log('[assistant:tools:deepInspect] COMPLETE:', { url, title, status: 'verified_evidence', skills_count: skills.length, achievements_count: achievements.length })
   return {
     url,
     title,
@@ -117,6 +136,7 @@ export function evidenceAction(inspect: InspectResult): AssistantAction {
  *  IMPORTANT: DEMO ONLY. Uses mock data to demonstrate the "Fixed 40" matching
  *  logic. Do NOT connect to live production match data yet. */
 export async function getFixed40Matches(studentId: string) {
+  console.log('[assistant:tools:getFixed40Matches] START:', { studentId })
   const mockTitles = [
     'Frontend Engineer Intern', 'Backend Developer Intern', 'Product Manager Intern',
     'Data Science Intern', 'UX Research Intern', 'DevOps Intern',
@@ -133,11 +153,13 @@ export async function getFixed40Matches(studentId: string) {
     'Open Source Contributor', 'Dev Tools Intern', 'Infrastructure Intern',
     'API Platform Intern',
   ]
-  return mockTitles.map((title, i) => ({
+  const result = mockTitles.map((title, i) => ({
     id: `demo_${i}`,
     title,
     score: Math.max(40, Math.round(85 - i * 0.8)),
     reason: 'Demo match — powered by the Fixed-40 engine.',
     is_demo: true,
   }))
+  console.log('[assistant:tools:getFixed40Matches] COMPLETE:', { studentId, count: result.length })
+  return result
 }

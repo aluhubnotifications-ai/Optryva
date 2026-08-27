@@ -57,30 +57,58 @@ export async function generateStructured<T>(opts: {
   maxTokens?: number
   temperature?: number
 }): Promise<T | null> {
+  console.log('[assistant:llm] generateStructured START', {
+    provider: getProvider(),
+    model: model(),
+    maxTokens: opts.maxTokens ?? 1600,
+    temperature: opts.temperature ?? 0.7,
+    system_len: opts.system.length,
+    user_len: opts.user.length,
+    user_preview: opts.user.slice(0, 100),
+  })
   // --- Mistral (primary) ---
   if (mistralAvailable) {
-    const result = await mistralChat<T>({
-      system: opts.system,
-      messages: [{ role: 'user', content: opts.user }],
-      schema: opts.schema,
-      maxTokens: opts.maxTokens,
-      temperature: opts.temperature,
-    })
+    console.log('[assistant:llm] → using Mistral (primary)')
+    let result: T | null = null
+    try {
+      result = await mistralChat<T>({
+        system: opts.system,
+        messages: [{ role: 'user', content: opts.user }],
+        schema: opts.schema,
+        maxTokens: opts.maxTokens,
+        temperature: opts.temperature,
+      })
+      if (result) {
+        console.log('[assistant:llm] ✓ Mistral returned:', JSON.stringify(result).slice(0, 300))
+      } else {
+        console.warn('[assistant:llm] ⚠ Mistral returned null — falling through to Claude')
+      }
+    } catch (e: any) {
+      console.error('[assistant:llm] ✗ Mistral error in generateStructured:', { message: e?.message, stack: e?.stack?.split('\n').slice(0, 3) })
+    }
     if (result) return result
   }
 
   // --- Claude (fallback) ---
   if (hasClaude()) {
-    return claudeJson<T>({
-      model: MODELS.chat,
-      system: opts.system,
-      user: opts.user,
-      schema: opts.schema ?? { type: 'object' },
-      maxTokens: opts.maxTokens,
-      temperature: opts.temperature,
-    })
+    console.log('[assistant:llm] → using Claude (fallback)')
+    try {
+      const result = await claudeJson<T>({
+        model: MODELS.chat,
+        system: opts.system,
+        user: opts.user,
+        schema: opts.schema ?? { type: 'object' },
+        maxTokens: opts.maxTokens,
+        temperature: opts.temperature,
+      })
+      console.log('[assistant:llm] ✓ Claude returned:', JSON.stringify(result).slice(0, 300))
+      return result
+    } catch (e: any) {
+      console.error('[assistant:llm] ✗ Claude error in generateStructured:', { message: e?.message, stack: e?.stack?.split('\n').slice(0, 3) })
+    }
   }
 
+  console.error('[assistant:llm] ✗ generateStructured: NO PROVIDER AVAILABLE')
   return null
 }
 
@@ -101,31 +129,58 @@ export async function generateTurn<T>(opts: {
   schema?: unknown
   maxTokens?: number
 }): Promise<T | null> {
+  console.log('[assistant:llm] generateTurn START', {
+    provider: getProvider(),
+    model: model(),
+    maxTokens: opts.maxTokens ?? 1000,
+    msg_count: opts.messages.length,
+    msg_preview: opts.messages[0]?.content?.slice(0, 100),
+  })
+
   if (mistralAvailable) {
-    return mistralChat<T>({
-      system: opts.system,
-      messages: opts.messages,
-      schema: opts.schema,
-      maxTokens: opts.maxTokens,
-    })
+    console.log('[assistant:llm] → using Mistral (primary, multi-turn)')
+    try {
+      const result = await mistralChat<T>({
+        system: opts.system,
+        messages: opts.messages,
+        schema: opts.schema,
+        maxTokens: opts.maxTokens,
+      })
+      if (result) {
+        console.log('[assistant:llm] ✓ Mistral generateTurn returned:', JSON.stringify(result).slice(0, 300))
+      } else {
+        console.warn('[assistant:llm] ⚠ Mistral generateTurn returned null')
+      }
+      return result
+    } catch (e: any) {
+      console.error('[assistant:llm] ✗ Mistral error in generateTurn:', { message: e?.message, stack: e?.stack?.split('\n').slice(0, 3) })
+    }
   }
 
   if (hasClaude()) {
-    // Claude doesn't expose a generic multi-turn JSON helper, so we fold the
-    // conversation into the user prompt and use claudeJson.
-    const history = opts.messages
-      .map((m) => `[${m.role}] ${m.content}`)
-      .join('\n\n')
-    return claudeJson<T>({
-      model: MODELS.chat,
-      system: opts.system,
-      user: history,
-      schema: opts.schema ?? { type: 'object' },
-      maxTokens: opts.maxTokens,
-      thinking: false,
-    })
+    console.log('[assistant:llm] → using Claude (fallback, multi-turn)')
+    try {
+      // Claude doesn't expose a generic multi-turn JSON helper, so we fold the
+      // conversation into the user prompt and use claudeJson.
+      const history = opts.messages
+        .map((m) => `[${m.role}] ${m.content}`)
+        .join('\n\n')
+      const result = await claudeJson<T>({
+        model: MODELS.chat,
+        system: opts.system,
+        user: history,
+        schema: opts.schema ?? { type: 'object' },
+        maxTokens: opts.maxTokens,
+        thinking: false,
+      })
+      console.log('[assistant:llm] ✓ Claude generateTurn returned:', JSON.stringify(result).slice(0, 300))
+      return result
+    } catch (e: any) {
+      console.error('[assistant:llm] ✗ Claude error in generateTurn:', { message: e?.message, stack: e?.stack?.split('\n').slice(0, 3) })
+    }
   }
 
+  console.error('[assistant:llm] ✗ generateTurn: NO PROVIDER AVAILABLE')
   return null
 }
 
@@ -138,18 +193,42 @@ export async function generateText(opts: {
   user: string
   maxTokens?: number
 }): Promise<string | null> {
+  const provider = getProvider()
+  console.log('[assistant:llm] generateText START', {
+    provider,
+    model: model(),
+    maxTokens: opts.maxTokens ?? 1000,
+    user_len: opts.user.length,
+    user_preview: opts.user.slice(0, 100),
+  })
+
   if (mistralAvailable) {
-    return mistralText({ system: opts.system, user: opts.user, maxTokens: opts.maxTokens })
+    console.log('[assistant:llm] → using Mistral (primary, text)')
+    try {
+      const result = await mistralText({ system: opts.system, user: opts.user, maxTokens: opts.maxTokens })
+      console.log('[assistant:llm] ✓ Mistral generateText returned:', result?.slice(0, 200) ?? 'null')
+      return result
+    } catch (e: any) {
+      console.error('[assistant:llm] ✗ Mistral error in generateText:', { message: e?.message, stack: e?.stack?.split('\n').slice(0, 3) })
+    }
   }
 
   if (hasClaude()) {
-    return claudeText({
-      model: MODELS.score,
-      system: opts.system,
-      user: opts.user,
-      maxTokens: opts.maxTokens,
-    })
+    console.log('[assistant:llm] → using Claude (fallback, text)')
+    try {
+      const result = await claudeText({
+        model: MODELS.score,
+        system: opts.system,
+        user: opts.user,
+        maxTokens: opts.maxTokens,
+      })
+      console.log('[assistant:llm] ✓ Claude generateText returned:', result?.slice(0, 200) ?? 'null')
+      return result
+    } catch (e: any) {
+      console.error('[assistant:llm] ✗ Claude error in generateText:', { message: e?.message, stack: e?.stack?.split('\n').slice(0, 3) })
+    }
   }
 
+  console.error('[assistant:llm] ✗ generateText: NO PROVIDER AVAILABLE')
   return null
 }

@@ -16,17 +16,25 @@ const ctxCache = new Map<string, { result: string; expires: number }>()
 
 function cached<T>(key: string, fn: () => Promise<T>, ttl = CACHE_TTL_MS): Promise<T> {
   const cached = ctxCache.get(key)
-  if (cached && cached.expires > Date.now()) return Promise.resolve(cached.result as T)
+  if (cached && cached.expires > Date.now()) {
+    console.log('[assistant:context] cache HIT:', key)
+    return Promise.resolve(cached.result as T)
+  }
+  console.log('[assistant:context] cache MISS:', key)
   return fn().then((r) => {
     ctxCache.set(key, { result: r as unknown as string, expires: Date.now() + ttl })
+    console.log('[assistant:context] cache SET:', key, { result_len: (r as unknown as string).length, expires_in_ms: ttl })
     return r
   })
 }
 
 /** Student context: résumé evidence + real scored matches. */
 export async function getStudentContext(userId: string): Promise<string> {
+  console.log('[assistant:context] getStudentContext START:', userId)
   return cached(`ctx:student:${userId}`, async () => {
+    try {
     const row = await studentRow(userId)
+    console.log('[assistant:context] studentRow result:', { found: !!row, userId })
     if (!row) return `The current user is a new student who hasn't completed onboarding yet.`
 
     const rp = await ensureResumeProfile(row)
@@ -57,16 +65,25 @@ export async function getStudentContext(userId: string): Promise<string> {
     }
 
     const mc = await matchContext(userId)
+    console.log('[assistant:context] matchContext result:', { found: !!mc })
     if (mc) ctx += `\n${mc}\n`
 
+    console.log('[assistant:context] getStudentContext complete:', { ctx_len: ctx.length })
     return ctx
+    } catch (e: any) {
+      console.error('[assistant:context] ✗ error in getStudentContext:', e?.message)
+      return `Student context fetch error for user ${userId}.`
+    }
   })
 }
 
 /** Employer context: their postings + recent application pipeline. */
 export async function getEmployerContext(userId: string): Promise<string> {
+  console.log('[assistant:context] getEmployerContext START:', userId)
   return cached(`ctx:employer:${userId}`, async () => {
+    try {
     const row = must(await sb.from('profiles').select('*').eq('id', userId).maybeSingle()) as any
+    console.log('[assistant:context] employer profile fetch:', { found: !!row, userId })
     if (!row) return `The current user is a new employer who hasn't completed onboarding.`
 
     let ctx = `USER PROFILE (employer mode):\n`
@@ -76,6 +93,7 @@ export async function getEmployerContext(userId: string): Promise<string> {
     ctx += `  Bio: ${row.bio ?? '—'}\n`
 
     const { data: jobs } = await sb.from('job_listings').select('*').eq('company_id', userId).order('created_at', { ascending: false })
+    console.log('[assistant:context] employer jobs query:', { count: jobs?.length ?? 0 })
     if (jobs && jobs.length > 0) {
       ctx += `\nYOUR JOB POSTINGS:\n`
       for (const j2 of jobs as any[]) {
@@ -87,7 +105,14 @@ export async function getEmployerContext(userId: string): Promise<string> {
       ctx += `\nNo job postings yet. Offer to help them create one.\n`
     }
 
-     const { data: apps } = await sb.from('applications').select('id, job_id, status, created_at, match_score, student_id, full_name').eq('company_id', userId).order('created_at', { ascending: false }).limit(20)
+      // applications → job_listings → profiles (company_id). The applications
+      // table has no company_id column, so we resolve the employer's jobs first.
+      const jobIds = (jobs ?? []).map((j: any) => j.id)
+      console.log('[assistant:context] employer job IDs for applications query:', jobIds.length)
+      const { data: apps } = jobIds.length
+        ? await sb.from('applications').select('id, job_id, status, created_at, match_score, student_id, full_name').in('job_id', jobIds).order('created_at', { ascending: false }).limit(20)
+        : { data: [] }
+      console.log('[assistant:context] employer applications query:', { count: apps?.length ?? 0 })
      if (apps && apps.length > 0) {
        ctx += `\nRECENT APPLICATIONS:\n`
        for (const a of apps as any[]) {
@@ -110,17 +135,25 @@ export async function getEmployerContext(userId: string): Promise<string> {
          if (p?.evidence_summary) {
            ctx += `  • ${p.full_name || a.full_name}: ${(p.evidence_summary as string).slice(0, 200)}…\n`
          }
-       }
-     }
+      }
+    }
 
+    console.log('[assistant:context] getEmployerContext complete:', { ctx_len: ctx.length })
     return ctx
+    } catch (e: any) {
+      console.error('[assistant:context] ✗ error in getEmployerContext:', e?.message)
+      return `Employer context fetch error for user ${userId}.`
+    }
   })
 }
 
 /** University context: programme-wide placement stats. */
 export async function getUniversityContext(userId: string): Promise<string> {
+  console.log('[assistant:context] getUniversityContext START:', userId)
   return cached(`ctx:university:${userId}`, async () => {
+    try {
     const row = must(await sb.from('profiles').select('*').eq('id', userId).maybeSingle()) as any
+    console.log('[assistant:context] university profile fetch:', { found: !!row, userId })
     let ctx = `USER PROFILE (university mode):\n`
     ctx += `  School: ${row.company_name ?? row.full_name ?? '—'}\n`
     ctx += `  Student domains: ${(j.parse<string[]>(row.student_domains, [])).join(', ') || ' — '}\n`
@@ -133,6 +166,11 @@ export async function getUniversityContext(userId: string): Promise<string> {
     const placed = (outcomes ?? []).filter((o: any) => o.status === 'likely_hired').length
     ctx += `Confirmed placements: ${placed}\n`
 
+    console.log('[assistant:context] getUniversityContext complete:', { students: count, placements: placed, ctx_len: ctx.length })
     return ctx
+    } catch (e: any) {
+      console.error('[assistant:context] ✗ error in getUniversityContext:', e?.message)
+      return `University context fetch error for user ${userId}.`
+    }
   })
 }
