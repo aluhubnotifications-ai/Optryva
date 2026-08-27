@@ -343,7 +343,7 @@ function ActionPreview({ action }: { action: AssistantAction }) {
 
   return (
     <div className="flex items-center gap-1.5 rounded-lg bg-background/50 px-2 py-1.5 text-xs">
-      <span className="font-medium text-muted-foreground">{label}</span>
+      <span className="font-medium text-muted-foreground">{label} </span>
       <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground/80">{action.target}</span>
       {action.type === 'navigate' && <ExternalLink className="ml-auto h-3 w-3 text-muted-foreground" />}
     </div>

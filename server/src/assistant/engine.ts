@@ -52,7 +52,6 @@ function buildSystemPrompt(mode: AssistantMode, context: string, pageContext?: s
   prompt += `- inject_data target='profile_skills' data={skills: [...], mode: 'add'|'replace'}\n`
   prompt += `- inject_data target='job_editor' data={job: {...}}\n`
   prompt += `- inject_data target='resume' data={...}\n`
-  prompt += `- create_job target='job_listings' data={title, description, location, tags, ...} — employer only: creates a job draft in the DB\n`
   prompt += `- navigate target='/app/jobs' (student job browse) or '/app/listings' (employer job postings)\n`
   prompt += `- navigate target='/app/listings/new' (employer: create job) or '/app/applications' (student: my apps)\n`
   prompt += `- navigate target='/app/insights' (employer: shortlist) or '/app/profile' (edit profile)\n`
@@ -177,8 +176,15 @@ async function fallbackIntentHandler(
     }
   }
 
-  // Employer/University: "what jobs do I have", "my postings"
+  // Employer/University: handle create requests first, then listing queries
   if (mode === 'employer' || mode === 'university') {
+    if (lower.includes('create') || lower.includes('new') || lower.includes('draft')) {
+      return {
+        text: "Opening the job editor. Here's what to fill in:\n1. Job title (e.g. Intern Management)\n2. Description — paste the full role description\n3. Location, listing type, tags, pay\n4. Click Save to create the draft\n5. Then add an assignment for assessments if needed",
+        actions: [{ type: 'navigate', target: '/app/listings/new', data: {} }],
+      }
+    }
+
     if (lower.includes('job') || lower.includes('posting') || lower.includes('internship')) {
       const { data: jobs } = await sb
         .from('job_listings')
@@ -188,7 +194,7 @@ async function fallbackIntentHandler(
         .limit(20)
 
       if (!jobs || jobs.length === 0) {
-        return { text: "You don't have any job postings yet. Would you like me to help you create one?", actions: [{ type: 'navigate', target: '/app/listings/new', data: {} }] }
+        return { text: "You don't have any job postings yet.", actions: [{ type: 'navigate', target: '/app/listings/new', data: {} }] }
       }
 
       const summary = jobs.slice(0, 8).map((j: any) => `  ${j.title} (${j.status}, ${j.location ?? 'remote-ok'})`).join('\n')
@@ -205,10 +211,6 @@ async function fallbackIntentHandler(
       }, {})
       const breakdown = Object.entries(byStatus).map(([s, c]) => `${s}: ${c}`).join(', ')
       return { text: `You have ${total} application(s): ${breakdown || 'no breakdown available'}`, actions: [{ type: 'navigate', target: '/app/insights', data: {} }] }
-    }
-
-    if (lower.includes('create') || lower.includes('new') || lower.includes('draft')) {
-      return { text: "Let's create a new job posting.", actions: [{ type: 'navigate', target: '/app/listings/new', data: {} }] }
     }
   }
 
