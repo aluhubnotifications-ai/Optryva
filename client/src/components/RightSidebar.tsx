@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Sparkles,
@@ -89,6 +89,19 @@ export function RightSidebar({ mode }: RightSidebarProps) {
   const { toast } = useToast()
   const navigate = useTransitionNavigate()
   const currentUser = useCurrentUser()
+
+  // Extract job_id / candidate_id from the current URL so the assistant knows
+  // what the user is looking at even when they open the chat directly.
+  const urlContext = useMemo(() => {
+    if (typeof window === 'undefined') return null
+    const path = window.location.pathname
+    const jobMatch = path.match(/^\/app\/listings\/([^/]+)/)
+    const appMatch = path.match(/^\/app\/applicants\/([^/]+)/)
+    const ctx: Record<string, unknown> = {}
+    if (jobMatch) ctx.job_id = jobMatch[1]
+    if (appMatch) ctx.application_id = appMatch[1]
+    return Object.keys(ctx).length ? ctx : null
+  }, [])
 
   useEffect(() => {
     if (typeof localStorage !== 'undefined') {
@@ -395,7 +408,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
                     onSessionId={setSessionId}
                     initialMessages={messages}
                     pendingMessage={pendingMessage}
-                    pendingContext={pendingContext}
+                    pendingContext={pendingContext ?? urlContext}
                     onPendingConsumed={() => {
                       setPendingMessage(null)
                       setPendingContext(null)

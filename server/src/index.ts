@@ -26,6 +26,11 @@ try {
 // (fresh pool per invocation) and if Supabase was unreachable at boot. Only cold
 // pings are logged so the warm ones stay silent.
 if (supabaseReady) {
+  // Immediate warmup: a real data SELECT touches the same PostgREST path login
+  // uses, so the first request after boot (or after a tsx-watch restart) doesn't
+  // pay the ~5s cold-reconnect penalty. Fire it at boot (non-blocking); the
+  // interval below keeps the pool hot afterwards.
+  void sb.from('profiles').select('id').limit(1).maybeSingle()
   setInterval(async () => {
     const t = Date.now()
     try { await sb.from('profiles').select('id').limit(1).maybeSingle() }
