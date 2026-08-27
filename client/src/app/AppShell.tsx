@@ -415,11 +415,11 @@ function Topbar() {
         </Button>
       </form>
 
-      {/* Right-side icon group. When the AI assistant sidebar is open, a right
-          margin equal to the sidebar width shifts these icons left so the profile
-          picture & notifications peek out from behind the sidebar instead of
-          being fully covered — but only when the assistant panel is unfolded. */}
-      <div className={cn('flex items-center gap-1.5', sidebarOpen && 'lg:mr-[440px]')}>
+      {/* Right-side icon group. When the AI assistant sidebar is open, right
+          margin equal to the collapsed icon-strip width (40px) nudges these icons
+          left just enough to peek out from behind the sidebar — sitting next to
+          the folder/edge instead of being fully covered, but not too far left. */}
+      <div className={cn('flex items-center gap-1.5', sidebarOpen && 'lg:mr-[40px]')}>
         <CountrySelect />
 
         <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
