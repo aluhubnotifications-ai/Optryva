@@ -118,6 +118,7 @@ async function getOrRefreshSummary(studentId: string, jobKey: string, jobDescrip
     .eq('student_id', studentId)
     .order('created_at', { ascending: false })).data as CandidateEvidenceItem[] | null
   const evHash = evidenceSignature(items ?? [])
+  console.log('[evidence:getOrRefreshSummary]', { studentId, jobKey, itemsCount: items?.length ?? 0, evHash: evHash.slice(0, 8) })
 
   // Check DB for a fresh (non-stale) summary.
   const existing = (await sb.from('candidate_summaries')
@@ -135,15 +136,16 @@ async function getOrRefreshSummary(studentId: string, jobKey: string, jobDescrip
   const summary = jobDescription
     ? await extractionClient.candidateSummary(items ?? [], jobDescription)
     : await extractionClient.candidateSummary(items ?? [])
-  let out: string
-  if (summary) {
-    out = summary
-  } else if (evCount === 0) {
-    out = 'No evidence submitted yet.'
-  } else {
-    out = 'AI summary is temporarily unavailable for this candidate. Please try again in a moment, or ask a question below to dive into the evidence directly.'
-  }
-  await sb.from('candidate_summaries').upsert({
+   let out: string
+   if (summary) {
+     out = summary
+   } else if (evCount === 0) {
+     out = 'No evidence submitted yet.'
+   } else {
+     out = 'AI summary is temporarily unavailable for this candidate. Please try again in a moment, or ask a question below to dive into the evidence directly.'
+   }
+   console.log('[evidence:getOrRefreshSummary] result:', { hasSummary: !!summary, out: out.slice(0, 50) })
+   await sb.from('candidate_summaries').upsert({
     student_id: studentId,
     job_key: jobKey,
     summary: out,
@@ -205,6 +207,7 @@ evidence.get('/student/:studentId', async (req, res) => {
 evidence.post('/student/:studentId/summary', async (req, res) => {
   const studentId = req.params.studentId
   const jobDescription = typeof req.body?.jobDescription === 'string' ? req.body.jobDescription.trim() : ''
+  console.log('[route:summary]', { studentId, hasJobDesc: !!jobDescription })
 
   if (jobDescription) {
     // Job-scoped: persisted in candidate_summaries with a cache key for hot paths.

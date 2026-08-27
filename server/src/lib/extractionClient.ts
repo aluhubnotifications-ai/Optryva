@@ -57,7 +57,9 @@ async function call<T>(path: string, body: unknown): Promise<T | null> {
     console.error(`[extractionClient] ${path} -> ${r.status}`)
     return null
   }
-  return (await r.json()) as T
+  const respBody = await r.json() as T
+  console.log(`[extractionClient] ${path} -> ok, keys: ${Object.keys(respBody as Record<string, unknown>).join(',')}`)
+  return respBody
 }
 
 export const extractionClient = {

@@ -419,7 +419,7 @@ function Topbar() {
           icons 10px left so the profile picture peeks out from behind the sidebar
           instead of being fully covered — just a small shift, back near its
           original position. */}
-      <div className={cn('flex items-center gap-1.5', sidebarOpen && 'lg:mr-[10px]')}>
+      <div className={cn('flex items-center gap-1.5', sidebarOpen && 'lg:mr-[3px]')}>
         <CountrySelect />
 
         <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
