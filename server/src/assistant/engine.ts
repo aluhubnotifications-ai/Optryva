@@ -222,14 +222,6 @@ async function fallbackIntentHandler(
       }
     }
 
-    if (lower.includes('assessment') || lower.includes('assignment') || lower.includes('test')) {
-      console.log('[assistant:engine:fallback] ✓ matched employer assessment intent')
-      return {
-        text: "To set up an assessment:\n1. Open an existing job posting in the editor (/app/listings)\n2. Click the Assessment step/tab\n3. Add a practical task with a prompt, time limit, and rubric\n4. Or click 'Generate with AI' to auto-create questions from your job description\n5. Save and preview as a candidate before posting",
-        actions: [{ type: 'navigate', target: '/app/listings', data: {} }],
-      }
-    }
-
     // Check shortlist BEFORE "job" — "shortlist for this job" contains "job"
     if (lower.includes('shortlist') || lower.includes('short list')) {
       console.log('[assistant:engine:fallback] ✓ matched employer shortlist intent')
@@ -291,7 +283,7 @@ async function fallbackIntentHandler(
       }
     }
 
-    if (lower.includes('applicant') || lower.includes('application') || lower.includes('candidate')) {
+    if (lower.includes('applicant') || lower.includes('application') || lower.includes('candidate') || (lower.includes('test') && lower.includes('how')) || (lower.includes('test') && /\b(do|did|score|perform)\b/.test(lower))) {
       console.log('[assistant:engine:fallback] ✓ matched employer application intent')
       try {
         // applications → job_listings → profiles (company_id). The applications
@@ -308,7 +300,7 @@ async function fallbackIntentHandler(
             .select('id, job_id, student_id, full_name, status, match_score, assignment_score, assignment_status, created_at')
             .in('job_id', jobIds)
             .order('created_at', { ascending: false })
-            .limit(30)
+            .limit(40)
           apps = r.data ?? null
           if (r.error) console.error('[assistant:engine:fallback] ✗ Supabase error querying applications:', r.error.message)
           console.log('[assistant:engine:fallback] applications fetched:', { count: apps?.length ?? 0 })
@@ -354,6 +346,14 @@ async function fallbackIntentHandler(
           userId,
         })
         return null
+      }
+    }
+
+    if (lower.includes('assessment') || lower.includes('assignment')) {
+      console.log('[assistant:engine:fallback] ✓ matched employer assessment setup intent')
+      return {
+        text: "To set up an assessment:\n1. Open an existing job posting in the editor (/app/listings)\n2. Click the Assessment step/tab\n3. Add a practical task with a prompt, time limit, and rubric\n4. Or click 'Generate with AI' to auto-create questions from your job description\n5. Save and preview as a candidate before posting",
+        actions: [{ type: 'navigate', target: '/app/listings', data: {} }],
       }
     }
   }
