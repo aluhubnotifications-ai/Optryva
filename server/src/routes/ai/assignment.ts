@@ -2,6 +2,7 @@ import { Router } from '@/lib/http'
 import { requireAuth } from '@/lib/auth'
 import { claudeJsonBlocks, parseDataUrl, extractDocxText, hasClaude, MODELS } from '@/lib/claude'
 import { mistralJsonBlocks, hasMistral, MISTRAL_MODEL, MISTRAL_VISION_MODEL, extractPdfText } from '@/lib/mistral'
+import { groqChatJson, hasGroq, groqModel } from '@/lib/groq'
 
 export function registerAssignment(r: Router) {
   /* ---------- §8.x AI assignment studio ----------
@@ -40,6 +41,22 @@ export function registerAssignment(r: Router) {
         })
         if (result) return res.json(normalize(result))
         return res.status(503).json({ error: 'ai_unavailable', message: 'Mistral did not return a valid assignment.' })
+      }
+      if (hasGroq()) {
+        console.log('[assistant:assignment] → using Groq for assignment generation')
+        const content = await buildAssignmentContent(job, docs, instruction, existing)
+        const result = await groqChatJson<GeneratedAssignment>({
+          system: ASSIGNMENT_SYSTEM,
+          messages: [{ role: 'user', content: content.map((c) => c.text).filter(Boolean).join('\n\n') }],
+          schema: ASSIGNMENT_SCHEMA,
+          maxTokens: 2000,
+          temperature: 0.4,
+        })
+        if (result) {
+          console.log('[assistant:assignment] ✓ Groq returned valid assignment')
+          return res.json(normalize(result))
+        }
+        console.warn('[assistant:assignment] ⚠ Groq returned null — falling through to Claude')
       }
       if (hasClaude()) {
         const content = await buildAssignmentContent(job, docs, instruction, existing)

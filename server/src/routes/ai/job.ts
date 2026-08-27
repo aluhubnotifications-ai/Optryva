@@ -2,6 +2,7 @@ import { Router } from '@/lib/http'
 import { requireAuth } from '@/lib/auth'
 import { claudeJsonBlocks, parseDataUrl, extractDocxText, hasClaude, MODELS } from '@/lib/claude'
 import { mistralJsonBlocks, hasMistral, MISTRAL_MODEL, MISTRAL_VISION_MODEL, extractPdfText } from '@/lib/mistral'
+import { groqChatJson, hasGroq, groqModel } from '@/lib/groq'
 import { sourceToMistralPart, sourceToBlock } from './assignment'
 
 // The same fixed vocabularies the client uses for the category / listing-type
@@ -41,6 +42,22 @@ export function registerJob(r: Router) {
         })
         if (result) return res.json(normalize(result))
         return res.status(503).json({ error: 'ai_unavailable', message: 'Mistral did not return a valid job draft.' })
+      }
+      if (hasGroq()) {
+        console.log('[routes:ai:job] → using Groq for job generation')
+        const content = await buildClaudeContent(brief, docs, instruction, existing)
+        const result = await groqChatJson<GeneratedJob>({
+          system: JOB_SYSTEM,
+          messages: [{ role: 'user', content: content.map((c) => c.text).filter(Boolean).join('\n\n') }],
+          schema: JOB_SCHEMA,
+          maxTokens: 2000,
+          temperature: 0.3,
+        })
+        if (result) {
+          console.log('[routes:ai:job] ✓ Groq returned valid job draft')
+          return res.json(normalize(result))
+        }
+        console.warn('[routes:ai:job] ⚠ Groq returned null — falling through to Claude')
       }
       if (hasClaude()) {
         const content = await buildClaudeContent(brief, docs, instruction, existing)
