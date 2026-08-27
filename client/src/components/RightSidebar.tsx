@@ -8,37 +8,82 @@ import {
   ChevronLeft,
   MessageSquare,
   X,
+  Clock,
+  Plus,
+  Trash2,
+  Briefcase,
+  ClipboardCheck,
+  Users,
+  BarChart3,
+  Check,
+  User,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { useAiActivity } from '@/lib/aiActivity'
 import { useCurrentUser } from '@/lib/store'
 import { useToast } from '@/components/ui/toast'
 import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
-import { AssistantChat } from '@/components/AssistantChat'
+import { AssistantChat, type ChatMessage } from '@/components/AssistantChat'
 import type { AssistantAction } from '@/lib/api'
 
-type TabKey = 'assistant' | 'activity' | 'research'
+type AssistantView = 'chat' | 'history'
 
 interface RightSidebarProps {
   mode: 'student' | 'employer' | 'university'
 }
 
-const TABS: Record<TabKey, { label: string; icon: React.ComponentType<any> }> = {
-  assistant: { label: 'Assistant', icon: MessageSquare },
-  activity: { label: 'Activity', icon: Activity },
-  research: { label: 'Research', icon: Search },
+interface TabDef {
+  key: string
+  label: string
+  icon: React.ComponentType<any>
 }
 
+const STUDENT_TABS: TabDef[] = [
+  { key: 'assistant', label: 'Assistant', icon: MessageSquare },
+  { key: 'activity', label: 'Activity', icon: Activity },
+  { key: 'research', label: 'Research', icon: Search },
+]
+
+const EMPLOYER_TABS: TabDef[] = [
+  { key: 'assistant', label: 'Assistant', icon: MessageSquare },
+  { key: 'assessments', label: 'Assessments', icon: ClipboardCheck },
+  { key: 'candidates', label: 'Candidates', icon: Users },
+  { key: 'decisions', label: 'Decisions', icon: BarChart3 },
+]
+
 const STORAGE_KEY = 'optryva-sidebar-open'
+const SESSION_KEY = 'optryva-assistant-session'
+const TAB_KEY = 'optryva-sidebar-tab'
+
+interface HistorySession {
+  id: string
+  mode: string
+  updated_at: string
+  last_message?: string
+}
 
 export function RightSidebar({ mode }: RightSidebarProps) {
+  const tabs = mode === 'employer' ? EMPLOYER_TABS : STUDENT_TABS
+
   const [open, setOpen] = useState(() => {
     if (typeof localStorage !== 'undefined') {
       return localStorage.getItem(STORAGE_KEY) !== 'closed'
     }
     return true
   })
-  const [activeTab, setActiveTab] = useState<TabKey>('assistant')
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem(TAB_KEY)
+      if (saved && tabs.find((t) => t.key === saved)) return saved
+    }
+    return 'assistant'
+  })
+  const [assistantView, setAssistantView] = useState<AssistantView>('chat')
+  const [sessionId, setSessionId] = useState<string | undefined>(() => {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem(SESSION_KEY) ?? undefined : undefined
+  })
+  const [sessions, setSessions] = useState<HistorySession[]>([])
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const { toast } = useToast()
   const navigate = useTransitionNavigate()
   const currentUser = useCurrentUser()
@@ -46,8 +91,58 @@ export function RightSidebar({ mode }: RightSidebarProps) {
   useEffect(() => {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(STORAGE_KEY, open ? 'open' : 'closed')
+      localStorage.setItem(TAB_KEY, activeTab)
+      if (sessionId) localStorage.setItem(SESSION_KEY, sessionId)
     }
-  }, [open])
+  }, [open, activeTab, sessionId])
+
+  const loadSessions = useCallback(async () => {
+    if (!currentUser?.id) return
+    try {
+      const { assistantApi } = await import('@/lib/api')
+      const list = await assistantApi.sessions()
+      const enriched = await Promise.all(
+        list.map(async (s: any) => {
+          if (!s.id || !s.updated_at) return s
+          try {
+            const { messages: msgs } = await assistantApi.messages(s.id)
+            const last = msgs[msgs.length - 1]
+            return { ...s, last_message: last?.content?.slice(0, 80) || '' }
+          } catch {
+            return s
+          }
+        }),
+      )
+      setSessions(enriched.filter((s) => s.id))
+    } catch {
+      /* ignore */
+    }
+  }, [currentUser?.id])
+
+  const loadMessages = useCallback(async (sid: string) => {
+    try {
+      const { assistantApi } = await import('@/lib/api')
+      const { messages: msgs } = await assistantApi.messages(sid)
+      setMessages(
+        msgs.map((m: any) => ({
+          id: m.id || `msg_${Math.random().toString(36).slice(2)}`,
+          role: m.role === 'user' ? 'user' : 'assistant',
+          content: String(m.content || ''),
+          actions: m.actions ?? [],
+          isStreaming: false,
+        })),
+      )
+    } catch {
+      setMessages([])
+    }
+  }, [])
+
+  useEffect(() => {
+    if (open && currentUser?.id) {
+      loadSessions()
+      if (sessionId) loadMessages(sessionId)
+    }
+  }, [open, currentUser?.id, sessionId, loadSessions, loadMessages])
 
   const handleAction = useCallback(
     async (action: AssistantAction) => {
@@ -66,13 +161,13 @@ export function RightSidebar({ mode }: RightSidebarProps) {
                 await profilesApi.updateSkills(currentUser.id, skills)
                 toast({ title: 'Skills updated', description: `${skills.length} skill(s) added.`, tone: 'success' })
               } catch {
-                toast({ title: 'Update failed', description: 'Could not update skills.', tone: 'error' })
+                toast({ title: 'Update failed', tone: 'error' })
               }
             }
           }
           if (action.target === 'job_editor') {
             window.dispatchEvent(new CustomEvent('optryva:inject_job', { detail }))
-            toast({ title: 'Job data injected', description: 'Job Editor form has been auto-filled.', tone: 'success' })
+            toast({ title: 'Job data injected', description: 'Job Editor auto-filled.', tone: 'success' })
           }
           break
         case 'create_job':
@@ -89,7 +184,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
               await profilesApi.update(currentUser.id, patch as any)
               toast({ title: 'Profile updated', tone: 'success' })
             } catch {
-              toast({ title: 'Update failed', description: 'Could not update profile.', tone: 'error' })
+              toast({ title: 'Update failed', tone: 'error' })
             }
           }
           break
@@ -126,11 +221,39 @@ export function RightSidebar({ mode }: RightSidebarProps) {
       const created = await jobsApi.create(job)
       toast({ title: 'Job created', description: `${created.title} created as draft.`, tone: 'success' })
       navigate('/app/listings', { replace: true })
-      setActiveTab('activity')
+      setActiveTab(mode === 'employer' ? 'candidates' : 'activity')
     } catch (e: any) {
       toast({ title: 'Job creation failed', description: e?.message ?? 'Try the editor instead.', tone: 'error' })
     }
   }
+
+  const startNewConversation = () => {
+    setSessionId(undefined)
+    localStorage.removeItem(SESSION_KEY)
+    setMessages([])
+    setAssistantView('chat')
+  }
+
+  const switchToSession = (sid: string) => {
+    setSessionId(sid)
+    loadMessages(sid)
+    setAssistantView('chat')
+  }
+
+  const deleteSession = async (sid: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      const { assistantApi } = await import('@/lib/api')
+      await assistantApi.deleteSession(sid)
+      setSessions((prev) => prev.filter((x) => x.id !== sid))
+      if (sessionId === sid) startNewConversation()
+      toast({ title: 'Session deleted', tone: 'info' })
+    } catch {
+      toast({ title: 'Could not delete', tone: 'error' })
+    }
+  }
+
+  const isAssistantTab = activeTab === 'assistant'
 
   return (
     <div className="fixed inset-y-0 right-0 z-40 flex">
@@ -138,7 +261,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
       {open && (
         <div
           onClick={() => setOpen(false)}
-          className="flex w-1.5 cursor-pointer items-center justify-center border-l border-border hover:bg-muted"
+          className="flex w-1.5 flex-shrink-0 cursor-pointer items-center justify-center border-l border-border hover:bg-muted"
           title="Collapse sidebar"
         >
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
@@ -153,68 +276,128 @@ export function RightSidebar({ mode }: RightSidebarProps) {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.2 }}
-            className="flex w-[380px] flex-col border-l border-border bg-card/30 backdrop-blur-md"
+            className="flex w-[420px] flex-shrink-0 flex-col border-l border-border bg-card/50 shadow-xl"
           >
-            {/* Tab navigation */}
-            <div className="flex items-center justify-between border-b border-border px-3">
-              <div className="flex gap-1">
-                {(Object.keys(TABS) as TabKey[]).map((key) => {
-                  const Icon = TABS[key].icon
-                  const active = activeTab === key
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => setActiveTab(key)}
-                      className={cn(
-                        'flex items-center gap-2 rounded-t-lg px-3 py-2 text-xs font-medium transition-colors',
-                        active
-                          ? 'border-b-2 border-primary text-primary'
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                      )}
-                      aria-label={TABS[key].label}
-                    >
-                      <Icon className="h-3 w-3" />
-                      {TABS[key].label}
-                    </button>
-                  )
-                })}
+            {/* Header with gradient */}
+            <div className="flex items-center justify-between border-b border-border bg-gradient-to-r from-primary/10 via-accent/5 to-primary/10 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-r from-primary to-accent">
+                  <Sparkles className="h-3 w-3 text-white" />
+                </div>
+                <span className="font-semibold text-sm">
+                  Optryva AI
+                  <span className="ml-1 text-muted-foreground/60">
+                    {mode === 'employer' ? ' (Employer)' : mode === 'student' ? ' (Student)' : ''}
+                  </span>
+                </span>
               </div>
-              <button
-                onClick={() => setOpen(false)}
-                className="rounded-full p-1 text-muted-foreground hover:bg-muted"
-                aria-label="Close sidebar"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                {isAssistantTab && (
+                  <button
+                    onClick={() => setAssistantView(assistantView === 'chat' ? 'history' : 'chat')}
+                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    title={assistantView === 'chat' ? 'View history' : 'Back to chat'}
+                  >
+                    {assistantView === 'chat' ? <Clock className="h-4 w-4" /> : <MessageSquare className="h-4 w-4" />}
+                  </button>
+                )}
+                <button
+                  onClick={() => setOpen(false)}
+                  className="rounded-full p-1 text-muted-foreground hover:bg-muted"
+                  aria-label="Close sidebar"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Tab navigation */}
+            <div className="flex border-b border-border bg-muted/30 px-3">
+              {tabs.map((tab) => {
+                const Icon = tab.icon
+                const active = activeTab === tab.key
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => {
+                      setActiveTab(tab.key)
+                      if (tab.key === 'assistant') setAssistantView('chat')
+                    }}
+                    className={cn(
+                      'flex flex-1 items-center justify-center gap-1.5 rounded-t-lg py-2.5 text-xs font-medium transition-all',
+                      active
+                        ? 'border-b-2 border-primary text-primary'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {tab.label}
+                  </button>
+                )
+              })}
             </div>
 
             {/* Tab content */}
             <div className="flex-1 overflow-hidden">
               <TabPanel active={activeTab === 'assistant'}>
-                <AssistantChat
-                  mode={mode}
-                  pageContext={undefined}
-                  onAction={handleAction}
-                />
+                {assistantView === 'history' ? (
+                  <HistoryView
+                    sessions={sessions}
+                    onSwitch={switchToSession}
+                    onDelete={deleteSession}
+                    onNew={startNewConversation}
+                    currentSessionId={sessionId}
+                  />
+                ) : (
+                  <AssistantChat
+                    key={sessionId ?? 'new'}
+                    mode={mode}
+                    sessionId={sessionId}
+                    pageContext={typeof window !== 'undefined' ? window.location.pathname : undefined}
+                    onAction={handleAction}
+                    onSessionId={setSessionId}
+                    initialMessages={messages}
+                  />
+                )}
               </TabPanel>
 
-              <TabPanel active={activeTab === 'activity'}>
+              {/* Student tabs */}
+              <TabPanel active={activeTab === 'activity' && mode !== 'employer'}>
                 <div className="h-full overflow-y-auto p-4">
                   <ActivityPanelCompact />
                 </div>
               </TabPanel>
 
-              <TabPanel active={activeTab === 'research'}>
+              <TabPanel active={activeTab === 'research' && mode !== 'employer'}>
                 <div className="h-full overflow-y-auto p-4">
-                  <ResearchPanel mode={mode} />
+                  <StudentResearchPanel />
+                </div>
+              </TabPanel>
+
+              {/* Employer tabs */}
+              <TabPanel active={activeTab === 'assessments' && mode === 'employer'}>
+                <div className="h-full overflow-y-auto p-4">
+                  <EmployerAssessmentsPanel />
+                </div>
+              </TabPanel>
+
+              <TabPanel active={activeTab === 'candidates' && mode === 'employer'}>
+                <div className="h-full overflow-y-auto p-4">
+                  <EmployerCandidatesPanel />
+                </div>
+              </TabPanel>
+
+              <TabPanel active={activeTab === 'decisions' && mode === 'employer'}>
+                <div className="h-full overflow-y-auto p-4">
+                  <EmployerDecisionsPanel />
                 </div>
               </TabPanel>
             </div>
 
-            {/* Mini status bar */}
-            <div className="flex items-center justify-between border-t border-border px-3 py-1.5 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-success" />
+            {/* Status bar */}
+            <div className="flex items-center justify-between border-t border-border px-3 py-2 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-success" />
                 AI ready
               </span>
               <span className="font-mono text-xs text-muted-foreground/60">{mode} mode</span>
@@ -225,19 +408,19 @@ export function RightSidebar({ mode }: RightSidebarProps) {
 
       {/* Collapsed state — icon strip */}
       {!open && (
-        <div className="flex w-12 flex-col items-center gap-2 border-l border-border bg-card/30 py-3">
-          {(Object.keys(TABS) as TabKey[]).map((key) => {
-            const Icon = TABS[key].icon
+        <div className="flex w-12 flex-shrink-0 flex-col items-center gap-2 border-l border-border bg-card/50 py-3 shadow-xl">
+          {tabs.map((tab) => {
+            const Icon = tab.icon
             return (
               <button
-                key={key}
+                key={tab.key}
                 onClick={() => {
                   setOpen(true)
-                  setActiveTab(key)
+                  setActiveTab(tab.key)
                 }}
-                className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-                title={TABS[key].label}
-                aria-label={TABS[key].label}
+                className="rounded-lg p-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                title={tab.label}
+                aria-label={tab.label}
               >
                 <Icon className="h-5 w-5" />
               </button>
@@ -246,7 +429,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
           <div className="mt-2 border-t border-border pt-2">
             <button
               onClick={() => setOpen(true)}
-              className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="rounded-lg p-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"
               title="Expand sidebar"
               aria-label="Expand sidebar"
             >
@@ -261,9 +444,73 @@ export function RightSidebar({ mode }: RightSidebarProps) {
 
 function TabPanel({ active, children }: { active: boolean; children: React.ReactNode }) {
   if (!active) return null
+  return <div className="h-full w-full">{children}</div>
+}
+
+/** Conversation history list. */
+function HistoryView({
+  sessions,
+  onSwitch,
+  onDelete,
+  onNew,
+  currentSessionId,
+}: {
+  sessions: HistorySession[]
+  onSwitch: (sid: string) => void
+  onDelete: (sid: string, e: React.MouseEvent) => void
+  onNew: () => void
+  currentSessionId?: string
+}) {
   return (
-    <div className={cn('h-full', active ? 'block' : 'hidden')}>
-      {children}
+    <div className="flex h-full flex-col p-3">
+      <div className="flex items-center justify-between border-b border-border pb-2 mb-3">
+        <h3 className="text-xs font-semibold text-muted-foreground">Recent conversations</h3>
+        <button
+          onClick={onNew}
+          className="flex items-center gap-1 rounded-lg bg-primary/10 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/20"
+        >
+          <Plus className="h-3 w-3" />
+          New
+        </button>
+      </div>
+      <div className="flex-1 space-y-1 overflow-y-auto">
+        {sessions.length === 0 ? (
+          <div className="py-8 text-center text-muted-foreground">
+            <MessageSquare className="mx-auto h-8 w-8 opacity-30 mb-2" />
+            <p className="text-sm">No conversation history yet.</p>
+            <p className="text-xs mt-1">Start chatting and your conversations will be saved here.</p>
+          </div>
+        ) : (
+          sessions.map((s) => (
+            <div
+              key={s.id}
+              onClick={() => onSwitch(s.id)}
+              className={cn(
+                'group cursor-pointer rounded-lg border border-border/20 px-3 py-2 text-sm transition-colors hover:bg-muted',
+                s.id === currentSessionId && 'bg-primary/5 border-primary/30',
+              )}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">
+                    {s.last_message || 'New conversation'}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground mt-0.5">
+                    {formatDate(s.updated_at)} · {s.mode}
+                  </p>
+                </div>
+                <button
+                  onClick={(e) => onDelete(s.id, e)}
+                  className="rounded p-0.5 opacity-0 text-muted-foreground hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                  title="Delete"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   )
 }
@@ -271,29 +518,31 @@ function TabPanel({ active, children }: { active: boolean; children: React.React
 /** Compact AI activity panel for the sidebar. */
 function ActivityPanelCompact() {
   const { tasks, clear } = useAiActivity()
-  const running = tasks.filter((t) => t.state === 'running')
 
   if (tasks.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-2 py-8 text-center">
-        <Activity className="h-6 w-6 text-muted-foreground/40" />
-        <p className="text-sm text-muted-foreground">No AI activity yet. Everything will show up here as the assistant works.</p>
+      <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+        <Activity className="h-8 w-8 text-muted-foreground/30" />
+        <div>
+          <p className="text-sm font-medium">No AI activity yet</p>
+          <p className="text-xs text-muted-foreground mt-1 max-w-[320px]">
+            Matching, company research, and the career compass will show up here as they work.
+          </p>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between border-b border-border pb-2">
         <h3 className="text-xs font-semibold text-muted-foreground">Recent activity</h3>
-        {tasks.length > 0 && (
-          <button
-            onClick={clear}
-            className="text-xs text-muted-foreground hover:text-foreground"
-          >
-            Clear
-          </button>
-        )}
+        <button
+          onClick={clear}
+          className="text-xs text-muted-foreground hover:text-foreground"
+        >
+          Clear
+        </button>
       </div>
       {tasks.slice(0, 15).map((t) => (
         <ActivityRow key={t.id} task={t} />
@@ -328,22 +577,101 @@ function ActivityRow({ task }: { task: any }) {
   )
 }
 
-/** Compact research panel — quick suggestions + navigate to full research page. */
-function ResearchPanel({ mode }: { mode: string }) {
+/** Research panel for students — quick navigation shortcuts. */
+function StudentResearchPanel() {
+  const navigate = useTransitionNavigate()
   return (
     <div className="space-y-4">
-      <h3 className="text-xs font-semibold text-muted-foreground">AI Research</h3>
-      <p className="text-xs text-muted-foreground">Find internships, research companies, and get career advice.</p>
-      {mode === 'student' && (
+      <h3 className="text-xs font-semibold text-muted-foreground">AI Research & Insights</h3>
+      <>
         <p className="text-xs text-muted-foreground">
-          Visit <span className="font-medium">/app/research</span> for full search + AI-powered opportunity discovery.
+          Use the assistant to find internships, research companies, and get career advice.
         </p>
-      )}
-      {mode !== 'student' && (
+        <div className="space-y-2">
+          <QuickLink label="Browse opportunities" target="/app/jobs" icon={Search} />
+          <QuickLink label="My applications" target="/app/applications" icon={MessageSquare} />
+          <QuickLink label="Career compass" target="/app/compass" icon={Sparkles} />
+          <QuickLink label="AI insights" target="/app/insights" icon={Activity} />
+        </div>
+      </>
+    </div>
+  )
+}
+
+function QuickLink({ label, target, icon: Icon }: { label: string; target: string; icon: React.ComponentType<any> }) {
+  const navigate = useTransitionNavigate()
+  return (
+    <button
+      onClick={() => navigate(target)}
+      className="flex w-full items-center gap-2 rounded-lg border border-border/20 bg-background/50 px-3 py-2 text-left text-xs hover:bg-muted transition-colors"
+    >
+      <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+      <span>{label}</span>
+    </button>
+  )
+}
+
+/** Employer Assessments panel — quick links for assessment setup. */
+function EmployerAssessmentsPanel() {
+  const navigate = useTransitionNavigate()
+  return (
+    <div className="space-y-4">
+      <h3 className="text-xs font-semibold text-muted-foreground">Assessments</h3>
+      <p className="text-xs text-muted-foreground">
+        Set up skill assessments for your job postings to evaluate candidates fairly.
+      </p>
+      <div className="space-y-2">
+        <QuickLink label="All postings" target="/app/listings" icon={Briefcase} />
+        <QuickLink label="Create new job" target="/app/listings/new" icon={Plus} />
+        <QuickLink label="Application pipeline" target="/app/insights" icon={BarChart3} />
+      </div>
+      <div className="rounded-lg border border-border/20 bg-background/30 p-3">
         <p className="text-xs text-muted-foreground">
-          Visit <span className="font-medium">/app/insights</span> for your smart shortlist and applicant pipeline.
+          Tip: Ask the assistant to generate an assessment question for a role, or to review
+          a candidate's submission for skill alignment.
         </p>
-      )}
+      </div>
+    </div>
+  )
+}
+
+/** Employer Candidates panel — pipeline overview. */
+function EmployerCandidatesPanel() {
+  const navigate = useTransitionNavigate()
+  return (
+    <div className="space-y-4">
+      <h3 className="text-xs font-semibold text-muted-foreground">Candidate Pipeline</h3>
+      <p className="text-xs text-muted-foreground">
+        Track applicants across your job postings and identify top talent.
+      </p>
+      <div className="space-y-2">
+        <QuickLink label="All job postings" target="/app/listings" icon={Briefcase} />
+        <QuickLink label="Create new job" target="/app/listings/new" icon={Plus} />
+        <QuickLink label="Application analytics" target="/app/insights" icon={BarChart3} />
+      </div>
+    </div>
+  )
+}
+
+/** Employer Decisions panel — hiring decisions overview. */
+function EmployerDecisionsPanel() {
+  const navigate = useTransitionNavigate()
+  return (
+    <div className="space-y-4">
+      <h3 className="text-xs font-semibold text-muted-foreground">Hiring Decisions</h3>
+      <p className="text-xs text-muted-foreground">
+        Review your shortlisted candidates and make hiring decisions.
+      </p>
+      <div className="space-y-2">
+        <QuickLink label="All job postings" target="/app/listings" icon={Briefcase} />
+        <QuickLink label="Application analytics" target="/app/insights" icon={BarChart3} />
+      </div>
+      <div className="rounded-lg border border-border/20 bg-background/30 p-3">
+        <p className="text-xs text-muted-foreground">
+          Ask the assistant: "Who are my strongest candidates for [role]?" or
+          "Summarize the top differences between my top 3 shortlisted candidates."
+        </p>
+      </div>
     </div>
   )
 }

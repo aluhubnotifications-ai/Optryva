@@ -1577,6 +1577,11 @@ export const assistantApi = {
     return (await apiFetch(`/assistant/sessions/${sessionId}/messages`)) as { session_id: string; messages: any[] }
   },
 
+  /** Delete a conversation session. */
+  async deleteSession(sessionId: string): Promise<void> {
+    await apiFetch(`/assistant/sessions/${sessionId}`, { method: 'DELETE' })
+  },
+
   /** Demo: Fixed-40 match results for a student (mock data). */
   async fixed40Matches(studentId: string): Promise<any[]> {
     return ((await apiFetch(`/assistant/match/${studentId}`)) as { matches: any[] }).matches

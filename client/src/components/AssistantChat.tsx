@@ -21,6 +21,7 @@ export interface AssistantChatProps {
   pageContext?: string
   onAction?: (action: AssistantAction) => void
   onSessionId?: (id: string) => void
+  initialMessages?: ChatMessage[]
 }
 
 interface ToolEvent {
@@ -31,8 +32,8 @@ interface ToolEvent {
   status: 'calling' | 'done' | 'error'
 }
 
-export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessionId }: AssistantChatProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessionId, initialMessages }: AssistantChatProps) {
+  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages ?? [])
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [currentSessionId, setCurrentSessionId] = useState<string | undefined>(sessionId)
