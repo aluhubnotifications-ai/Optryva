@@ -388,7 +388,6 @@ function Topbar() {
     <header
       className={cn(
         'sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/80 backdrop-blur-md px-4 sm:px-6 lg:px-8',
-        sidebarOpen && 'lg:pe-16',
       )}
     >
       <form
@@ -416,23 +415,26 @@ function Topbar() {
         </Button>
       </form>
 
-      <div className="flex-1" />
+      {/* Right-side icon group. When the AI assistant sidebar is open, a right
+          margin equal to the sidebar width shifts these icons left so the profile
+          picture & notifications peek out from behind the sidebar instead of
+          being fully covered — but only when the assistant panel is unfolded. */}
+      <div className={cn('flex items-center gap-1.5', sidebarOpen && 'lg:mr-[440px]')}>
+        <CountrySelect />
 
-      <CountrySelect />
+        <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
+          {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+        </Button>
 
-      <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
-        {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-      </Button>
+        <NotificationsMenu />
 
-      <NotificationsMenu />
-
-      <div className="relative">
-        <button
-          onClick={() => setMenuOpen((o) => !o)}
-          className="flex items-center gap-2 rounded-full p-0.5 pr-2 hover:bg-muted"
-        >
-          <Avatar name={user?.full_name} src={user?.avatar_url} size={34} />
-        </button>
+        <div className="relative">
+          <button
+            onClick={() => setMenuOpen((o) => !o)}
+            className="flex items-center gap-2 rounded-full p-0.5 pr-2 hover:bg-muted"
+          >
+            <Avatar name={user?.full_name} src={user?.avatar_url} size={34} />
+          </button>
         <AnimatePresence>
           {menuOpen && (
             <>
@@ -478,6 +480,7 @@ function Topbar() {
             </>
           )}
         </AnimatePresence>
+        </div>
       </div>
     </header>
   )
