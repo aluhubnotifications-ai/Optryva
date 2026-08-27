@@ -97,9 +97,10 @@ assistant.delete('/sessions/:id', async (req, res) => {
       .eq('id', sid)
       .eq('user_id', userId)
     if (sessErr) return res.status(400).json({ error: sessErr.message })
-    res.status(204).json({ ok: true })
-  } catch {
-    res.json({ ok: false })
+    res.json({ ok: true })
+  } catch (e: any) {
+    console.error('[assistant:delete] session delete failed:', e)
+    res.status(500).json({ error: e?.message ?? 'delete_failed' })
   }
 })
 
