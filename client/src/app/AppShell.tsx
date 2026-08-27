@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState, lazy } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -36,7 +36,12 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { Logo } from '@/components/Logo'
 import { NotificationsMenu } from '@/components/NotificationsMenu'
 import { GlobalProgress } from '@/components/GlobalProgress'
-import { RightSidebar } from '@/components/RightSidebar'
+// Lazy: the AI assistant panel pulls in the assistant API, activity log, match
+// progress + research streams. It's a side panel, not needed for first paint, so
+// deferring it keeps the initial bundle lean (faster login/dashboard mount).
+const RightSidebar = lazy(() =>
+  import('@/components/RightSidebar').then((m) => ({ default: m.RightSidebar })),
+)
 
 interface NavItem {
   to: string
@@ -154,8 +159,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Right sidebar — integrated AI assistant, activity panel, and research.
-          Replaces the old floating AssistantWidget and AiActivityPanel. */}
-      <RightSidebar mode={isCompany ? 'employer' : 'student'} />
+          Replaces the old floating AssistantWidget and AiActivityPanel. Lazy:
+          it streams in after first paint so it never blocks the dashboard. */}
+      <Suspense fallback={null}>
+        <RightSidebar mode={isCompany ? 'employer' : 'student'} />
+      </Suspense>
     </div>
   )
 }

@@ -14,13 +14,13 @@ import { claudeText, hasClaude } from '@/lib/claude'
 export const jobs = Router()
 jobs.use(requireAuth)
 
-// Lean column set for list views — full descriptions/arrays are only needed on
-// the single-job detail route. Trimming them keeps the 100+ row list payload
-// small (faster transfer + parse) while cards still have everything they show.
-// `description` and `assignment` are intentionally excluded: they're large and
-// only consumed on the detail/apply routes, which query the full row.
+// Lean column set for list views — the full `assignment` (proctor questions) is
+// only needed on the apply/assessment routes, so it stays excluded to keep the
+// 100+ row list payload small. `description` IS included: the Opportunities list
+// renders the job description (required skills, responsibilities, etc.) on each
+// card, so it must travel with the list.
 const LIST_COLUMNS =
-  'id,company_id,title,type,listing_type,location,country,remote,pay,currency,duration,deadline,tags,status,apply_url,allowed_years,allowed_schools,students_only,posted_by_role,original_company_name,original_company_logo_url,created_at'
+  'id,company_id,title,description,type,listing_type,location,country,remote,pay,currency,duration,deadline,tags,status,apply_url,allowed_years,allowed_schools,students_only,posted_by_role,original_company_name,original_company_logo_url,created_at'
 
 // The responsibilities/benefits/qualifications columns are optional (added by a
 // later migration). Detect their presence so create/update still work before the
