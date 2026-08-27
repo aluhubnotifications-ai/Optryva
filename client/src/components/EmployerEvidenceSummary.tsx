@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Sparkles, ExternalLink, ImageIcon, Loader2 } from 'lucide-react'
 import { evidenceApi } from '@/lib/api'
-import type { JobListing } from '@/types'
+import type { JobListing, EvidenceItem } from '@/types'
 import { Card, CardBody, Badge } from '@/components/ui/primitives'
 
 // Minimal Markdown renderer for the AI summary: handles **bold**, "- " bullets,
@@ -75,7 +75,8 @@ function SummaryMarkdown({ text }: { text: string }) {
  * public profile, where the full evidence gallery lives.
  */
 export function EmployerEvidenceSummary({ studentId, job }: { studentId: string; job?: JobListing | null }) {
-  const [summary, setSummary] = useState<string | null>(null)
+   const [summary, setSummary] = useState<string | null>(null)
+  const [items, setItems] = useState<EvidenceItem[]>([])
   const [count, setCount] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -97,6 +98,7 @@ export function EmployerEvidenceSummary({ studentId, job }: { studentId: string;
         if (!active) return
         setSummary(s.summary)
         setCount(fetchedItems.length)
+        setItems(fetchedItems)
       })
       .catch(() => active && setSummary('Could not load the evidence summary.'))
       .finally(() => active && setLoading(false))
@@ -135,12 +137,20 @@ export function EmployerEvidenceSummary({ studentId, job }: { studentId: string;
           {job
             ? 'This summary is scoped to what matters for the role you\'re hiring for.'
             : 'This summary is generated from the candidate\'s submitted evidence.'}
-          <Link
-            to={`/app/u/${studentId}`}
+          <button
+            onClick={() => {
+              const ctx = items.map((i) => `${i.title}: ${i.ai_summary || i.description || ''}`).join('\n')
+              window.dispatchEvent(new CustomEvent('optryva:open_chat', {
+                detail: {
+                  message: `Candidate ${studentId} applied for "${job?.title ?? 'this role'}". Their evidence:\n${ctx}\n\nCritique this candidate's fit for the role with specific proof from their evidence.`,
+                  candidate_id: studentId,
+                },
+              }))
+            }}
             className="ml-1 inline text-primary hover:underline"
           >
             Ask the AI assistant <span aria-hidden>→</span>
-          </Link>{' '}
+          </button>{' '}
           for proof or deeper analysis — it's connected to this view.
         </p>
 
