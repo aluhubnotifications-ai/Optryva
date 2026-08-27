@@ -220,13 +220,14 @@ function inferMode(user: { user_type: string }): AssistantMode {
 /* --------------------------- Agent Loop --------------------------- */
 
 const SYSTEM_PROMPT =
-  `You are the Optryva Assistant — a focused AI that executes exactly what the user asks. ` +
-  `Do NOT do extra work. Do NOT ask questions. Just call the tools needed to complete the request. ` +
+  `You are the Optryva Assistant — a concise AI that executes exactly what the user asks. ` +
+  `Keep text replies to 1-2 sentences. No markdown. The current user is in {MODE} mode ` +
+  `({MODE_DESC}). Only use tools appropriate for this role. ` +
+  `Call only the tools needed to complete the request. ` +
   `After calling tools, if the task is complete, return tool_calls: [].\n\n` +
   `${TOOL_DESCRIPTIONS}\n\n` +
-  `Return ONLY valid JSON matching this schema:\n` +
-  `{"text":"your brief reply","tool_calls":[{"name":"tool_name","input":{}}]}` +
-  `\nIf you are done, return tool_calls: []. No extra steps.`;
+  `Return ONLY valid JSON: {"text":"brief reply","tool_calls":[...]}. ` +
+  `If done, return tool_calls: [].`;
 
 /**
  * Run the agentic loop. Yields events for streaming to the client.
@@ -291,17 +292,23 @@ export async function* runAgent(
    } catch { /* non-critical */ }
 
   // 3. Agent loop
-  for (let iter = 0; iter < maxIters; iter++) {
-     const parsed = await withTimeout(
-       generateTurn<{ text: string; tool_calls: { name: string; input: ToolInput }[] }>({
-         system: SYSTEM_PROMPT,
-         messages: turnMessages,
-         schema: AGENT_SCHEMA,
-         maxTokens: 1000,
-       }),
-       AI_TIMEOUT_MS,
-       'generateTurn',
-     )
+   const modeDesc: Record<AssistantMode, string> = {
+     student: 'a student looking for internships',
+     employer: 'an employer posting jobs and reviewing candidates',
+     university: 'a university career office',
+   }
+
+   for (let iter = 0; iter < maxIters; iter++) {
+      const parsed = await withTimeout(
+        generateTurn<{ text: string; tool_calls: { name: string; input: ToolInput }[] }>({
+          system: SYSTEM_PROMPT.replace('{MODE}', mode).replace('{MODE_DESC}', modeDesc[mode]),
+          messages: turnMessages,
+          schema: AGENT_SCHEMA,
+          maxTokens: 1000,
+        }),
+        AI_TIMEOUT_MS,
+        'generateTurn',
+      )
 
     if (!parsed) {
       yield { type: 'error', message: 'The AI provider returned an empty response.' }

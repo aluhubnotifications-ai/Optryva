@@ -45,19 +45,21 @@ const URL_REGEX = /https?:\/\/[^\s<"')]+/g
 /** Build the system prompt for a given mode + context. */
 function buildSystemPrompt(mode: AssistantMode, context: string, pageContext?: string): string {
   const modeName = { student: 'Student', employer: 'Employer', university: 'University' }[mode]
-  let prompt = `You are the Optryva Assistant — a helpful AI integrated into the Optryva internship platform (${modeName} mode).\n\n`
-  prompt += `When the user asks to create, add, update, or modify data, return the data in an 'inject_data' action with the appropriate 'target'. Things get added IMMEDIATELY to the app — no confirmation card needed.\n\n`
-  prompt += `Action types:\n`
-  prompt += `- inject_data: inject structured data into a target (e.g. 'profile_skills' → {skills: [...], mode: 'add'|'replace'}, 'job_editor' → {job: {...}}, 'resume' → {...})\n`
-  prompt += `- navigate: navigate to a route path (e.g. '/app/jobs')\n`
-  prompt += `- update_profile: update profile fields (e.g. {skills: [...], full_name: '...'})\n`
-  prompt += `- add_evidence: add a verified evidence item to the student's profile (e.g. {url, title, skills: [...], achievements: [...]})\n\n`
-  prompt += `If the user asks for opportunities/matches, return a navigate action to '/app/jobs'. If they ask about shortlists, navigate to '/app/insights'.\n\n`
+  let prompt = `You are the Optryva Assistant — a concise AI helper for the ${modeName} internship platform.\n\n`
+  prompt += `Keep replies short: 1-2 sentences max. No markdown formatting (no *, **, #, bullets).\n`
+  prompt += `Do not list generic capabilities. Act on what the user actually asked.\n\n`
+  prompt += `When the user asks to create, add, update, or modify data, include an 'inject_data' action with the right 'target' so the app updates instantly:\n`
+  prompt += `- inject_data target='profile_skills' data={skills: [...], mode: 'add'|'replace'}\n`
+  prompt += `- inject_data target='job_editor' data={job: {...}}\n`
+  prompt += `- inject_data target='resume' data={...}\n`
+  prompt += `- navigate target='/app/jobs' (or any route the user should see next)\n`
+  prompt += `- update_profile data={skills: [...], full_name: '...'}\n`
+  prompt += `- add_evidence data={url, title, skills: [...], achievements: [...]}\n\n`
   prompt += `GROUNDING CONTEXT:\n${context}\n\n`
   if (pageContext) {
-    prompt += `CURRENT PAGE CONTEXT: The user is on ${pageContext}. Keep this in mind when acting.\n\n`
+    prompt += `CURRENT PAGE: ${pageContext}\n\n`
   }
-  prompt += `Return ONLY a JSON object with "text" (your reply) and "actions" (array, empty if none).`
+  prompt += `Return ONLY a JSON object: {"text":"short reply","actions":[...]}`
   return prompt
 }
 
@@ -127,7 +129,7 @@ async function saveMessage(
   } catch { /* non-critical — continue without persistence */ }
 }
 
-const FALLBACK_REPLY = "I'm here to help with your Optryva internship journey. Try asking me to add a skill to your profile, draft a cover letter, or explain a job posting."
+const FALLBACK_REPLY = "I'm here to help with your internship journey. What would you like me to do?"
 
 /** Dev fallback: generates a fake session ID when Supabase is unreachable. */
 function fallbackSession(userId: string, mode: AssistantMode): string {
