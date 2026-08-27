@@ -24,7 +24,7 @@ function hashStr(s: string): string {
  *  Uses title + ai_summary + confirmed_skills — cheap to compute and changes
  *  whenever any evidence item is analyzed or approved. */
 function evidenceSignature(items: CandidateEvidenceItem[]): string {
-  return hashStr(items.map((it) => `${it.title}|${it.ai_summary ?? ''}|${it.confirmed_skills?.join(',') ?? ''}|${it.status}`).join('||'))
+  return hashStr(items.map((it) => `${it.title}|${it.ai_summary ?? ''}|${it.confirmed_skills?.join(',') ?? ''}|${it.status}|${it.links?.join(',') ?? ''}|${it.files?.map((f) => f.name).join(',') ?? ''}`).join('||'))
 }
 
 export const evidence = Router()
@@ -89,13 +89,13 @@ async function downloadEvidenceFile(path: string): Promise<Uint8Array | null> {
 async function refreshCandidateSummary(studentId: string) {
   try {
     const items = (await sb.from('evidence_items')
-      .select('title,description,ai_summary,confirmed_skills,status')
+      .select('title,description,ai_summary,confirmed_skills,status,links,files')
       .eq('student_id', studentId)
       .order('created_at', { ascending: false })).data as CandidateEvidenceItem[] | null
     const evHash = evidenceSignature(items ?? [])
     const summary = await extractionClient.candidateSummary(items ?? [])
     if (!summary) return
-    await sb.from('candidate_summaries').upsert({
+     await sb.from('candidate_summaries').upsert({
       student_id: studentId,
       job_key: '',
       summary,
@@ -114,7 +114,7 @@ async function refreshCandidateSummary(studentId: string) {
  *  Uses evidence_hash to skip regeneration when evidence hasn't changed. */
 async function getOrRefreshSummary(studentId: string, jobKey: string, jobDescription?: string): Promise<string> {
   const items = (await sb.from('evidence_items')
-    .select('title,description,ai_summary,confirmed_skills,status')
+    .select('title,description,ai_summary,confirmed_skills,status,links,files')
     .eq('student_id', studentId)
     .order('created_at', { ascending: false })).data as CandidateEvidenceItem[] | null
   const evHash = evidenceSignature(items ?? [])
