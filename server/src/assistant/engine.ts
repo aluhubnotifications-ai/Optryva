@@ -28,7 +28,7 @@ const RESPONSE_SCHEMA = {
       items: {
         type: 'object' as const,
         properties: {
-          type: { type: 'string' as const, enum: ['inject_data', 'navigate', 'update_profile', 'add_evidence'] },
+           type: { type: 'string' as const, enum: ['inject_data', 'navigate', 'update_profile', 'add_evidence', 'create_job'] },
           target: { type: 'string' as const, description: 'Where the action applies — a component name, DB table, or route path.' },
           data: { type: 'object' as const, additionalProperties: true },
         },
@@ -52,6 +52,7 @@ function buildSystemPrompt(mode: AssistantMode, context: string, pageContext?: s
   prompt += `- inject_data target='profile_skills' data={skills: [...], mode: 'add'|'replace'}\n`
   prompt += `- inject_data target='job_editor' data={job: {...}}\n`
   prompt += `- inject_data target='resume' data={...}\n`
+  prompt += `- create_job target='job_listings' data={title, description, location, tags, ...} — employer only: creates a job draft in the DB\n`
   prompt += `- navigate target='/app/jobs' (student job browse) or '/app/listings' (employer job postings)\n`
   prompt += `- navigate target='/app/listings/new' (employer: create job) or '/app/applications' (student: my apps)\n`
   prompt += `- navigate target='/app/insights' (employer: shortlist) or '/app/profile' (edit profile)\n`

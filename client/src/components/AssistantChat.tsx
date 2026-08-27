@@ -335,6 +335,7 @@ function ToolEventBubble({ event }: { event: ToolEvent }) {
 function ActionPreview({ action }: { action: AssistantAction }) {
   const label = {
     inject_data: 'Injected into',
+    create_job: 'Created job in',
     navigate: 'Navigated to',
     update_profile: 'Updated profile',
     add_evidence: 'Added evidence to',

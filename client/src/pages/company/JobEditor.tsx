@@ -49,6 +49,21 @@ export default function JobEditor() {
     setJob(null)
   }, [id, location.state])
 
+  // Listen for assistant-injected job data
+  useEffect(() => {
+    const handler = (e: CustomEvent<{ job?: Partial<JobListing> }>) => {
+      const injected = e.detail?.job
+      if (injected) {
+        setJob((prev: JobListing | null | undefined) => {
+          const base = prev ?? ({} as JobListing)
+          return { ...base, ...injected } as JobListing
+        })
+      }
+    }
+    window.addEventListener('optryva:inject_job', handler as EventListener)
+    return () => window.removeEventListener('optryva:inject_job', handler as EventListener)
+  }, [])
+
   const goBack = () => navigate('/app/listings')
 
   // After creating, land on the edit page so the assignment can be added/edited
