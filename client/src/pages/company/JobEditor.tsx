@@ -380,7 +380,14 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
   }
 
   async function submit() {
-    if (!f.title.trim() || !(f.description ?? '').trim()) { setError('Title and description are required.'); return }
+    const errors: string[] = []
+    if (!f.title.trim()) errors.push('Title is required.')
+    if (!(f.description ?? '').trim()) errors.push('Description is required.')
+    if (!f.tags.split(',').map((t) => t.trim()).filter(Boolean).length) errors.push('At least one skill/tag is required.')
+    if (!f.responsibilities.filter(Boolean).length) errors.push('At least one responsibility is required.')
+    if (!f.benefits.filter(Boolean).length) errors.push('At least one benefit is required.')
+    if (!f.qualifications.filter(Boolean).length) errors.push('At least one qualification is required.')
+    if (errors.length) { setError(errors.join(' ')); return }
     if (f.fromOther && !f.apply_url.trim()) { setError('An external application link is required for opportunities from another company.'); return }
     setError(null)
     setSaving(true)
@@ -435,7 +442,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
   const nextId = sectionIndex < sectionOrder.length - 1 ? sectionOrder[sectionIndex + 1] : null
 
   const sections: { id: StepId; label: string; desc: string; icon: LucideIcon; done: boolean; optional?: boolean }[] = [
-    { id: 'details', label: 'Job details', desc: 'Role, category, location, pay', icon: ClipboardCheck, done: !!(f.title.trim() && (f.description ?? '').trim()) },
+    { id: 'details', label: 'Job details', desc: 'Role, category, location, pay', icon: ClipboardCheck, done: !!(f.title.trim() && (f.description ?? '').trim() && f.tags.split(',').map((t) => t.trim()).filter(Boolean).length && f.responsibilities.filter(Boolean).length && f.benefits.filter(Boolean).length && f.qualifications.filter(Boolean).length) },
     ...(assignmentAllowed ? [{ id: 'assessment' as StepId, label: 'Assessment', desc: 'Optional practical task', icon: Sparkles, done: !!assignment?.prompt.trim(), optional: true }] : []),
     { id: 'submission', label: 'Submission', desc: 'Review & preview', icon: Eye, done: false },
   ]
