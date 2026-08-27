@@ -34,10 +34,9 @@ import { Avatar, Input } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { Logo } from '@/components/Logo'
-import { AiActivityPanel } from '@/components/AiActivityPanel'
 import { NotificationsMenu } from '@/components/NotificationsMenu'
 import { GlobalProgress } from '@/components/GlobalProgress'
-import { AssistantWidget } from '@/components/AssistantWidget'
+import { RightSidebar } from '@/components/RightSidebar'
 
 interface NavItem {
   to: string
@@ -154,12 +153,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
 
-      {/* Always-on AI activity window (students) — shows what matching/research
-          is doing in real time so it's never a black box. */}
-      {!isCompany && <AiActivityPanel />}
-
-      {/* Global Optryva Assistant — follows the user across every page. */}
-      <AssistantWidget />
+      {/* Right sidebar — integrated AI assistant, activity panel, and research.
+          Replaces the old floating AssistantWidget and AiActivityPanel. */}
+      <RightSidebar mode={isCompany ? 'employer' : 'student'} />
     </div>
   )
 }
