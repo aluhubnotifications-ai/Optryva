@@ -65,7 +65,7 @@ async function exchangeCodeForTokens(code: string, codeVerifier: string) {
     }),
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
+    const err = (await res.json().catch(() => ({}))) as { error_description?: string }
     throw new Error(err.error_description ?? 'token_exchange_failed')
   }
   return res.json() as Promise<{
@@ -81,7 +81,7 @@ async function exchangeCodeForTokens(code: string, codeVerifier: string) {
 async function verifyIdToken(idToken: string) {
   // Fetch Google's public keys
   const keysRes = await fetch('https://www.googleapis.com/oauth2/v3/certs')
-  const { keys } = await keysRes.json()
+  const { keys } = await keysRes.json() as { keys: any[] }
   
   // Parse JWT header to find the right key
   const [headerB64] = idToken.split('.')

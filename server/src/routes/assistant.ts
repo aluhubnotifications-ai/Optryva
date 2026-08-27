@@ -16,14 +16,15 @@ assistant.post('/chat', async (req, res) => {
     return res.status(400).json({ error: 'bad_request', issues: parsed.error.issues })
   }
 
-  const user = req.user!
-  const message = parsed.data.message
-  const sessionId = parsed.data.session_id
-  const pageContext = (parsed.data.context?.pageContext as string) ?? (parsed.data.context?.page as string)
-  const mode = parsed.data.mode ?? inferMode(user)
+   const user = req.user!
+   const message = parsed.data.message
+   const sessionId = parsed.data.session_id
+   const pageContext = (parsed.data.context?.pageContext as string) ?? (parsed.data.context?.page as string)
+   const inferredMode = inferMode(user)
+   const mode = parsed.data.mode === inferredMode ? inferredMode : inferredMode
 
-  try {
-    const result = await processAssistantMessage(user.id, mode, message, {
+   try {
+     const result = await processAssistantMessage(user.id, mode, message, {
       sessionId,
       pageContext,
     })
@@ -110,7 +111,8 @@ assistant.post('/task', async (req, res) => {
   const message = parsed.data.message
   const sessionId = parsed.data.session_id
   const pageContext = (parsed.data.context?.pageContext as string) ?? (parsed.data.context?.page as string)
-  const mode = parsed.data.mode ?? inferMode(user)
+  const inferredMode = inferMode(user)
+  const mode = parsed.data.mode === inferredMode ? inferredMode : inferredMode
 
   const enc = new TextEncoder()
   const stream = new ReadableStream<Uint8Array>({

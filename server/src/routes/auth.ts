@@ -175,7 +175,7 @@ auth.post('/complete-onboarding', requireAuth, async (req, res) => {
   // If student, create first resume profile
   if (user_type === 'student') {
     const existing = await sb.from('resume_profiles').select('id').eq('student_id', id).maybeSingle()
-    if (!existing.data?.length) {
+    if (!existing.data) {
       await sb.from('resume_profiles').insert({
         id: uid('rp'),
         student_id: id,

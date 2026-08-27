@@ -65,7 +65,7 @@ onboarding.post('/step/career-direction', async (req, res) => {
   // Create or update first resume profile with this direction
   const existing = await sb.from('resume_profiles').select('id').eq('student_id', id).maybeSingle()
   
-  if (existing.data?.length) {
+  if (existing.data) {
     must(await sb.from('resume_profiles').update({
       name,
       target_roles: j.stringify([direction].filter(Boolean)),

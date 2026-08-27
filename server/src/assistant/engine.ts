@@ -158,24 +158,28 @@ export async function processAssistantMessage(
     context = `User ${userId} in ${mode} mode (no context available).`
   }
 
-  // 3. Deep-inspect any URLs the user dropped in
-  const urls = extractUrls(message)
-  const inspectResults: { url: string; result: any }[] = []
-  if (urls.length) {
-    for (const url of urls.slice(0, 2)) {
-      try {
-        const result = await deepInspect(url)
-        inspectResults.push({ url, result })
-      } catch {
-        /* non-critical — continue without evidence */
-      }
-    }
-    if (inspectResults.length) {
-      context += `\nVERIFIED EVIDENCE (from user-provided URLs):\n${inspectResults
-        .map((r) => `URL: ${r.result.url}\nTitle: ${r.result.title}\nSkills: ${(r.result.skills ?? []).join(', ')}\nAchievements: ${(r.result.achievements ?? []).join(', ')}\nSummary: ${r.result.summary}`)
-        .join('\n\n')}\n`
-    }
-  }
+   // 3. Deep-inspect URLs only if the user explicitly asks (e.g. "inspect", "check")
+   const urls = extractUrls(message)
+   const inspectResults: { url: string; result: any }[] = []
+   const wantsInspect = /\binspect\b|\bcheck\b|\bopen\b|\brun\b|\banaylze\b|\bscrape\b/i.test(message)
+   if (urls.length && wantsInspect) {
+     for (const url of urls.slice(0, 2)) {
+       try {
+         const result = await deepInspect(url)
+         inspectResults.push({ url, result })
+       } catch {
+         /* non-critical — continue without evidence */
+       }
+     }
+     if (inspectResults.length) {
+       context += `\nVERIFIED EVIDENCE (from user-provided URLs):\n${inspectResults
+         .map((r) => `URL: ${r.result.url}\nTitle: ${r.result.title}\nSkills: ${(r.result.skills ?? []).join(', ')}\nAchievements: ${(r.result.achievements ?? []).join(', ')}\nSummary: ${r.result.summary}`)
+         .join('\n\n')}\n`
+     }
+   } else if (urls.length && !inspectResults.length) {
+     // Note URLs in context so the assistant knows they exist without inspecting
+     context += `\nURLS in message (not inspected automatically): ${urls.slice(0, 3).join(', ')}\n`
+   }
 
   // 4. Conversation history (with DB fallback)
   let history: any[] = []

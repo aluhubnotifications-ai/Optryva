@@ -45,9 +45,20 @@ export interface InspectResult {
 /** Deep Inspection: scrape an external link + AI-extract skills and achievements.
  *  Called when the user drops a URL into the chat (e.g. a GitHub repo or portfolio). */
 export async function deepInspect(url: string): Promise<InspectResult> {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'Optryva-Assistant/1.0 (career-analysis)' },
-  })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 8000)
+  let res: Response
+  try {
+    res = await fetch(url, {
+      headers: { 'User-Agent': 'Optryva-Assistant/1.0 (career-analysis)' },
+      signal: controller.signal,
+    })
+  } catch (e: any) {
+    if (e?.name === 'AbortError') return { url, title: '', status: 'fetch_timeout', skills: [], achievements: [], summary: `URL load timed out after 8s: ${url}` }
+    throw e
+  } finally {
+    clearTimeout(timeout)
+  }
   const html = await res.text()
   const text = htmlToText(html)
   const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)

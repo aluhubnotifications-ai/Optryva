@@ -1551,6 +1551,7 @@ export const assistantApi = {
   async chat(
     message: string,
     opts?: { sessionId?: string; mode?: string; pageContext?: string },
+    signal?: AbortSignal,
   ): Promise<AssistantChatResponse> {
     return (await trackAi('Thinking…', () =>
       apiFetch('/assistant/chat', {
@@ -1561,6 +1562,7 @@ export const assistantApi = {
           mode: opts?.mode,
           context: opts?.pageContext ? { pageContext: opts.pageContext } : undefined,
         }),
+        signal,
       }),
     )) as AssistantChatResponse
   },
@@ -1601,39 +1603,41 @@ export const assistantApi = {
    *   { event: 'error', message }
    *   { event: 'end' }
    */
-  async runTask(
-    message: string,
-    opts: { sessionId?: string; mode?: string; pageContext?: string },
-    onEvent: (ev: any) => void,
-  ): Promise<void> {
-    const res = await rawFetchAuthed('/assistant/task', {
-      method: 'POST',
-      body: JSON.stringify({
-        message,
-        session_id: opts?.sessionId,
-        mode: opts?.mode,
-        context: opts?.pageContext ? { pageContext: opts.pageContext } : undefined,
-      }),
-    })
-    if (!res.ok || !res.body) throw new Error(`task_failed_${res.status}`)
-    const reader = res.body.getReader()
-    const dec = new TextDecoder()
-    let buf = ''
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buf += dec.decode(value, { stream: true })
-      const chunks = buf.split('\n\n')
-      buf = chunks.pop() ?? ''
-      for (const chunk of chunks) {
-        const line = chunk.trim()
-        if (!line.startsWith('data:')) continue
-        try {
-          onEvent(JSON.parse(line.slice(5).trim()))
-        } catch {
-          /* ignore partial frames */
-        }
-      }
-    }
-  },
+   async runTask(
+     message: string,
+     opts: { sessionId?: string; mode?: string; pageContext?: string },
+     onEvent: (ev: any) => void,
+     signal?: AbortSignal,
+   ): Promise<void> {
+     const res = await rawFetchAuthed('/assistant/task', {
+       method: 'POST',
+       body: JSON.stringify({
+         message,
+         session_id: opts?.sessionId,
+         mode: opts?.mode,
+         context: opts?.pageContext ? { pageContext: opts.pageContext } : undefined,
+       }),
+       signal,
+     })
+     if (!res.ok || !res.body) throw new Error(`task_failed_${res.status}`)
+     const reader = res.body.getReader()
+     const dec = new TextDecoder()
+     let buf = ''
+     for (;;) {
+       const { done, value } = await reader.read()
+       if (done) break
+       buf += dec.decode(value, { stream: true })
+       const chunks = buf.split('\n\n')
+       buf = chunks.pop() ?? ''
+       for (const chunk of chunks) {
+         const line = chunk.trim()
+         if (!line.startsWith('data:')) continue
+         try {
+           onEvent(JSON.parse(line.slice(5).trim()))
+         } catch {
+           /* ignore partial frames */
+         }
+       }
+     }
+   },
 }

@@ -31,6 +31,22 @@ export type AgentEvent =
 
 type ToolInput = Record<string, unknown>
 
+/** Validate an emit_action input against the action schema and allowlist. */
+const ALLOWED_NAV_TARGETS = new Set(['/app/jobs', '/app/insights', '/app/profile', '/app/applications'])
+
+function parseAction(input: ToolInput): AssistantAction | null {
+  if (!input || typeof input !== 'object') return null
+  const type = input.type
+  const target = input.target
+  const data = input.data
+  if (typeof type !== 'string' || typeof target !== 'string') return null
+  const validTypes: AssistantAction['type'][] = ['inject_data', 'navigate', 'update_profile', 'add_evidence']
+  if (!validTypes.includes(type as AssistantAction['type'])) return null
+  // Validate navigation targets are within the allowlist
+  if (type === 'navigate' && !ALLOWED_NAV_TARGETS.has(target)) return null
+  return { type: type as AssistantAction['type'], target, data: (data ?? {}) as Record<string, unknown> }
+}
+
 /** Helper: read a parameter trying multiple name variants (Mistral may use
  *  slightly different names than the schema declares). */
 function getParam(input: ToolInput, ...names: string[]): unknown {
@@ -154,17 +170,9 @@ const TOOL_EXECUTORS: Record<string, (input: ToolInput, userId: string, mode: As
     return JSON.stringify(result)
   },
   emit_action: async (input) => {
-    let type = getParam(input, 'type') as string
-    let target = getParam(input, 'target') as string
-    // Normalize type variants
-    const NAV_TYPES = ['navigate', 'navigation', 'navigate_to', 'go_to', 'redirect']
-    if (NAV_TYPES.includes(type)) type = 'navigate'
-    // Normalize target to a route path
-    if (type === 'navigate') {
-      if (!target) target = '/app'
-      else if (!target.startsWith('/')) target = `/app/${target}`
-    }
-    return JSON.stringify({ emitted: true, type, target })
+    const action = parseAction(input)
+    if (!action) return JSON.stringify({ error: 'invalid_action' })
+    return JSON.stringify({ emitted: true, type: action.type, target: action.target })
   },
   save_message: async (input) => {
     try {
@@ -179,6 +187,15 @@ const TOOL_EXECUTORS: Record<string, (input: ToolInput, userId: string, mode: As
 }
 
 /* --------------------------- Helper --------------------------- */
+
+/** Race a promise against a timeout. */
+function withTimeout<T>(p: Promise<T> | PromiseLike<T>, ms: number, label = 'operation'): Promise<T> {
+  const realP = Promise.resolve(p)
+  return Promise.race([
+    realP,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
+  ])
+}
 
 async function resolveSession(userId: string, mode: AssistantMode, sessionId?: string): Promise<string> {
   if (sessionId) {
@@ -220,31 +237,37 @@ export async function* runAgent(
   message: string,
   opts?: { sessionId?: string; pageContext?: string },
 ): AsyncGenerator<AgentEvent> {
-  if (!hasAI()) {
-    yield { type: 'text', text: "I'm not configured right now. Please try again later." }
-    yield { type: 'done', summary: 'No AI provider configured.' }
-    return
-  }
+   if (!hasAI()) {
+     yield { type: 'text', text: "I'm not configured right now. Please try again later." }
+     yield { type: 'done', summary: 'No AI provider configured.' }
+     return
+   }
 
-  const maxIters = 3
+   const maxIters = 3
+   const MAX_TOOL_CALLS = 3
+   const AI_TIMEOUT_MS = 8000
+   const TOOL_TIMEOUT_MS = 8000
+   const SB_TIMEOUT_MS = 5000
 
-  // 0. Resolve session (with fallback when Supabase is unavailable)
-  let sessionId: string
-  try {
-    sessionId = await resolveSession(userId, mode, opts?.sessionId)
-  } catch {
-    sessionId = opts?.sessionId ?? `${userId}_${mode}_${Date.now()}`
-  }
+   // 0. Resolve session (with fallback when Supabase is unavailable)
+   let sessionId: string
+   try {
+     sessionId = await withTimeout(resolveSession(userId, mode, opts?.sessionId), SB_TIMEOUT_MS, 'session_resolve')
+   } catch {
+     sessionId = opts?.sessionId ?? `${userId}_${mode}_${Date.now()}`
+   }
 
-  // 1. Gather context (with fallback)
-  let context: string
-  try {
-    if (mode === 'student') context = await getStudentContext(userId)
-    else if (mode === 'employer') context = await getEmployerContext(userId)
-    else context = await getUniversityContext(userId)
-  } catch {
-    context = `User ${userId} in ${mode} mode (no Supabase context available).`
-  }
+   // 1. Gather context (with fallback)
+   let context: string
+   try {
+     let ctxPromise: Promise<string>
+     if (mode === 'student') ctxPromise = getStudentContext(userId)
+     else if (mode === 'employer') ctxPromise = getEmployerContext(userId)
+     else ctxPromise = getUniversityContext(userId)
+     context = await withTimeout(ctxPromise, SB_TIMEOUT_MS, 'context_fetch')
+   } catch {
+     context = `User ${userId} in ${mode} mode (no Supabase context available).`
+   }
 
   // 2. Build conversation
   const turnMessages: TurnMessage[] = [
@@ -254,23 +277,31 @@ export async function* runAgent(
     },
   ]
 
-  // 2b. Persist the user's message (best-effort)
-  try {
-    await sb.from('assistant_messages').insert({
-      session_id: sessionId,
-      role: 'user',
-      content: message,
-    })
-  } catch { /* non-critical */ }
+   // 2b. Persist the user's message (best-effort)
+   try {
+     await withTimeout(
+       sb.from('assistant_messages').insert({
+         session_id: sessionId,
+         role: 'user',
+         content: message,
+       }),
+       SB_TIMEOUT_MS,
+       'persist_user_msg',
+     )
+   } catch { /* non-critical */ }
 
   // 3. Agent loop
   for (let iter = 0; iter < maxIters; iter++) {
-    const parsed = await generateTurn<{ text: string; tool_calls: { name: string; input: ToolInput }[] }>({
-      system: SYSTEM_PROMPT,
-      messages: turnMessages,
-      schema: AGENT_SCHEMA,
-      maxTokens: 1000,
-    })
+     const parsed = await withTimeout(
+       generateTurn<{ text: string; tool_calls: { name: string; input: ToolInput }[] }>({
+         system: SYSTEM_PROMPT,
+         messages: turnMessages,
+         schema: AGENT_SCHEMA,
+         maxTokens: 1000,
+       }),
+       AI_TIMEOUT_MS,
+       'generateTurn',
+     )
 
     if (!parsed) {
       yield { type: 'error', message: 'The AI provider returned an empty response.' }
@@ -283,56 +314,65 @@ export async function* runAgent(
       yield { type: 'text', text: parsed.text }
     }
 
-    // Process tool calls
-    const toolCalls = parsed.tool_calls ?? []
-    if (toolCalls.length === 0) {
+     // Process tool calls — limit to MAX_TOOL_CALLS
+     const toolCalls = (parsed.tool_calls ?? []).slice(0, MAX_TOOL_CALLS)
+     if (toolCalls.length === 0) {
       // Agent is done — persist its final text
       if (parsed.text) {
-        await sb.from('assistant_messages').insert({
-          session_id: sessionId,
-          role: 'assistant',
-          content: parsed.text,
-        })
+        await withTimeout(
+          sb.from('assistant_messages').insert({
+            session_id: sessionId,
+            role: 'assistant',
+            content: parsed.text,
+          }),
+          SB_TIMEOUT_MS,
+          'persist_assistant_msg',
+        )
       }
       yield { type: 'done', summary: parsed.text || 'Done!' }
       break
     }
 
-    // Assistant's turn (text + tool_calls)
-    const assistantContent = JSON.stringify({ text: parsed.text, tool_calls: parsed.tool_calls })
-    turnMessages.push({ role: 'assistant', content: assistantContent })
+     // Assistant's turn (text + tool_calls)
+     const assistantContent = JSON.stringify({ text: parsed.text, tool_calls: parsed.tool_calls })
+     turnMessages.push({ role: 'assistant', content: assistantContent })
 
-    for (const tc of toolCalls) {
-      yield { type: 'tool_use', name: tc.name, input: tc.input }
+     // Announce all tool calls first
+     for (const tc of toolCalls) {
+       yield { type: 'tool_use', name: tc.name, input: tc.input }
+     }
 
-      const executor = TOOL_EXECUTORS[tc.name]
-      let result: string
-      try {
-        if (executor) {
-          result = await executor(tc.input, userId, mode)
-        } else {
-          result = JSON.stringify({ error: `Unknown tool: ${tc.name}` })
-        }
-      } catch (e: any) {
-        result = JSON.stringify({ error: e?.message ?? 'tool_execution_failed' })
-      }
+     // Execute tools in parallel (bounded by Promise.all — max MAX_TOOL_CALLS)
+     const toolResults = await Promise.all(
+       toolCalls.map(async (tc) => {
+         const executor = TOOL_EXECUTORS[tc.name]
+         let result: string
+         let action: AssistantAction | null = null
+         try {
+           if (executor) {
+             result = await withTimeout(executor(tc.input, userId, mode), TOOL_TIMEOUT_MS, tc.name)
+           } else {
+             result = JSON.stringify({ error: `Unknown tool: ${tc.name}` })
+           }
+         } catch (e: any) {
+           result = JSON.stringify({ error: e?.message ?? 'tool_execution_failed' })
+         }
+         if (tc.name === 'emit_action') {
+           action = parseAction(tc.input)
+         }
+         return { tc, result, action }
+       }),
+     )
 
-      yield { type: 'tool_result', name: tc.name, result }
-
-      // If the tool was emit_action, also yield an action event for the client
-      if (tc.name === 'emit_action') {
-        try {
-          const action = JSON.parse(tc.input as any) as AssistantAction
-          yield { type: 'action', action }
-        } catch { /* ignore */ }
-      }
-
-      // Feed result back as a user turn
-      turnMessages.push({
-        role: 'user',
-        content: `Tool "${tc.name}" returned:\n${result}`,
-      })
-    }
+     // Yield results, actions, and feed back into conversation
+     for (const { tc, result, action } of toolResults) {
+       yield { type: 'tool_result', name: tc.name, result }
+       if (action) yield { type: 'action', action }
+       turnMessages.push({
+         role: 'user',
+         content: `Tool "${tc.name}" returned:\n${result}`,
+       })
+     }
 
     }
 

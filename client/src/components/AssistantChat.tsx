@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
-import { Send, Sparkles, ExternalLink, Wrench, CheckCircle2, AlertCircle } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { Send, Sparkles, ExternalLink, Wrench, CheckCircle2, AlertCircle, X, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/primitives'
@@ -23,7 +23,6 @@ export interface AssistantChatProps {
   onSessionId?: (id: string) => void
 }
 
-/** A tool call or result shown inline in the chat stream. */
 interface ToolEvent {
   id: string
   name: string
@@ -38,53 +37,72 @@ export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessio
   const [isSending, setIsSending] = useState(false)
   const [currentSessionId, setCurrentSessionId] = useState<string | undefined>(sessionId)
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([])
+  const [isAutonomous, setIsAutonomous] = useState(false)
+  const [aborted, setAborted] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
   const { toast } = useToast()
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, toolEvents])
 
-  const handleSend = async () => {
+  const resetState = () => {
+    setToolEvents([])
+    setAborted(false)
+    abortRef.current = null
+  }
+
+  const handleSend = async (opts?: { autonomous?: boolean }) => {
+    const autonomous = opts?.autonomous ?? false
     if (!input.trim() || isSending) return
     const userText = input.trim()
     setInput('')
     setIsSending(true)
-    setToolEvents([])
+    setIsAutonomous(autonomous)
+    resetState()
 
     // Optimistically show the user's message
     const userMsg: ChatMessage = { id: `u_${Date.now()}`, role: 'user', content: userText }
     setMessages((m) => [...m, userMsg])
 
-    // Streaming assistant message placeholder
+    // Immediate acknowledgement — stream the first response right away
     const aiMsgId = `a_${Date.now()}`
-    setMessages((m) => [...m, { id: aiMsgId, role: 'assistant', content: '', isStreaming: true }])
+    const ackText = autonomous
+      ? 'I\'m working on this step by step…'
+      : "I'm checking that now…"
+    setMessages((m) => [...m, { id: aiMsgId, role: 'assistant', content: ackText, isStreaming: true }])
+
+    const controller = new AbortController()
+    abortRef.current = controller
 
     try {
       const { assistantApi } = await import('@/lib/api')
 
-      await trackAi('Optryva Assistant is working…', () =>
-        assistantApi.runTask(
-          userText,
-          { sessionId: currentSessionId, mode, pageContext },
-          (ev) => {
-            handleEvent(ev, aiMsgId)
-          },
-        ),
-      )
-    } catch (e: any) {
-      // Fall back to non-streaming chat
-      try {
-        const { assistantApi } = await import('@/lib/api')
-        const resp = await assistantApi.chat(userText, {
-          sessionId: currentSessionId,
-          mode,
-          pageContext,
-        })
+      if (autonomous) {
+        // Autonomous agentic task (streaming SSE)
+        await trackAi('Autonomous agent running…', () =>
+          assistantApi.runTask(
+            userText,
+            { sessionId: currentSessionId, mode, pageContext },
+            (ev) => handleEvent(ev, aiMsgId),
+            controller.signal,
+          ),
+        )
+      } else {
+        // Normal chat — single AI request, non-streaming
+        const resp = await trackAi('Thinking…', () =>
+          assistantApi.chat(
+            userText,
+            { sessionId: currentSessionId, mode, pageContext },
+            controller.signal,
+          ),
+        )
         if (resp.session_id && !currentSessionId) {
           setCurrentSessionId(resp.session_id)
           onSessionId?.(resp.session_id)
         }
+        // Replace ack text with the actual reply (treat as delta)
         setMessages((m) =>
           m.map((msg) =>
             msg.id === aiMsgId
@@ -93,24 +111,37 @@ export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessio
           ),
         )
         resp.actions?.forEach((a) => onAction?.(a))
-      } catch (e2) {
+      }
+    } catch (e: any) {
+      if (aborted || e?.name === 'AbortError') {
+        setMessages((m) =>
+          m.map((msg) =>
+            msg.id === aiMsgId ? { ...msg, content: msg.content + '\n\nCancelled.', isStreaming: false } : msg,
+          ),
+        )
+      } else {
         setMessages((m) =>
           m.map((msg) =>
             msg.id === aiMsgId
-              ? { id: msg.id, role: 'assistant', content: 'Sorry — I ran into an error. Please try again.', isStreaming: false }
+              ? { ...msg, content: 'Sorry — I ran into an error. Please try again.', isStreaming: false }
               : msg,
           ),
         )
       }
+    } finally {
+      setIsSending(false)
+      setIsAutonomous(false)
+      resetState()
     }
   }
 
   function handleEvent(ev: any, aiMsgId: string) {
     switch (ev.event) {
       case 'text':
+        // Treat as delta — replace not append to avoid duplication
         if (ev.text) {
           setMessages((m) =>
-            m.map((msg) => (msg.id === aiMsgId ? { ...msg, content: msg.content + ev.text, isStreaming: true } : msg)),
+            m.map((msg) => (msg.id === aiMsgId ? { ...msg, content: ev.text, isStreaming: true } : msg)),
           )
         }
         break
@@ -132,11 +163,6 @@ export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessio
         break
       case 'action':
         onAction?.(ev.action)
-        toast({
-          title: 'Action executed',
-          description: `${ev.action.type} → ${ev.action.target}`,
-          tone: 'success',
-        })
         break
       case 'done':
         setMessages((m) => m.map((msg) => (msg.id === aiMsgId ? { ...msg, isStreaming: false } : msg)))
@@ -157,11 +183,22 @@ export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessio
     }
   }
 
+  const handleCancel = () => {
+    if (abortRef.current) {
+      setAborted(true)
+      abortRef.current.abort()
+    }
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
     }
+  }
+
+  const handleAutonomous = () => {
+    handleSend({ autonomous: true })
   }
 
   return (
@@ -170,7 +207,8 @@ export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessio
         {messages.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <Sparkles className="mx-auto h-8 w-8 mb-3 opacity-30" />
-            <p className="text-sm">Ask me to do something — I can create jobs, add skills, inspect links, and more.</p>
+            <p className="text-sm">Ask me something — I can add skills, create jobs, inspect links, and more.</p>
+            <p className="mt-2 text-xs">For multi-step tasks, use the "Run task" button.</p>
           </div>
         ) : (
           messages.map((msg) => (
@@ -211,11 +249,22 @@ export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessio
             className="flex-1 rounded-full"
             disabled={isSending}
           />
-          <Button onClick={handleSend} disabled={!input.trim() || isSending} size="sm" className="rounded-full" aria-label="Send">
-            <Send className="h-4 w-4" />
-          </Button>
+          {isSending ? (
+            <Button onClick={handleCancel} size="sm" className="rounded-full" variant="outline" aria-label="Cancel">
+              <X className="h-4 w-4" />
+            </Button>
+          ) : (
+            <>
+              <Button onClick={() => handleSend()} disabled={!input.trim()} size="sm" className="rounded-full" aria-label="Send">
+                <Send className="h-4 w-4" />
+              </Button>
+              <Button onClick={() => handleSend({ autonomous: true })} disabled={!input.trim()} size="sm" className="rounded-full" variant="outline" aria-label="Run task (autonomous)">
+                <Zap className="h-4 w-4" />
+              </Button>
+            </>
+          )}
         </div>
-        {isSending && <p className="mt-2 text-xs text-muted-foreground">Autonomous agent is working…</p>}
+        {isSending && <p className="mt-2 text-xs text-muted-foreground">{isAutonomous ? 'Autonomous agent is working…' : 'Thinking…'}</p>}
       </div>
     </div>
   )
