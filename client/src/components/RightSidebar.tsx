@@ -119,21 +119,22 @@ export function RightSidebar({ mode }: RightSidebarProps) {
     }
   }, [currentUser?.id])
 
-  const loadMessages = useCallback(async (sid: string) => {
+  const loadMessages = useCallback(async (sid: string): Promise<ChatMessage[]> => {
     try {
       const { assistantApi } = await import('@/lib/api')
       const { messages: msgs } = await assistantApi.messages(sid)
-      setMessages(
-        msgs.map((m: any) => ({
-          id: m.id || `msg_${Math.random().toString(36).slice(2)}`,
-          role: m.role === 'user' ? 'user' : 'assistant',
-          content: String(m.content || ''),
-          actions: m.actions ?? [],
-          isStreaming: false,
-        })),
-      )
+      const mapped: ChatMessage[] = msgs.map((m: any) => ({
+        id: m.id || `msg_${Math.random().toString(36).slice(2)}`,
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: String(m.content || ''),
+        actions: m.actions ?? [],
+        isStreaming: false,
+      }))
+      setMessages(mapped)
+      return mapped
     } catch {
       setMessages([])
+      return []
     }
   }, [])
 
@@ -234,9 +235,9 @@ export function RightSidebar({ mode }: RightSidebarProps) {
     setAssistantView('chat')
   }
 
-  const switchToSession = (sid: string) => {
+  const switchToSession = async (sid: string) => {
+    await loadMessages(sid)
     setSessionId(sid)
-    loadMessages(sid)
     setAssistantView('chat')
   }
 
@@ -456,7 +457,7 @@ function HistoryView({
   currentSessionId,
 }: {
   sessions: HistorySession[]
-  onSwitch: (sid: string) => void
+  onSwitch: (sid: string) => void | Promise<void>
   onDelete: (sid: string, e: React.MouseEvent) => void
   onNew: () => void
   currentSessionId?: string
