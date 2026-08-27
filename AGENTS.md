@@ -65,7 +65,12 @@ server/src/routes/assistant.ts  — Hono router → /api/assistant/*
 | `create_job_draft` | Create a draft job posting for an employer |
 | `get_fixed40_matches` | Return 40 demo internship matches for a student |
 | `get_employer_shortlist` | Get ranked candidates for a posted job |
-| `emit_action` | Trigger client-side action (navigate, inject_data, etc.) |
+| `list_employer_jobs` | List all job postings for an employer |
+| `get_job_candidates` | List all candidates for a job with scores, statuses, evidence |
+| `get_candidate_evidence` | Get AI evidence summary + individual evidence items for a candidate |
+| `shortlist_candidate` | Mark a candidate as shortlisted |
+| `reject_candidate` | Reject a candidate application |
+| `emit_action` | Trigger client-side action (navigate, inject_data, start_shortlist, etc.) |
 | `save_message` | Persist a message to the conversation history |
 
 ## Client structure
