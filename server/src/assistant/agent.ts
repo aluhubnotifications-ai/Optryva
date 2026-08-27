@@ -32,7 +32,10 @@ export type AgentEvent =
 type ToolInput = Record<string, unknown>
 
 /** Validate an emit_action input against the action schema and allowlist. */
-const ALLOWED_NAV_TARGETS = new Set(['/app/jobs', '/app/insights', '/app/profile', '/app/applications'])
+const ALLOWED_NAV_TARGETS = new Set([
+  '/app/jobs', '/app/listings', '/app/listings/new', '/app/applications',
+  '/app/insights', '/app/profile', '/app/jobs/new', '/app/dashboard',
+])
 
 function parseAction(input: ToolInput): AssistantAction | null {
   if (!input || typeof input !== 'object') return null
@@ -102,7 +105,7 @@ const TOOL_DESCRIPTIONS = `Available tools and their EXACT parameter names:
 
 5. get_employer_shortlist(job_id: string) — Get ranked candidates for a posted job.
 
-6. emit_action(type: "inject_data"|"navigate"|"update_profile"|"add_evidence", target: string, data: object) — Emit a client-side action to execute immediately (e.g. navigate to a page, auto-fill a form).
+  6. emit_action(type: "inject_data"|"navigate"|"update_profile"|"add_evidence", target: string, data: object) — Emit a client-side action to execute immediately (e.g. navigate to a page, auto-fill a form). Navigation targets: /app/jobs, /app/listings, /app/listings/new, /app/applications, /app/insights, /app/profile.
 
 7. save_message(session_id: string, role: string, content: string) — Persist a message to conversation history for audit.
 `

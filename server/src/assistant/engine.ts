@@ -52,7 +52,9 @@ function buildSystemPrompt(mode: AssistantMode, context: string, pageContext?: s
   prompt += `- inject_data target='profile_skills' data={skills: [...], mode: 'add'|'replace'}\n`
   prompt += `- inject_data target='job_editor' data={job: {...}}\n`
   prompt += `- inject_data target='resume' data={...}\n`
-  prompt += `- navigate target='/app/jobs' (or any route the user should see next)\n`
+  prompt += `- navigate target='/app/jobs' (student job browse) or '/app/listings' (employer job postings)\n`
+  prompt += `- navigate target='/app/listings/new' (employer: create job) or '/app/applications' (student: my apps)\n`
+  prompt += `- navigate target='/app/insights' (employer: shortlist) or '/app/profile' (edit profile)\n`
   prompt += `- update_profile data={skills: [...], full_name: '...'}\n`
   prompt += `- add_evidence data={url, title, skills: [...], achievements: [...]}\n\n`
   prompt += `GROUNDING CONTEXT:\n${context}\n\n`
@@ -185,12 +187,12 @@ async function fallbackIntentHandler(
         .limit(20)
 
       if (!jobs || jobs.length === 0) {
-        return { text: "You don't have any job postings yet. Would you like me to help you create one?", actions: [] }
+        return { text: "You don't have any job postings yet. Would you like me to help you create one?", actions: [{ type: 'navigate', target: '/app/listings/new', data: {} }] }
       }
 
       const summary = jobs.slice(0, 8).map((j: any) => `  ${j.title} (${j.status}, ${j.location ?? 'remote-ok'})`).join('\n')
       const more = jobs.length > 8 ? `...and ${jobs.length - 8} more.` : ''
-      return { text: `You have ${jobs.length} job posting(s):\n${summary}\n${more}`, actions: [{ type: 'navigate', target: '/app/jobs', data: {} }] }
+      return { text: `You have ${jobs.length} job posting(s):\n${summary}\n${more}`, actions: [{ type: 'navigate', target: '/app/listings', data: {} }] }
     }
 
     if (lower.includes('applicant') || lower.includes('application') || lower.includes('candidate')) {
@@ -202,6 +204,10 @@ async function fallbackIntentHandler(
       }, {})
       const breakdown = Object.entries(byStatus).map(([s, c]) => `${s}: ${c}`).join(', ')
       return { text: `You have ${total} application(s): ${breakdown || 'no breakdown available'}`, actions: [{ type: 'navigate', target: '/app/insights', data: {} }] }
+    }
+
+    if (lower.includes('create') || lower.includes('new') || lower.includes('draft')) {
+      return { text: "Let's create a new job posting.", actions: [{ type: 'navigate', target: '/app/listings/new', data: {} }] }
     }
   }
 
