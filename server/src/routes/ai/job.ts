@@ -29,10 +29,11 @@ export function registerJob(r: Router) {
 
       if (hasGroq()) {
         console.log('[routes:ai:job] → using Groq for job generation')
-        const content = await buildClaudeContent(brief, docs, instruction, existing)
+        const parts = await buildMistralContent(brief, docs, instruction, existing)
+        if (!parts.length) return res.status(400).json({ error: 'no_input', message: 'Upload a document or describe the role first.' })
         const result = await groqChatJson<GeneratedJob>({
           system: JOB_SYSTEM,
-          messages: [{ role: 'user', content: content.map((c) => c.text).filter(Boolean).join('\n\n') }],
+          messages: [{ role: 'user', content: parts.map((p) => p.text).filter(Boolean).join('\n\n') }],
           schema: JOB_SCHEMA,
           maxTokens: 2000,
           temperature: 0.3,

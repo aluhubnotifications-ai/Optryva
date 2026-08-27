@@ -26,10 +26,11 @@ export function registerAssignment(r: Router) {
       // With no AI key at all, fail clearly instead of faking a result.
       if (hasGroq()) {
         console.log('[routes:ai:assignment] → using Groq for assignment generation')
-        const content = await buildAssignmentContent(job, docs, instruction, existing)
+        const parts = await buildMistralContent(job, docs, instruction, existing)
+        if (!parts.length) return res.status(400).json({ error: 'no_input', message: 'Upload a document or describe the role first.' })
         const result = await groqChatJson<GeneratedAssignment>({
           system: ASSIGNMENT_SYSTEM,
-          messages: [{ role: 'user', content: content.map((c) => c.text).filter(Boolean).join('\n\n') }],
+          messages: [{ role: 'user', content: parts.map((p) => p.text).filter(Boolean).join('\n\n') }],
           schema: ASSIGNMENT_SCHEMA,
           maxTokens: 2000,
           temperature: 0.4,
