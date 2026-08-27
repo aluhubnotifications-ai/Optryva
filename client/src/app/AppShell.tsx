@@ -26,13 +26,14 @@ import {
 import { ChevronDown, Globe, Wifi } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/lib/theme'
-import { useSession, useCurrentUser } from '@/lib/store'
+import { useSession, useCurrentUser, useRightSidebarOpen } from '@/lib/store'
 import { useGeo, COUNTRIES, useCountryStats, type Country } from '@/lib/geo'
 import { messagesApi, jobsApi, applicationsApi } from '@/lib/api'
 import { perf } from '@/lib/perf'
 import { Avatar, Input } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { PageSpinner } from '@/components/ui/Spinner'
+import { LoadingMascot } from '@/components/DancingMascot'
 import { Logo } from '@/components/Logo'
 import { NotificationsMenu } from '@/components/NotificationsMenu'
 import { GlobalProgress } from '@/components/GlobalProgress'
@@ -130,7 +131,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return (
       <div className="app-bg min-h-screen">
         <GlobalProgress />
-        <Suspense fallback={<div className="py-24"><PageSpinner label="Loading…" /></div>}>
+        <Suspense fallback={<div className="py-24"><LoadingMascot label="Loading…" /></div>}>
           {children}
         </Suspense>
       </div>
@@ -152,7 +153,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           'mx-auto w-full px-4 py-6 sm:px-6 lg:px-8',
           'max-w-[1600px]',
         )}>
-          <Suspense fallback={<div className="py-24"><PageSpinner label="Loading…" /></div>}>
+          <Suspense fallback={<div className="py-24"><LoadingMascot label="Loading…" /></div>}>
             {children}
           </Suspense>
         </main>
@@ -381,9 +382,15 @@ function Topbar() {
   const logout = useSession((s) => s.logout)
   const [menuOpen, setMenuOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const sidebarOpen = useRightSidebarOpen()
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md sm:px-6 lg:px-8">
+    <header
+      className={cn(
+        'sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/80 backdrop-blur-md px-4 sm:px-6 lg:px-8',
+        sidebarOpen && 'lg:pe-16',
+      )}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault()

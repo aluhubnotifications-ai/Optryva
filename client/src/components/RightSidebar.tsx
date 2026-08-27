@@ -18,6 +18,7 @@ import {
   Check,
   User,
 } from 'lucide-react'
+import { useUiStore } from '@/lib/store'
 import { cn, formatDate } from '@/lib/utils'
 import { useAiActivity } from '@/lib/aiActivity'
 import { useCurrentUser } from '@/lib/store'
@@ -64,6 +65,7 @@ interface HistorySession {
 
 export function RightSidebar({ mode }: RightSidebarProps) {
   const tabs = mode === 'employer' ? EMPLOYER_TABS : STUDENT_TABS
+  const setSidebarOpen = useUiStore((s) => s.setRightSidebarOpen)
 
   const [open, setOpen] = useState(() => {
     if (typeof localStorage !== 'undefined') {
@@ -71,6 +73,10 @@ export function RightSidebar({ mode }: RightSidebarProps) {
     }
     return true
   })
+
+  useEffect(() => {
+    setSidebarOpen(open)
+  }, [open, setSidebarOpen])
   const [activeTab, setActiveTab] = useState<string>(() => {
     if (typeof localStorage !== 'undefined') {
       const saved = localStorage.getItem(TAB_KEY)
@@ -326,7 +332,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.2 }}
-            className="flex w-[420px] flex-shrink-0 flex-col border-l border-border bg-card shadow-xl"
+            className="flex w-[420px] flex-shrink-0 flex-col border-l border-border bg-card/80 shadow-xl"
           >
             {/* Header with gradient */}
             <div className="flex items-center justify-between border-b border-border bg-gradient-to-r from-primary/10 via-accent/5 to-primary/10 px-4 py-3">
@@ -464,7 +470,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
 
       {/* Collapsed state — icon strip */}
       {!open && (
-        <div className="flex w-12 flex-shrink-0 flex-col items-center gap-2 border-l border-border bg-card py-3 shadow-xl">
+        <div className="flex w-12 flex-shrink-0 flex-col items-center gap-2 border-l border-border bg-card/80 py-3 shadow-xl">
           {tabs.map((tab) => {
             const Icon = tab.icon
             return (

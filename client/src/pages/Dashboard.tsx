@@ -24,6 +24,7 @@ import { Card, CardBody, Badge, Avatar, Progress, Skeleton } from '@/components/
 import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
 import { ScoreRing } from '@/components/ScoreRing'
+import { LoadingMascot } from '@/components/DancingMascot'
 import { formatDate, daysUntil } from '@/lib/utils'
 import { perf } from '@/lib/perf'
 
@@ -40,8 +41,7 @@ export default function Dashboard() {
     <Suspense
       fallback={
         <div className="flex flex-col items-center gap-3 py-24 text-muted-foreground">
-          <Spinner className="h-6 w-6" />
-          <p className="text-sm">Loading your analytics…</p>
+          <LoadingMascot label="Loading your analytics…" />
         </div>
       }
     >

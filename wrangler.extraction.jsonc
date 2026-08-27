@@ -3,9 +3,10 @@
   // "optryva" API Worker stays lean. The API Worker calls this over HTTPS with a
   // shared bearer token (EXTRACTION_WORKER_TOKEN). No database access here.
   //
-  // Pinned to the account this deploy token can manage (same account as the
-  // main "optryva" worker). Set EXTRACTION_WORKER_TOKEN + MISTRAL_API_KEY as
-  // secrets on this worker; point the main worker's EXTRACTION_WORKER_URL at it.
+   // Pinned to the account this deploy token can manage (same account as the
+   // main "optryva" worker). Set EXTRACTION_WORKER_TOKEN, GROQ_API_KEY, and
+   // MISTRAL_API_KEY as secrets on this worker; point the main worker's
+   // EXTRACTION_WORKER_URL at it.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "optryva-extract",
   "account_id": "7e1d265a3459d9ca53c0304d1d6188a8",

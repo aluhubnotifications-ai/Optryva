@@ -5,6 +5,27 @@ import { authApi, setAuthToken } from '@/lib/api'
 import type { Profile } from '@/types'
 
 // ----------------------------------------------------------------------------
+// Right sidebar open state — shared so the Topbar can pad its right-side icons
+// when the AI assistant sidebar is open (prevents overlap), and so the
+// sidebar itself can be styled with partial transparency.
+// ----------------------------------------------------------------------------
+
+interface UiState {
+  rightSidebarOpen: boolean
+  setRightSidebarOpen: (open: boolean) => void
+}
+
+export const useUiStore = create<UiState>()((set) => ({
+  rightSidebarOpen: true,
+  setRightSidebarOpen: (open) => set({ rightSidebarOpen: open }),
+}))
+
+/** Convenience hook for components that need to know sidebar state. */
+export function useRightSidebarOpen(): boolean {
+  return useUiStore((s) => s.rightSidebarOpen)
+}
+
+// ----------------------------------------------------------------------------
 // Session/auth store. You must log in to get a session — there is NO default
 // user. A successful login (real backend) stores the access token + the user
 // profile returned by the server.

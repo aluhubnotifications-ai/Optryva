@@ -381,7 +381,7 @@ jobs.post('/:jobId/research', async (req, res) => {
 
   const appRows = (must(await sb.from('applications').select('*').eq('job_id', jobId).in('status', SHORTLIST_STATUS)) as any[]) ?? []
   const studentIds = candidateId ? [candidateId] : Array.from(new Set(appRows.map((a) => a.student_id)))
-  const profRows = (must(await sb.from('profiles').select('id, full_name, major, location, skills, bio, school, year').in('id', studentIds)) as any[]) ?? []
+  const profRows = (must(await sb.from('profiles').select('id, full_name, major, location, skills, bio, school, year, evidence_summary').in('id', studentIds)) as any[]) ?? []
   const profById = new Map(profRows.map((p) => [p.id, p]))
 
   // Pull shortlist verdicts from the cache (best-effort) so the answer can reference
@@ -415,10 +415,11 @@ jobs.post('/:jobId/research', async (req, res) => {
       decision_reason: a?.decision_reason ?? null,
       resume_summary: snapshot?.summary ?? null,
       resume_skills: snapshot?.skills ?? null,
-      shortlist_verdict: sl?.verdict ?? null,
+       shortlist_verdict: sl?.verdict ?? null,
       shortlist_category: sl?.category ?? null,
       shortlist_fit: sl?.fit_score ?? null,
       shortlist_note: sl?.decision_note ?? null,
+      evidence_summary: p.evidence_summary ?? null,
     }
   }
 

@@ -4,6 +4,7 @@
 // output. It never touches the database.
 
 import { mistralText, mistralJsonBlocks, MISTRAL_VISION_MODEL, extractPdfText, hasMistral } from '@/lib/mistral'
+import { groqText, groqChatJson, hasGroq, groqModel } from '@/lib/groq'
 import { extractViaService, hasExtractionService } from '@/lib/extractService'
 
 // ---------------------------------------------------------------------------
@@ -80,7 +81,7 @@ export async function describeImage(dataUrl: string): Promise<string | null> {
 // 3) One combined pass: skills + first-person "what the student did" summary
 // ---------------------------------------------------------------------------
 export async function analyzeEvidence(text: string): Promise<{ skills: string[]; summary: string | null }> {
-  if (!hasMistral()) return { skills: [], summary: null }
+  if (!hasGroq() && !hasMistral()) return { skills: [], summary: null }
   const sys =
     'You are a skills extractor for a student portfolio. Given a description of ' +
     'work and/or text pulled from linked web pages, documents, or images, return ' +
@@ -91,12 +92,23 @@ export async function analyzeEvidence(text: string): Promise<{ skills: string[];
     'deliverables). Base everything on the actual content provided, not the URLs ' +
     'themselves. If nothing concrete is present, return {"skills":[],"summary":""}.'
   const schema = { skills: ['string'], summary: 'string' }
-  const out = await mistralJsonBlocks<{ skills?: string[]; summary?: string }>({
-    system: sys,
-    content: [{ type: 'text', text }],
-    schema,
-    maxTokens: 900,
-  })
+  let out: { skills?: string[]; summary?: string } | null = null
+  if (hasGroq()) {
+    out = await groqChatJson<{ skills?: string[]; summary?: string }>({
+      system: sys,
+      messages: [{ role: 'user', content: text }],
+      schema,
+      maxTokens: 900,
+    })
+  }
+  if (!out && hasMistral()) {
+    out = await mistralJsonBlocks<{ skills?: string[]; summary?: string }>({
+      system: sys,
+      content: [{ type: 'text', text }],
+      schema,
+      maxTokens: 900,
+    })
+  }
   if (!out) return { skills: [], summary: null }
   const skills = Array.isArray(out.skills)
     ? out.skills.filter((x) => typeof x === 'string').map((x) => x.trim()).filter(Boolean).slice(0, 30)
@@ -133,6 +145,8 @@ export type CandidateEvidenceItem = {
   ai_summary: string | null
   confirmed_skills: string[]
   status: string
+  links?: string[]
+  files?: { path: string; name: string }[]
 }
 
 export async function buildCandidateSummary(
@@ -145,7 +159,13 @@ export async function buildCandidateSummary(
     .map((it, i) => {
       const skills = (it.confirmed_skills ?? []).join(', ')
       const detail = it.ai_summary || it.description || ''
-      return `${i + 1}. ${it.title} [${it.status}]${skills ? ` — skills: ${skills}` : ''}\n   ${detail}`
+      const links = (it.links ?? []).join(', ')
+      const files = (it.files ?? []).map((f) => f.name).join(', ')
+      const proofs: string[] = []
+      if (links) proofs.push(`links: ${links}`)
+      if (files) proofs.push(`files: ${files}`)
+      const proofLine = proofs.length ? `\n   Proof sources: ${proofs.join('; ')}` : ''
+      return `${i + 1}. ${it.title} [${it.status}]${skills ? ` — skills: ${skills}` : ''}\n   ${detail}${proofLine}`
     })
     .join('\n')
 
@@ -177,7 +197,9 @@ export async function buildCandidateSummary(
     'present. Write in clear, correct English. Use Markdown: **bold** for titles ' +
     '(**Title:**) and "- " for bullets. Never use single asterisks (*) as ' +
     'decoration. Keep concise.'
-  return mistralText({ system: sys, user: `Candidate evidence:\n${bullets}`, maxTokens: 900 })
+    return (hasGroq()
+      ? groqText({ system: sys, user: `Candidate evidence:\n${bullets}`, maxTokens: 900 })
+      : mistralText({ system: sys, user: `Candidate evidence:\n${bullets}`, maxTokens: 900 }))
 }
 
 // ---------------------------------------------------------------------------
@@ -188,7 +210,7 @@ export async function answerQuestion(
   question: string,
   items: CandidateEvidenceItem[],
 ): Promise<string | null> {
-  if (!hasMistral()) return null
+  if (!hasGroq() && !hasMistral()) return null
   const context = items && items.length > 0
     ? items
         .map((it, i) => {
@@ -222,9 +244,11 @@ export async function answerQuestion(
     '- Professional, recruiter-facing tone. Be specific and concrete. Write in ' +
     'clear, fluent, grammatically correct English. Do NOT use single asterisks ' +
     '(*) for decoration — reserve **bold** for true emphasis only.'
-  return mistralText({
-    system: sys,
-    user: `CANDIDATE EVIDENCE CONTEXT:\n${context}\n\nEMPLOYER QUESTION: ${question}`,
-    maxTokens: 700,
-  })
+  return (hasGroq()
+    ? groqText({ system: sys, user: `CANDIDATE EVIDENCE CONTEXT:\n${context}\n\nEMPLOYER QUESTION: ${question}`, maxTokens: 700 })
+    : mistralText({
+        system: sys,
+        user: `CANDIDATE EVIDENCE CONTEXT:\n${context}\n\nEMPLOYER QUESTION: ${question}`,
+        maxTokens: 700,
+      }))
 }

@@ -8,15 +8,23 @@ import { mimeForName } from '@/lib/bytes'
 import type { CandidateEvidenceItem } from '@/lib/extraction'
 
 // In-memory cache so we don't regenerate (and re-spend tokens on) the AI summary
-// on every page load. Job-scoped summaries are keyed by student + a hash of the
-// job description; the profile-wide summary is cached in the DB instead (see the
-// POST /summary handler below). TTL keeps it fresh after evidence edits.
+// on every page load. Job-scoped summaries are persisted in the candidate_summaries
+// table, but we still keep a short in-memory TTL for hot paths within a single
+// employer session. The profile-wide summary is persisted in candidate_summaries
+// (job_key = '') and checked for staleness via evidence_hash.
 const summaryCache = new Map<string, { value: string; exp: number }>()
 const SUMMARY_TTL_MS = 10 * 60 * 1000
 function hashStr(s: string): string {
   let h = 5381
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0
   return String(h >>> 0)
+}
+
+/** Compute a hash over the current evidence rows so we can detect staleness.
+ *  Uses title + ai_summary + confirmed_skills — cheap to compute and changes
+ *  whenever any evidence item is analyzed or approved. */
+function evidenceSignature(items: CandidateEvidenceItem[]): string {
+  return hashStr(items.map((it) => `${it.title}|${it.ai_summary ?? ''}|${it.confirmed_skills?.join(',') ?? ''}|${it.status}`).join('||'))
 }
 
 export const evidence = Router()
@@ -75,18 +83,69 @@ async function downloadEvidenceFile(path: string): Promise<Uint8Array | null> {
 
 // Build a candidate-level AI summary of ALL a student's evidence — what they've
 // actually done — for employers to read instead of scrolling raw gallery images.
-// Heavy compute is delegated to the Extraction Worker.
+// Heavy compute is delegated to the Extraction Worker. Persists the result in
+// candidate_summaries (job_key = '') so it survives Worker restarts and is only
+// regenerated when evidence changes (tracked via evidence_hash staleness).
 async function refreshCandidateSummary(studentId: string) {
   try {
     const items = (await sb.from('evidence_items')
       .select('title,description,ai_summary,confirmed_skills,status')
       .eq('student_id', studentId)
       .order('created_at', { ascending: false })).data as CandidateEvidenceItem[] | null
+    const evHash = evidenceSignature(items ?? [])
     const summary = await extractionClient.candidateSummary(items ?? [])
-    if (summary) await sb.from('profiles').update({ evidence_summary: summary }).eq('id', studentId)
+    if (!summary) return
+    await sb.from('candidate_summaries').upsert({
+      student_id: studentId,
+      job_key: '',
+      summary,
+      evidence_hash: evHash,
+      generated_at: now(),
+    })
+    // Also keep profiles.evidence_summary in sync for legacy readers.
+    await sb.from('profiles').update({ evidence_summary: summary }).eq('id', studentId)
   } catch {
     /* non-fatal */
   }
+}
+
+/** Fetch or generate a candidate summary, persisted in candidate_summaries.
+ *  jobKey = '' → profile-wide; otherwise it's hashStr(jobDescription).
+ *  Uses evidence_hash to skip regeneration when evidence hasn't changed. */
+async function getOrRefreshSummary(studentId: string, jobKey: string, jobDescription?: string): Promise<string> {
+  const items = (await sb.from('evidence_items')
+    .select('title,description,ai_summary,confirmed_skills,status')
+    .eq('student_id', studentId)
+    .order('created_at', { ascending: false })).data as CandidateEvidenceItem[] | null
+  const evHash = evidenceSignature(items ?? [])
+
+  // Check DB for a fresh (non-stale) summary.
+  const existing = (await sb.from('candidate_summaries')
+    .select('summary, evidence_hash')
+    .eq('student_id', studentId)
+    .eq('job_key', jobKey)
+    .maybeSingle()).data as { summary: string; evidence_hash: string } | null
+
+  if (existing && existing.evidence_hash === evHash) {
+    return existing.summary
+  }
+
+  // Stale or missing — regenerate.
+  const summary = jobDescription
+    ? await extractionClient.candidateSummary(items ?? [], jobDescription)
+    : await extractionClient.candidateSummary(items ?? [])
+  const out = summary ?? 'No evidence submitted yet.'
+  await sb.from('candidate_summaries').upsert({
+    student_id: studentId,
+    job_key: jobKey,
+    summary: out,
+    evidence_hash: evHash,
+    generated_at: now(),
+  })
+  if (!jobDescription) {
+    await sb.from('profiles').update({ evidence_summary: out }).eq('id', studentId)
+  }
+  return out
 }
 
 // Keep the student's real `student_skills` in sync with confirmed evidence so
@@ -138,34 +197,24 @@ evidence.get('/student/:studentId', async (req, res) => {
 evidence.post('/student/:studentId/summary', async (req, res) => {
   const studentId = req.params.studentId
   const jobDescription = typeof req.body?.jobDescription === 'string' ? req.body.jobDescription.trim() : ''
-  const items = (await sb.from('evidence_items')
-    .select('title,description,ai_summary,confirmed_skills,status')
-    .eq('student_id', studentId)
-    .order('created_at', { ascending: false })).data as CandidateEvidenceItem[] | null
 
   if (jobDescription) {
+    // Job-scoped: persisted in candidate_summaries with a cache key for hot paths.
     const cacheKey = `j:${studentId}:${hashStr(jobDescription)}`
     const hit = summaryCache.get(cacheKey)
     if (hit && hit.exp > Date.now()) {
       res.json({ summary: hit.value })
       return
     }
-    const summary = await extractionClient.candidateSummary(items ?? [], jobDescription)
-    const out = summary ?? 'No evidence submitted yet.'
-    summaryCache.set(cacheKey, { value: out, exp: Date.now() + SUMMARY_TTL_MS })
-    res.json({ summary: out })
+    const summary = await getOrRefreshSummary(studentId, cacheKey, jobDescription)
+    summaryCache.set(cacheKey, { value: summary, exp: Date.now() + SUMMARY_TTL_MS })
+    res.json({ summary })
     return
   }
 
-  const profile = (await sb.from('profiles').select('evidence_summary').eq('id', studentId).maybeSingle()).data as
-    | { evidence_summary: string | null }
-    | null
-  let summary = profile?.evidence_summary ?? null
-  if (!summary) {
-    summary = await extractionClient.candidateSummary(items ?? [])
-    if (summary) await sb.from('profiles').update({ evidence_summary: summary }).eq('id', studentId)
-  }
-  res.json({ summary: summary ?? 'No evidence submitted yet.' })
+  // Profile-wide: persisted in candidate_summaries with job_key = ''.
+  const summary = await getOrRefreshSummary(studentId, '')
+  res.json({ summary })
 })
 
 evidence.post('/', async (req, res) => {
@@ -270,8 +319,10 @@ evidence.post('/:id/extract', async (req, res) => {
   const updated = must(
     await sb.from('evidence_items').update({ extracted_skills: skills, ai_summary: summary, status }).eq('id', row.id).select('*').single(),
   ) as EvidenceRow
-  res.json(updated)
-})
+   res.json(updated)
+   // Fire-and-forget: refresh the profile-wide summary since evidence changed.
+   refreshCandidateSummary(row.student_id).catch(() => {})
+ })
 
 evidence.post('/:id/confirm', async (req, res) => {
   const b = req.body ?? {}
