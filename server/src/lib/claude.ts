@@ -74,13 +74,23 @@ export async function claudeText(opts: {
     if (opts.thinking) params.thinking = { type: 'adaptive' }
     const res = await createWithRetry(params)
     recordUsage(params.model, res.usage)
-    if (res.stop_reason === 'refusal') return null
+    if (res.stop_reason === 'refusal') {
+      console.warn('[claude] ⚠ Claude refused text request:', { model: params.model })
+      return null
+    }
     return (res.content as Anthropic.ContentBlock[])
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map((b) => b.text)
       .join('')
       .trim()
-  } catch {
+   } catch (e: any) {
+    console.error('[claude] ✗ error in claudeText:', {
+      message: e?.message,
+      name: e?.name,
+      status: e?.status ?? e?.response?.status,
+      stack: e?.stack?.split('\n').slice(0, 5),
+      model: opts.model ?? MODELS.chat,
+    })
     return null
   }
 }
@@ -116,18 +126,32 @@ export async function claudeJson<T>(opts: {
     if (opts.thinking) params.thinking = { type: 'adaptive' }
     const res: any = await client.messages.create(params)
     recordUsage(params.model, res.usage)
-    if (res.stop_reason === 'refusal') return null
+    if (res.stop_reason === 'refusal') {
+      console.warn('[claude] ⚠ Claude refused to respond:', { model: params.model })
+      return null
+    }
     const text = (res.content ?? [])
       .filter((b: any) => b.type === 'text')
       .map((b: any) => b.text)
       .join('')
-    if (!text) return null
+    if (!text) {
+      console.warn('[claude] ⚠ empty response from claudeJson:', { model: params.model, stop_reason: res.stop_reason })
+      return null
+    }
     try {
       return JSON.parse(text) as T
     } catch {
+      console.warn('[claude] ⚠ claudeJson response not valid JSON, using extractJson fallback:', text.slice(0, 200))
       return extractJson<T>(text)
     }
-  } catch {
+  } catch (e: any) {
+    console.error('[claude] ✗ error in claudeJson:', {
+      message: e?.message,
+      name: e?.name,
+      status: e?.status ?? e?.response?.status,
+      stack: e?.stack?.split('\n').slice(0, 5),
+      model: opts.model ?? MODELS.chat,
+    })
     return null
   }
 }

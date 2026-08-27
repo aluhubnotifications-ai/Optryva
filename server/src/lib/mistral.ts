@@ -60,24 +60,39 @@ async function mistralJson<T>(opts: {
         ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
       }),
       signal: controller.signal,
-    }).finally(() => clearTimeout(timeoutId))
-    if (!res.ok) return null
-    const data: any = await res.json()
-    const usage = data?.usage
-    if (usage) {
-      recordUsage(model, { input_tokens: usage.prompt_tokens ?? 0, output_tokens: usage.completion_tokens ?? 0 })
+      }).finally(() => clearTimeout(timeoutId))
+      if (!res.ok) {
+        const errBody = (await res.text()).slice(0, 500)
+        console.error('[mistral] ✗ HTTP error in mistralJson:', {
+          status: res.status, statusText: res.statusText,
+          body: errBody, model,
+        })
+        return null
+      }
+      const data: any = await res.json()
+      const usage = data?.usage
+      if (usage) {
+        recordUsage(model, { input_tokens: usage.prompt_tokens ?? 0, output_tokens: usage.completion_tokens ?? 0 })
+      }
+      const text: string | undefined = data?.choices?.[0]?.message?.content
+      if (!text) {
+        console.warn('[mistral] ⚠ empty response from mistralJson:', { model })
+        return null
+      }
+      try {
+        return JSON.parse(text) as T
+      } catch {
+        console.warn('[mistral] ⚠ mistralJson response not valid JSON, using extractJson fallback')
+        return extractJson<T>(text)
+      }
+    } catch (e: any) {
+      console.error('[mistral] ✗ error in mistralJson:', {
+        message: e?.message, name: e?.name,
+        stack: e?.stack?.split('\n').slice(0, 3), model,
+      })
+      return null
     }
-    const text: string | undefined = data?.choices?.[0]?.message?.content
-    if (!text) return null
-    try {
-      return JSON.parse(text) as T
-    } catch {
-      return extractJson<T>(text)
-    }
-  } catch {
-    return null
   }
-}
 
 /**
  * Structured completion where the user turn is a content-part array — callers
@@ -145,7 +160,14 @@ export async function mistralChat<T>(opts: {
       }),
       signal: controller.signal,
     }).finally(() => clearTimeout(timeoutId))
-    if (!res.ok) return null
+    if (!res.ok) {
+      const errBody = (await res.text()).slice(0, 500)
+      console.error('[mistral] ✗ HTTP error in mistralChat:', {
+        status: res.status, statusText: res.statusText,
+        body: errBody, model,
+      })
+      return null
+    }
     const data: any = await res.json()
     const usage = data?.usage
     if (usage) {
@@ -155,13 +177,21 @@ export async function mistralChat<T>(opts: {
       })
     }
     const text: string | undefined = data?.choices?.[0]?.message?.content
-    if (!text) return null
+    if (!text) {
+      console.warn('[mistral] ⚠ empty response from mistralChat:', { model, data: JSON.stringify(data).slice(0, 200) })
+      return null
+    }
     try {
       return JSON.parse(text) as T
     } catch {
+      console.warn('[mistral] ⚠ response was not valid JSON, using extractJson fallback')
       return extractJson<T>(text)
     }
-  } catch {
+  } catch (e: any) {
+    console.error('[mistral] ✗ error in mistralChat:', {
+      message: e?.message, name: e?.name,
+      stack: e?.stack?.split('\n').slice(0, 3), model,
+    })
     return null
   }
 }
@@ -192,16 +222,31 @@ export async function mistralText(opts: { system: string; user: string; maxToken
         max_tokens: opts.maxTokens ?? 1000,
       }),
       signal: controller.signal,
-    }).finally(() => clearTimeout(timeoutId))
-    if (!res.ok) return null
-    const data: any = await res.json()
-    const usage = data?.usage
-    if (usage) recordUsage(MISTRAL_MODEL, { input_tokens: usage.prompt_tokens ?? 0, output_tokens: usage.completion_tokens ?? 0 })
-    const text: string | undefined = data?.choices?.[0]?.message?.content
-    return text?.trim() || null
-  } catch {
-    return null
-  }
+     }).finally(() => clearTimeout(timeoutId))
+     if (!res.ok) {
+       const errBody = (await res.text()).slice(0, 500)
+       console.error('[mistral] ✗ HTTP error in mistralText:', {
+         status: res.status, statusText: res.statusText,
+         body: errBody, model: MISTRAL_MODEL,
+       })
+       return null
+     }
+     const data: any = await res.json()
+     const usage = data?.usage
+     if (usage) recordUsage(MISTRAL_MODEL, { input_tokens: usage.prompt_tokens ?? 0, output_tokens: usage.completion_tokens ?? 0 })
+     const text: string | undefined = data?.choices?.[0]?.message?.content
+     if (!text) {
+       console.warn('[mistral] ⚠ empty response from mistralText:', { model: MISTRAL_MODEL })
+       return null
+     }
+     return text.trim()
+   } catch (e: any) {
+     console.error('[mistral] ✗ error in mistralText:', {
+       message: e?.message, name: e?.name,
+       stack: e?.stack?.split('\n').slice(0, 3), model: MISTRAL_MODEL,
+     })
+     return null
+   }
 }
 
 /** Extract plain text from a PDF stored as a base64 string (briefs are usually
