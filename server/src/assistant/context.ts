@@ -87,13 +87,31 @@ export async function getEmployerContext(userId: string): Promise<string> {
       ctx += `\nNo job postings yet. Offer to help them create one.\n`
     }
 
-    const { data: apps } = await sb.from('applications').select('id, job_id, status, created_at').eq('company_id', userId).order('created_at', { ascending: false }).limit(20)
-    if (apps && apps.length > 0) {
-      ctx += `\nRECENT APPLICATIONS:\n`
-      for (const a of apps as any[]) {
-        ctx += `  • App ${a.id.slice(0, 8)} → job ${a.job_id?.slice(0, 8)}: ${a.status}\n`
-      }
-    }
+     const { data: apps } = await sb.from('applications').select('id, job_id, status, created_at, match_score, student_id, full_name').eq('company_id', userId).order('created_at', { ascending: false }).limit(20)
+     if (apps && apps.length > 0) {
+       ctx += `\nRECENT APPLICATIONS:\n`
+       for (const a of apps as any[]) {
+         const score = a.match_score ? ` • score ${Math.round(a.match_score)}` : ''
+         ctx += `  • App ${a.id.slice(0, 8)} → job ${a.job_id?.slice(0, 8)}: ${a.status} (${a.full_name ?? 'candidate'}${score})\n`
+       }
+     }
+
+     // Fetch evidence summaries for recent applicants
+     const studentIds = [...new Set((apps ?? []).map((a: any) => a.student_id).filter(Boolean))] as string[]
+     if (studentIds.length > 0) {
+       const { data: profs } = await sb
+         .from('profiles')
+         .select('id, full_name, evidence_summary')
+         .in('id', studentIds)
+       const evidenceMap = new Map((profs ?? []).map((p: any) => [p.id, p]))
+       ctx += `\nCANDIDATE EVIDENCE SUMMARIES:\n`
+       for (const a of apps as any[]) {
+         const p = evidenceMap.get(a.student_id)
+         if (p?.evidence_summary) {
+           ctx += `  • ${p.full_name || a.full_name}: ${(p.evidence_summary as string).slice(0, 200)}…\n`
+         }
+       }
+     }
 
     return ctx
   })

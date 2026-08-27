@@ -34,7 +34,7 @@ type ToolInput = Record<string, unknown>
 /** Validate an emit_action input against the action schema and allowlist. */
 const ALLOWED_NAV_TARGETS = new Set([
   '/app/jobs', '/app/listings', '/app/listings/new', '/app/applications',
-  '/app/insights', '/app/profile', '/app/jobs/new', '/app/dashboard',
+  '/app/insights', '/app/profile', '/app/jobs/new', '/app/dashboard', '/app/applicants',
 ])
 
 function parseAction(input: ToolInput): AssistantAction | null {
@@ -103,11 +103,21 @@ const TOOL_DESCRIPTIONS = `Available tools and their EXACT parameter names:
 
 4. get_fixed40_matches(student_id: string) — Return 40 demo internship matches for a student. DEMO ONLY.
 
-5. get_employer_shortlist(job_id: string) — Get ranked candidates for a posted job.
+  5. get_employer_shortlist(job_id: string) — Get ranked candidates for a posted job. Returns match scores.
 
-  6. emit_action(type: "inject_data"|"navigate"|"update_profile"|"add_evidence"|"create_job"|"start_shortlist", target: string, data: object) — Emit a client-side action to execute immediately (e.g. navigate to a page, auto-fill a form, trigger a shortlist). Navigation targets: /app/jobs, /app/listings, /app/listings/new, /app/applications, /app/insights, /app/profile, /app/applicants. For start_shortlist, target = the job_id and data = { job_id: string }.
+  6. list_employer_jobs — List all job postings for the employer (no args).
 
-7. save_message(session_id: string, role: string, content: string) — Persist a message to conversation history for audit.
+  7. get_job_candidates(job_id: string) — List all candidates for a job with statuses, match scores, and evidence summaries.
+
+  8. get_candidate_evidence(student_id: string) — Get AI evidence summary + list of evidence items for a candidate.
+
+  9. shortlist_candidate(application_id: string) — Mark a candidate as shortlisted.
+
+  10. reject_candidate(application_id: string) — Reject a candidate application.
+
+  11. emit_action(type: "inject_data"|"navigate"|"update_profile"|"add_evidence"|"create_job"|"start_shortlist", target: string, data: object) — Emit a client-side action. For start_shortlist: target = job_id, data = { job_id: string }.
+
+  12. save_message(session_id: string, role: string, content: string) — Persist a message to conversation history for audit.
 `
 
 type TurnMessage = { role: 'user' | 'assistant'; content: string }
@@ -171,6 +181,82 @@ const TOOL_EXECUTORS: Record<string, (input: ToolInput, userId: string, mode: As
     const result = await employerShortlist(jobId, userId)
     if (!result) return JSON.stringify({ error: 'not_found' })
     return JSON.stringify(result)
+  },
+  list_employer_jobs: async (_input, userId) => {
+    const { data: jobs, error } = await sb
+      .from('job_listings')
+      .select('id,title,description,type,location,pay,status,created_at,tags')
+      .eq('company_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(50)
+    if (error) return JSON.stringify({ error: error.message })
+    return JSON.stringify({ count: jobs?.length ?? 0, jobs: jobs ?? [] })
+  },
+  get_job_candidates: async (input, userId) => {
+    const jobId = getStr(input, 'job_id', 'id')
+    if (!jobId) return JSON.stringify({ error: 'job_id is required' })
+    const { data: apps, error } = await sb
+      .from('applications')
+      .select('id,student_id,full_name,email,school,year,status,match_score,match_rationale,created_at')
+      .eq('job_id', jobId)
+      .limit(40)
+    if (error) return JSON.stringify({ error: error.message })
+    const candidates = (apps ?? []).map((a: any) => ({
+      id: a.id,
+      student_id: a.student_id,
+      name: a.full_name,
+      email: a.email,
+      school: a.school,
+      year: a.year,
+      status: a.status,
+      match_score: a.match_score,
+      match_rationale: a.match_rationale,
+      applied_at: a.created_at,
+    }))
+    return JSON.stringify({ count: candidates.length, candidates })
+  },
+  get_candidate_evidence: async (input) => {
+    const studentId = getStr(input, 'student_id', 'id')
+    if (!studentId) return JSON.stringify({ error: 'student_id is required' })
+    const { data: profile } = await sb
+      .from('profiles')
+      .select('evidence_summary, full_name, school, major, year')
+      .eq('id', studentId)
+      .maybeSingle()
+    const { data: items, error: itemsErr } = await sb
+      .from('evidence_items')
+      .select('id,title,type,created_at')
+      .eq('student_id', studentId)
+      .limit(20)
+    return JSON.stringify({
+      candidate_name: profile?.full_name ?? 'Unknown',
+      school: profile?.school ?? null,
+      major: profile?.major ?? null,
+      year: profile?.year ?? null,
+      evidence_summary: profile?.evidence_summary ?? 'No evidence submitted yet.',
+      evidence_count: items?.length ?? 0,
+      evidence: itemsErr ? [] : items ?? [],
+    })
+  },
+  shortlist_candidate: async (input) => {
+    const appId = getStr(input, 'application_id', 'app_id', 'id')
+    if (!appId) return JSON.stringify({ error: 'application_id is required' })
+    const { error } = await sb
+      .from('applications')
+      .update({ status: 'shortlisted' })
+      .eq('id', appId)
+    if (error) return JSON.stringify({ error: error.message })
+    return JSON.stringify({ ok: true, application_id: appId, new_status: 'shortlisted' })
+  },
+  reject_candidate: async (input) => {
+    const appId = getStr(input, 'application_id', 'app_id', 'id')
+    if (!appId) return JSON.stringify({ error: 'application_id is required' })
+    const { error } = await sb
+      .from('applications')
+      .update({ status: 'rejected' })
+      .eq('id', appId)
+    if (error) return JSON.stringify({ error: error.message })
+    return JSON.stringify({ ok: true, application_id: appId, new_status: 'rejected' })
   },
   emit_action: async (input) => {
     const action = parseAction(input)

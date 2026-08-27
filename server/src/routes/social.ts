@@ -132,12 +132,12 @@ messages.get('/conversations', async (req, res) => {
   const safeId = meId.replace(/[^a-zA-Z0-9_-]/g, '')
   const dmRows = safeId
     ? (must(
-         await sb
-           .from('messages')
-           .select('thread_id')
-           .eq('scope', 'dm')
-           .or(`thread_id.like.${safeId}__*,thread_id.like.*__${safeId}`),
-       ) as any[])
+      await sb
+        .from('messages')
+        .select('thread_id')
+        .eq('scope', 'dm')
+        .or(`thread_id.like.${safeId}__*,thread_id.like.*__${safeId}`),
+    ) as any[])
     : []
   const seenDm = new Set<string>()
   for (const d of dmRows) {

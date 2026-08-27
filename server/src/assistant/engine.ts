@@ -57,7 +57,7 @@ function buildSystemPrompt(mode: AssistantMode, context: string, pageContext?: s
   prompt += `- navigate target='/app/insights' (employer: shortlist) or '/app/profile' (edit profile)\n`
   prompt += `- update_profile data={skills: [...], full_name: '...'}\n`
    prompt += `- add_evidence data={url, title, skills: [...], achievements: [...]}\n`
-   prompt += `- start_shortlist target='{job_id}' data={job_id: string} — triggers Smart Shortlist for a job posting (employer)\n\n`
+   prompt += `- start_shortlist target='{job_id}' data={job_id: string} — triggers Smart Shortlist for a job posting (employer); opens candidates from Smart Shortlist\n\n`
   prompt += `GROUNDING CONTEXT:\n${context}\n\n`
   if (pageContext) {
     prompt += `CURRENT PAGE: ${pageContext}\n\n`
@@ -391,19 +391,46 @@ export async function processAssistantMessage(
 export async function employerShortlist(jobId: string, employerId: string): Promise<any> {
   const { data: job } = await sb.from('job_listings').select('*').eq('id', jobId).eq('company_id', employerId).maybeSingle()
   if (!job) return null
-  const { data: apps } = await sb.from('applications').select('id, student_id, status').eq('job_id', jobId).limit(40)
+  const { data: apps } = await sb.from('applications').select('id, student_id, full_name, email, school, year, status, match_score, match_rationale, created_at').eq('job_id', jobId).limit(40)
   if (!apps?.length) return { job_title: job.title, matches: [] }
 
   const studentIds = [...new Set(apps.map((a) => a.student_id).filter(Boolean))]
-  const matches = studentIds.map((sid, i) => ({
-    id: sid,
-    name: `Candidate ${sid?.slice(0, 8)}`,
-    score: Math.max(30, 95 - i * 3),
-    strengths: ['Evidence-backed'],
-    gap: 'None detected',
-  }))
+  // Fetch evidence summaries in a single batch
+  const { data: profiles } = await sb
+    .from('profiles')
+    .select('id, evidence_summary, skills')
+    .in('id', studentIds as string[])
+    .limit(40)
 
-  return { job_title: job.title, matches }
+  const profileMap = new Map((profiles ?? []).map((p: any) => [p.id, p]))
+
+  // Sort by match_score (highest first) for ranking
+  const sortedApps = [...apps].sort((a: any, b: any) => {
+    const sa = a.match_score ?? 0
+    const sb = b.match_score ?? 0
+    return sb - sa
+  })
+
+  const matches = sortedApps.map((app: any, i: number) => {
+    const prof = profileMap.get(app.student_id)
+    const score = app.match_score ?? Math.max(30, 95 - i * 3)
+    return {
+      application_id: app.id,
+      student_id: app.student_id,
+      name: app.full_name || `Candidate ${app.student_id?.slice(0, 8)}`,
+      email: app.email || null,
+      school: app.school || prof?.school || null,
+      year: app.year ?? null,
+      status: app.status,
+      score: Math.round(score),
+      match_rationale: app.match_rationale ?? null,
+      evidence_summary: prof?.evidence_summary ?? null,
+      skills: prof?.skills ? j.parse<string[]>(prof.skills, []) : [],
+      applied_at: app.created_at,
+    }
+  })
+
+  return { job_title: job.title, job_id: job.id, match_count: matches.length, matches }
 }
 
 /** Export the demo matcher for the /assistant/match route. */
