@@ -50,10 +50,10 @@ function buildSystemPrompt(mode: AssistantMode, context: string, pageContext?: s
   prompt += `Do not list generic capabilities. Act on what the user actually asked.\n\n`
   prompt += `When the user asks to create, add, update, or modify data, include an 'inject_data' action with the right 'target' so the app updates instantly:\n`
   prompt += `- inject_data target='profile_skills' data={skills: [...], mode: 'add'|'replace'}\n`
-  prompt += `- inject_data target='job_editor' data={job: {...}}\n`
+  prompt += `- inject_data target='job_editor' data={job: {...}} — opens the create/edit form with fields pre-filled\n`
   prompt += `- inject_data target='resume' data={...}\n`
   prompt += `- navigate target='/app/jobs' (student job browse) or '/app/listings' (employer job postings)\n`
-  prompt += `- navigate target='/app/listings/new' (employer: create job) or '/app/applications' (student: my apps)\n`
+  prompt += `- navigate target='/app/listings/new' (employer: create job), '/app/listings' (employer: view/edit postings), '/app/applications/:id/assessment' (student: take test)\n`
   prompt += `- navigate target='/app/insights' (employer: shortlist) or '/app/profile' (edit profile)\n`
   prompt += `- update_profile data={skills: [...], full_name: '...'}\n`
   prompt += `- add_evidence data={url, title, skills: [...], achievements: [...]}\n\n`
@@ -151,6 +151,13 @@ async function fallbackIntentHandler(
 
   // Student: "what jobs/applications do I have", "my skills", "my profile"
   if (mode === 'student') {
+    if (lower.includes('assessment')) {
+      return {
+        text: "To complete your assessment: navigate to your application, open the Assessment tab, review any instructions from the employer, and submit your response before the deadline.",
+        actions: [{ type: 'navigate', target: '/app/applications', data: {} }],
+      }
+    }
+
     if (lower.includes('job') || lower.includes('intern') || lower.includes('opportunit') || lower.includes('application')) {
       const { data: apps } = await sb
         .from('applications')
@@ -179,9 +186,22 @@ async function fallbackIntentHandler(
   // Employer/University: handle create requests first, then listing queries
   if (mode === 'employer' || mode === 'university') {
     if (lower.includes('create') || lower.includes('new') || lower.includes('draft')) {
+      if (lower.includes('document') || lower.includes('file') || lower.includes('pdf') || lower.includes('upload') || lower.includes('do it for you') || lower.includes('generate')) {
+        return {
+          text: "Opening the job editor with instructions:\n1. Paste your job description or click the AI generator to create from scratch\n2. Upload a document (PDF/doc) using the file upload in the editor — the AI will extract key requirements\n3. Fill in location, pay, tags\n4. Save the draft, then add an assessment if needed\n5. Preview and post when ready",
+          actions: [{ type: 'navigate', target: '/app/listings/new', data: {} }],
+        }
+      }
       return {
         text: "Opening the job editor. Here's what to fill in:\n1. Job title (e.g. Intern Management)\n2. Description — paste the full role description\n3. Location, listing type, tags, pay\n4. Click Save to create the draft\n5. Then add an assignment for assessments if needed",
         actions: [{ type: 'navigate', target: '/app/listings/new', data: {} }],
+      }
+    }
+
+    if (lower.includes('assessment') || lower.includes('assignment') || lower.includes('test')) {
+      return {
+        text: "To set up an assessment:\n1. Open an existing job posting in the editor (/app/listings)\n2. Click the Assessment step/tab\n3. Add a practical task with a prompt, time limit, and rubric\n4. Or click 'Generate with AI' to auto-create questions from your job description\n5. Save and preview as a candidate before posting",
+        actions: [{ type: 'navigate', target: '/app/listings', data: {} }],
       }
     }
 
