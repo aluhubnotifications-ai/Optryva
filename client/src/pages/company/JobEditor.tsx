@@ -133,7 +133,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
     setPreview(false)
       if (editing) {
         setF({
-          title: editing.title, description: editing.description, type: editing.type, listing_type: editing.listing_type,
+                      title: editing.title, description: editing.description ?? '', type: editing.type, listing_type: editing.listing_type,
           country: isCompany ? (user.country || editing.country || 'Remote') : editing.country, location: editing.location, pay: editing.pay ?? '', duration: editing.duration ?? '',
         deadline: editing.deadline ? editing.deadline.slice(0, 10) : '', tags: editing.tags.join(', '),
         responsibilities: editing.responsibilities ?? [], benefits: editing.benefits ?? [], qualifications: editing.qualifications ?? [],
@@ -380,7 +380,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
   }
 
   async function submit() {
-    if (!f.title.trim() || !f.description.trim()) { setError('Title and description are required.'); return }
+    if (!f.title.trim() || !(f.description ?? '').trim()) { setError('Title and description are required.'); return }
     if (f.fromOther && !f.apply_url.trim()) { setError('An external application link is required for opportunities from another company.'); return }
     setError(null)
     setSaving(true)
@@ -435,7 +435,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
   const nextId = sectionIndex < sectionOrder.length - 1 ? sectionOrder[sectionIndex + 1] : null
 
   const sections: { id: StepId; label: string; desc: string; icon: LucideIcon; done: boolean; optional?: boolean }[] = [
-    { id: 'details', label: 'Job details', desc: 'Role, category, location, pay', icon: ClipboardCheck, done: !!(f.title.trim() && f.description.trim()) },
+    { id: 'details', label: 'Job details', desc: 'Role, category, location, pay', icon: ClipboardCheck, done: !!(f.title.trim() && (f.description ?? '').trim()) },
     ...(assignmentAllowed ? [{ id: 'assessment' as StepId, label: 'Assessment', desc: 'Optional practical task', icon: Sparkles, done: !!assignment?.prompt.trim(), optional: true }] : []),
     { id: 'submission', label: 'Submission', desc: 'Review & preview', icon: Eye, done: false },
   ]
