@@ -560,7 +560,7 @@ function JobDetailContent({
                 {match && <ScorePill score={match.score} />}
                 <Badge tone="primary">{job.listing_type}</Badge>
                 {job.duration && <Badge tone="default">{job.duration}</Badge>}
-                {job.tags.slice(0, 2).map((t) => (
+                {job.tags.slice(0, 5).map((t) => (
                   <Badge key={t} tone="outline">{t}</Badge>
                 ))}
               </div>
@@ -633,6 +633,17 @@ function JobDetailContent({
                 </li>
               ))}
             </ul>
+          </Section>
+        )}
+
+        {/* Skills needed (from job tags) */}
+        {job.tags.length > 0 && (
+          <Section icon={Layers} title="Skills needed">
+            <div className="flex flex-wrap gap-1.5">
+              {job.tags.map((t, i) => (
+                <Badge key={i} tone="outline" className="text-xs">{t}</Badge>
+              ))}
+            </div>
           </Section>
         )}
 

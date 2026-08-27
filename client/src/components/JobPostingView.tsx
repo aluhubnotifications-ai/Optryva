@@ -43,6 +43,14 @@ export function JobPostingView({ job, brand, logo }: { job: JobListing; brand?: 
         <Section title="Benefits"><List items={content.benefits} /></Section>
       )}
 
+      {job.tags.length > 0 && (
+        <Section title="Skills needed">
+          <div className="flex flex-wrap gap-1.5">
+            {job.tags.map((t, i) => <Badge key={i} tone="outline">{t}</Badge>)}
+          </div>
+        </Section>
+      )}
+
       {job.assignment && !job.apply_url && !job.original_company_name && <AssignmentView assignment={job.assignment} />}
     </div>
   )
