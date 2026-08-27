@@ -126,6 +126,11 @@ async function buildGroqContent(brief: string | undefined, docs: any[], instruct
   const parts: string[] = []
   if (brief?.trim()) parts.push(`EMPLOYER BRIEF:\n${brief.trim().slice(0, 8000)}`)
 
+  // If the brief is very short (just a title), extract the role title for context
+  if (brief && brief.trim().length < 50 && !brief.includes('\n')) {
+    parts.push(`IMPORTANT: The brief above is just a role title. You MUST generate a full "description" field (2-4 paragraphs) explaining what this role is about, what the candidate will do, and why it matters. Do NOT leave description empty.`)
+  }
+
   for (const src of docs) {
     if (!src?.dataUrl) continue
     const parsed = parseDataUrl(src.dataUrl)
@@ -159,7 +164,7 @@ Rules:
   • If a duration is not stated, set "duration" to "".
   • If a location is not stated, set "location" to "" (the employer will pick a country).
 - "title" is a concise role title (e.g. "Frontend Engineering Intern").
-- "description" is 2-4 paragraphs: what the role is, what the candidate will do, and why it matters. Use Markdown paragraphs only.
+- "description" is 2-4 paragraphs: what the role is, what the candidate will do, and why it matters. Use Markdown paragraphs only. NEVER leave this empty — if the brief is short, generate a substantive description.
 - "category" MUST be exactly one of: Software Engineering, Data, Design, Marketing, Operations, Finance, Product.
 - "listing_type" MUST be exactly one of: Internship, Full-time, Part-time, Fellowship.
 - "tags" are 4-8 short skills/keywords (e.g. ["React", "TypeScript", "UX research"]).
@@ -278,7 +283,7 @@ function normalize(r: GeneratedJob) {
   console.log('[routes:ai:job] normalize final:', { responsibilities, qualifications, benefits })
   return {
     title: (r.title ?? '').toString().trim().slice(0, 160) || 'Untitled role',
-    description: desc.slice(0, 4000),
+    description: desc || `Join us as a ${r.title || 'team member'} for an exciting opportunity to grow your skills and make an impact.`,
     category: coerceCategory(r.category),
     listing_type: coerceListingType(r.listing_type),
     location: (r.location ?? '').toString().trim().slice(0, 120),

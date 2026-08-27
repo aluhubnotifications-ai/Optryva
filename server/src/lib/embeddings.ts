@@ -87,13 +87,16 @@ export function toVector(v: number[]): string {
 }
 
 /** Build the document we embed for a job listing. */
-export function jobEmbedText(job: { title: string; type?: string; listing_type?: string; tags?: string[]; description?: string }): string {
+export function jobEmbedText(job: { title: string; type?: string; listing_type?: string; tags?: string[]; description?: string; responsibilities?: string[]; qualifications?: string[]; benefits?: string[] }): string {
   return [
     job.title,
     job.type,
     job.listing_type,
     (job.tags ?? []).join(', '),
-    (job.description ?? '').slice(0, 4000),
+    (job.description ?? '').slice(0, 2000),
+    'Responsibilities: ' + (job.responsibilities ?? []).slice(0, 8).join('. '),
+    'Qualifications: ' + (job.qualifications ?? []).slice(0, 6).join('. '),
+    'Benefits: ' + (job.benefits ?? []).slice(0, 5).join('. '),
   ]
     .filter(Boolean)
     .join('\n')
