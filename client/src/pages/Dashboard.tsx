@@ -229,8 +229,7 @@ function StudentDashboard({ user }: { user: Profile }) {
   return (
     <div className="space-y-6">
       {showNudge && <NudgeModal items={nudgeItems} onClose={() => setNudgeHidden(true)} />}
-      <Hero user={user} completeness={completeness} />
-      <NextBestAction hasCv={hasCv} gaps={gaps} matches={matches} />
+      <Hero user={user} />
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -425,7 +424,7 @@ function StudentDashboard({ user }: { user: Profile }) {
 
 /* ============================ new blocks ============================ */
 
-function Hero({ user, completeness }: { user: Profile; completeness: number }) {
+function Hero({ user }: { user: Profile }) {
   return (
     <Card className="overflow-hidden">
       <div className="relative bg-gradient-to-br from-primary/10 via-card to-accent/10 p-6">
@@ -435,21 +434,9 @@ function Hero({ user, completeness }: { user: Profile; completeness: number }) {
             <div>
               <p className="text-sm text-muted-foreground">{greeting()},</p>
               <h1 className="text-2xl font-bold tracking-tight">{user.full_name.split(' ')[0]}</h1>
-              <p className="mt-1 text-sm text-muted-foreground">Profile {completeness}% complete · {user.plan === 'free' ? 'Free plan' : user.plan}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {user.plan === 'free' ? (
-              <Link to="/app/usage">
-                <Button variant="subtle" className="gap-1.5">
-                  <Crown className="h-4 w-4" /> Upgrade
-                </Button>
-              </Link>
-            ) : (
-              <Badge tone="primary" className="gap-1">
-                <Crown className="h-3 w-3" /> {user.plan.toUpperCase()}
-              </Badge>
-            )}
             <Link to="/app/jobs">
               <Button className="gap-1.5">
                 Browse jobs <ArrowRight className="h-4 w-4" />
@@ -462,72 +449,7 @@ function Hero({ user, completeness }: { user: Profile; completeness: number }) {
   )
 }
 
-function NextBestAction({
-  hasCv,
-  gaps,
-  matches,
-}: {
-  hasCv: boolean
-  gaps: { label: string; to: string; icon: typeof FileText }[]
-  matches: AiMatch[]
-}) {
-  const action = useMemo(() => {
-    if (!hasCv)
-      return {
-        icon: FileText,
-        title: 'Upload your CV to unlock AI matches',
-        desc: 'Your CV is the strongest signal we use to rank roles for you.',
-        cta: 'Upload CV',
-        to: '/app/profile',
-        variant: 'default' as const,
-      }
-    if (gaps.some((g) => g.label.toLowerCase().includes('skill')))
-      return {
-        icon: Sparkles,
-        title: 'Add your skills for better matches',
-        desc: "Tell us what you're good at and we'll surface more relevant roles.",
-        cta: 'Add skills',
-        to: '/app/profile',
-        variant: 'outline' as const,
-      }
-    if (matches.length === 0)
-      return {
-        icon: TrendingUp,
-        title: 'Browse roles to get matched',
-        desc: 'Open roles are waiting — apply and we’ll learn what fits you best.',
-        cta: 'Browse jobs',
-        to: '/app/jobs',
-        variant: 'outline' as const,
-      }
-    return {
-      icon: Target,
-      title: `${matches.length} roles match you well`,
-      desc: 'Review your personalized shortlist and apply to your top pick.',
-      cta: 'View matches',
-      to: '/app/insights',
-      variant: 'outline' as const,
-    }
-  }, [hasCv, gaps, matches.length])
-
-  return (
-    <Card className="border-primary/30 bg-primary/5">
-      <CardBody className="flex items-center gap-4">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
-          <action.icon className="h-5 w-5" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold leading-tight">{action.title}</p>
-          <p className="truncate text-sm text-muted-foreground">{action.desc}</p>
-        </div>
-        <Link to={action.to} className="shrink-0">
-          <Button variant={action.variant} size="sm" className="gap-1.5">
-            {action.cta} <ArrowRight className="h-4 w-4" />
-          </Button>
-        </Link>
-      </CardBody>
-    </Card>
-  )
-}
+// NextBestAction promotional banner removed per user request
 
 // Compact, reason-led match card for the horizontal Top Picks row.
 function MatchCard({ job, match }: { job: JobListing; match: AiMatch }) {

@@ -204,6 +204,28 @@ async function fallbackIntentHandler(
         text: "To set up an assessment:\n1. Open an existing job posting in the editor (/app/listings)\n2. Click the Assessment step/tab\n3. Add a practical task with a prompt, time limit, and rubric\n4. Or click 'Generate with AI' to auto-create questions from your job description\n5. Save and preview as a candidate before posting",
         actions: [{ type: 'navigate', target: '/app/listings', data: {} }],
       }
+     }
+
+    // Check shortlist BEFORE "job" — "shortlist for this job" contains "job"
+    if (lower.includes('shortlist') || lower.includes('short list')) {
+      const { data: jobs } = await sb
+        .from('job_listings')
+        .select('id, title')
+        .eq('company_id', userId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      if (jobs && jobs.length === 1) {
+        return {
+          text: `Starting Smart Shortlist for "${jobs[0].title}".`,
+          actions: [{ type: 'start_shortlist', target: jobs[0].id, data: { job_id: jobs[0].id } }],
+        }
+      }
+      return {
+        text: "Navigate to Insights to view your shortlist.",
+        actions: [{ type: 'navigate', target: '/app/insights', data: {} }],
+      }
     }
 
     if (lower.includes('job') || lower.includes('posting') || lower.includes('internship')) {
@@ -232,27 +254,6 @@ async function fallbackIntentHandler(
       }, {})
       const breakdown = Object.entries(byStatus).map(([s, c]) => `${s}: ${c}`).join(', ')
       return { text: `You have ${total} application(s): ${breakdown || 'no breakdown available'}`, actions: [{ type: 'navigate', target: '/app/insights', data: {} }] }
-    }
-
-    if (lower.includes('shortlist')) {
-      const { data: jobs } = await sb
-        .from('job_listings')
-        .select('id, title')
-        .eq('company_id', userId)
-        .eq('status', 'active')
-        .order('created_at', { ascending: false })
-        .limit(1)
-
-      if (jobs && jobs.length === 1) {
-        return {
-          text: `Starting Smart Shortlist for "${jobs[0].title}".`,
-          actions: [{ type: 'start_shortlist', target: jobs[0].id, data: { job_id: jobs[0].id } }],
-        }
-      }
-      return {
-        text: "Navigate to Insights to view your shortlist.",
-        actions: [{ type: 'navigate', target: '/app/insights', data: {} }],
-      }
     }
   }
 
