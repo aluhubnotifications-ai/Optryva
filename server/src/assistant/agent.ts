@@ -118,6 +118,8 @@ const TOOL_DESCRIPTIONS = `Available tools and their EXACT parameter names:
   11. emit_action(type: "inject_data"|"navigate"|"update_profile"|"add_evidence"|"create_job"|"start_shortlist", target: string, data: object) — Emit a client-side action. For start_shortlist: target = job_id, data = { job_id: string }.
 
   12. save_message(session_id: string, role: string, content: string) — Persist a message to conversation history for audit.
+
+  13. count_applicants(job_id?: string) — Count total applicants across all employer jobs, or for a specific job_id if provided. Returns total count, per-job breakdown, and per-candidate score/evidence summary.
 `
 
 type TurnMessage = { role: 'user' | 'assistant'; content: string }
@@ -338,6 +340,85 @@ const TOOL_EXECUTORS: Record<string, (input: ToolInput, userId: string, mode: As
       })
     } catch { /* non-critical */ }
     return JSON.stringify({ saved: true })
+  },
+  count_applicants: async (input, userId) => {
+    const jobId = getStr(input, 'job_id', 'id')
+    console.log('[assistant:agent:tool] count_applicants', { userId, jobId: jobId ?? 'all' })
+    try {
+      const jobIds: string[] = []
+      if (jobId) {
+        const { data: job } = await sb.from('job_listings').select('id').eq('id', jobId).eq('company_id', userId).maybeSingle()
+        if (!job) {
+          console.warn('[assistant:agent:tool] count_applicants — job not found or access denied:', { jobId, userId })
+          return JSON.stringify({ error: 'job_not_found' })
+        }
+        jobIds.push(job.id)
+      } else {
+        const { data: jobs } = await sb.from('job_listings').select('id').eq('company_id', userId)
+        jobs?.forEach((j: any) => jobIds.push(j.id))
+      }
+      console.log('[assistant:agent:tool] count_applicants — jobs:', { count: jobIds.length, jobIds: jobIds.slice(0, 20) })
+
+      let apps: any[] = []
+      if (jobIds.length) {
+        const { data: fetched, error } = await sb
+          .from('applications')
+          .select('id, student_id, full_name, email, school, year, status, match_score, assignment_score, assignment_status, created_at, job_id')
+          .in('job_id', jobIds)
+          .order('created_at', { ascending: false })
+          .limit(100)
+        if (error) {
+          console.error('[assistant:agent:tool] ✗ Supabase error querying applications:', error.message)
+          return JSON.stringify({ error: error.message })
+        }
+        apps = fetched ?? []
+      }
+      console.log('[assistant:agent:tool] ✓ applications fetched:', { count: apps.length })
+
+      const { data: profiles } = await sb
+        .from('profiles')
+        .select('id, full_name, evidence_summary')
+        .in('id', [...new Set(apps.map((a: any) => a.student_id).filter(Boolean))] as string[])
+
+      const pmap = new Map((profiles ?? []).map((p: any) => [p.id, p]))
+
+      const byJob: Record<string, number> = {}
+      const byStatus: Record<string, number> = {}
+      const candidates: any[] = []
+
+      for (const a of apps) {
+        byJob[a.job_id] = (byJob[a.job_id] ?? 0) + 1
+        byStatus[a.status] = (byStatus[a.status] ?? 0) + 1
+        candidates.push({
+          application_id: a.id,
+          student_id: a.student_id,
+          name: a.full_name || pmap.get(a.student_id)?.full_name || 'candidate',
+          email: a.email,
+          school: a.school,
+          year: a.year,
+          job_id: a.job_id,
+          status: a.status,
+          match_score: a.match_score,
+          assignment_score: a.assignment_score,
+          assignment_status: a.assignment_status,
+          evidence_summary: pmap.get(a.student_id)?.evidence_summary ?? null,
+          applied_at: a.created_at,
+        })
+      }
+
+      console.log('[assistant:agent:tool] count_applicants COMPLETE:', {
+        total: apps.length, status_breakdown: byStatus, job_breakdown_count: Object.keys(byJob).length,
+      })
+      return JSON.stringify({
+        total: apps.length,
+        status_breakdown: byStatus,
+        per_job: byJob,
+        candidates: candidates.slice(0, 30),
+      })
+    } catch (e: any) {
+      console.error('[assistant:agent:tool] ✗ count_applicants error:', e?.message)
+      return JSON.stringify({ error: e?.message ?? 'tool_execution_failed' })
+    }
   },
 }
 
