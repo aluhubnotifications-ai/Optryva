@@ -232,9 +232,20 @@ function strArr(v: unknown, cap = 10): string[] {
 
 /** Coerce/repair the model output so the client always gets a usable, on-vocabulary draft. */
 function normalize(r: GeneratedJob) {
+  console.log('[routes:ai:job] normalize input:', {
+    title: r.title?.slice(0, 50),
+    responsibilities: r.responsibilities,
+    qualifications: r.qualifications,
+    benefits: r.benefits,
+  })
   const responsibilities = strArr(r.responsibilities, 8)
   const qualifications = strArr(r.qualifications, 6)
   const benefits = strArr(r.benefits, 5)
+  console.log('[routes:ai:job] normalize after strArr:', {
+    resp_count: responsibilities.length,
+    qual_count: qualifications.length,
+    ben_count: benefits.length,
+  })
 
   // Fallback: auto-generate from description if AI omitted critical fields
   const desc = (r.description ?? '').toString().trim()
@@ -264,6 +275,7 @@ function normalize(r: GeneratedJob) {
     benefits.push('Certificate of completion.')
   }
 
+  console.log('[routes:ai:job] normalize final:', { responsibilities, qualifications, benefits })
   return {
     title: (r.title ?? '').toString().trim().slice(0, 160) || 'Untitled role',
     description: desc.slice(0, 4000),
