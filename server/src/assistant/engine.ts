@@ -304,7 +304,9 @@ async function fallbackIntentHandler(
             const as = a.assignment_score != null ? `test ${a.assignment_score}/100` : 'test —'
             const nm = a.full_name || pmap.get(a.student_id)?.full_name || 'candidate'
             const jb = jobTitle(a.job_id)
-            return `  • ${nm} → ${jb} — ${a.status} (${m}, ${as})`
+            const ev = pmap.get(a.student_id)?.evidence_summary as string | undefined
+            const evStr = ev && ev.length > 80 ? ev.slice(0, 80) + '…' : (ev || 'no evidence')
+            return `  • ${nm} → ${jb} — ${a.status} (${m}, ${as}) | evidence: ${evStr}`
           }).join('\n')
           if (appsArr.length > 8) detail += `\n...and ${appsArr.length - 8} more.`
         }
