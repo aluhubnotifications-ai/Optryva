@@ -146,7 +146,10 @@ async function fallbackIntentHandler(
 ): Promise<{ text: string; actions: AssistantAction[] } | null> {
   const lower = message.toLowerCase().trim()
 
-  if (/\b(hello|hi|hey)\b/i.test(message) && !lower.includes('shortlist') && !lower.includes('candidate') && !lower.includes('job') && !lower.includes('intern')) {
+  // Only match as greeting if the message IS a greeting (short, no question words)
+  const isGreeting = /^\b(hello|hi|hey)\b[\s.!?\u2026]*$/i.test(message) &&
+    !lower.includes('shortlist') && !lower.includes('candidate') && !lower.includes('job') && !lower.includes('intern')
+  if (isGreeting) {
     console.log('[assistant:engine:fallback] ✓ matched greeting intent')
     return { text: "Hi! I'm the Optryva Assistant. Ask me about your jobs, applications, skills, or profile.", actions: [] }
   }
