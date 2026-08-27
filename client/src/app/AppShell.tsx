@@ -416,11 +416,9 @@ function Topbar() {
       </form>
 
       {/* Right-side icon group. When the AI assistant sidebar is open, nudge the
-          icons 10px left so the profile picture peeks out from behind the sidebar
-          instead of being fully covered — just a small shift, back near its
-          original position. */}
-      <div className={cn('flex items-center gap-1.5', sidebarOpen && 'lg:mr-[3px]')}>
-        <CountrySelect />
+          icons left so the profile picture peeks out from behind the sidebar
+          instead of being fully covered. */}
+      <div className={cn('flex items-center gap-1.5', sidebarOpen && 'mr-[3px]')}>        <CountrySelect />
 
         <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
           {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}

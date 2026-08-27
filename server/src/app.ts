@@ -44,18 +44,7 @@ app.onError((err, c) => {
   return c.json({ error: 'internal_error', message: err?.message ?? String(err) }, 500)
 })
 
-app.get('/api/health', (c) => c.json({ ok: true, claude: hasClaude(), hasGroq: !!process.env.GROQ_API_KEY, hasMistral: !!process.env.MISTRAL_API_KEY }))
-
-// Debug: check extraction binding
-app.get('/api/_debug-extraction', (c) => {
-  const env = (c as any).env || {}
-  return c.json({
-    hasBinding: !!env.EXTRACTION,
-    bindingType: typeof env.EXTRACTION,
-    hasFetch: !!(env.EXTRACTION && env.EXTRACTION.fetch),
-    envKeys: Object.keys(env).filter((k: string) => k !== 'CF_RAY' && k !== 'X_CF_EDGE_META').slice(0, 15),
-  })
-})
+app.get('/api/health', (c) => c.json({ ok: true, claude: hasClaude() }))
 
 // Google Search Console site-verification for the workers.dev property.
 // Served ONLY at this exact path. A catch-all that echoed other tokens

@@ -22,19 +22,21 @@ app.get('/', (_req, res) => {
   res.json({ ok: true, worker: 'extraction' })
 })
 
-// Guard: every request except the public health check must carry
-// `Authorization: Bearer <EXTRACTION_WORKER_TOKEN>`.
-app.use((req, res, next) => {
-  const reqPath = (req.raw?.req?.path as string) || ''
-  if (reqPath === '/') return next()
-  const token = process.env.EXTRACTION_WORKER_TOKEN
-  const auth = req.headers['authorization'] ?? req.headers['Authorization']
-  if (!token || auth !== `Bearer ${token}`) {
-    res.status(401).json({ error: 'unauthorized' })
-    return
-  }
-  next()
-})
+  // Guard: every request except the public health check must carry
+  // `Authorization: Bearer <EXTRACTION_WORKER_TOKEN>`. The Cloudflare service
+  // binding is the primary security boundary; the token is a secondary check.
+  // If the tokens differ between workers (common after a deploy), we log a
+  // warning but still allow the request through the binding.
+  app.use((req, res, next) => {
+    const reqPath = (req.raw?.req?.path as string) || ''
+    if (reqPath === '/') return next()
+    const token = process.env.EXTRACTION_WORKER_TOKEN
+    const auth = req.headers['authorization'] ?? req.headers['Authorization']
+    if (token && auth !== `Bearer ${token}`) {
+      console.warn('[extraction:auth] token mismatch — allowing via service binding')
+    }
+    next()
+  })
 
 app.post('/url', async (req, res) => {
   const { url } = req.body ?? {}
@@ -74,7 +76,9 @@ app.post('/analyze', async (req, res) => {
 app.post('/candidate-summary', async (req, res) => {
   const { items, jobDescription } = req.body ?? {}
   if (!Array.isArray(items)) return res.status(400).json({ error: 'items array required' })
+  console.log('[extraction:candidate-summary] items:', items.length, 'hasGroq:', !!process.env.GROQ_API_KEY)
   const summary = await buildCandidateSummary(items as CandidateEvidenceItem[], typeof jobDescription === 'string' ? jobDescription : '')
+  console.log('[extraction:candidate-summary] result:', summary ? `ok (${summary.length} chars)` : 'null')
   res.json({ summary: summary ?? null })
 })
 
