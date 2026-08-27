@@ -255,35 +255,8 @@ async function fallbackIntentHandler(
       }
     }
 
-    if (lower.includes('job') || lower.includes('posting') || lower.includes('internship')) {
-      console.log('[assistant:engine:fallback] ✓ matched employer job listing intent')
-      try {
-        const { data: jobs, error } = await sb
-          .from('job_listings')
-          .select('title, status, location, created_at')
-          .eq('company_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(20)
-
-        if (error) {
-          console.error('[assistant:engine:fallback] ✗ Supabase error querying employer jobs:', error.message)
-          return null
-        }
-
-        if (!jobs || jobs.length === 0) {
-          return { text: "You don't have any job postings yet.", actions: [{ type: 'navigate', target: '/app/listings/new', data: {} }] }
-        }
-
-        const summary = jobs.slice(0, 8).map((j: any) => `  ${j.title} (${j.status}, ${j.location ?? 'remote-ok'})`).join('\n')
-        const more = jobs.length > 8 ? `...and ${jobs.length - 8} more.` : ''
-        return { text: `You have ${jobs.length} job posting(s):\n${summary}\n${more}`, actions: [{ type: 'navigate', target: '/app/listings', data: {} }] }
-      } catch (e: any) {
-        console.error('[assistant:engine:fallback] ✗ error in employer job handler:', e?.message)
-        return null
-      }
-    }
-
-    if (lower.includes('applicant') || lower.includes('application') || lower.includes('candidate') || (lower.includes('test') && lower.includes('how')) || (lower.includes('test') && /\b(do|did|score|perform)\b/.test(lower))) {
+    // Applicant/candidate handler BEFORE job listing — "is he a good candidate for the JOb?" contains "job"
+    if (lower.includes('applicant') || lower.includes('application') || lower.includes('candidate') || (lower.includes('test') && lower.includes('how')) || (lower.includes('test') && /\b(do|did|score|perform)\b/.test(lower)) || (lower.includes('good') && lower.includes('candidate'))) {
       console.log('[assistant:engine:fallback] ✓ matched employer application intent')
       try {
         // applications → job_listings → profiles (company_id). The applications
@@ -349,7 +322,35 @@ async function fallbackIntentHandler(
       }
     }
 
-    if (lower.includes('assessment') || lower.includes('assignment')) {
+    if (lower.includes('job') || lower.includes('posting') || lower.includes('internship')) {
+      console.log('[assistant:engine:fallback] ✓ matched employer job listing intent')
+      try {
+        const { data: jobs, error } = await sb
+          .from('job_listings')
+          .select('title, status, location, created_at')
+          .eq('company_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(20)
+
+        if (error) {
+          console.error('[assistant:engine:fallback] ✗ Supabase error querying employer jobs:', error.message)
+          return null
+        }
+
+        if (!jobs || jobs.length === 0) {
+          return { text: "You don't have any job postings yet.", actions: [{ type: 'navigate', target: '/app/listings/new', data: {} }] }
+        }
+
+        const summary = jobs.slice(0, 8).map((j: any) => `  ${j.title} (${j.status}, ${j.location ?? 'remote-ok'})`).join('\n')
+        const more = jobs.length > 8 ? `...and ${jobs.length - 8} more.` : ''
+        return { text: `You have ${jobs.length} job posting(s):\n${summary}\n${more}`, actions: [{ type: 'navigate', target: '/app/listings', data: {} }] }
+      } catch (e: any) {
+        console.error('[assistant:engine:fallback] ✗ error in employer job handler:', e?.message)
+        return null
+      }
+    }
+
+    if (lower.includes('assessment') || lower.includes('assignment') || (lower.includes('test') && (lower.includes('setup') || lower.includes('set up') || lower.includes('create')))) {
       console.log('[assistant:engine:fallback] ✓ matched employer assessment setup intent')
       return {
         text: "To set up an assessment:\n1. Open an existing job posting in the editor (/app/listings)\n2. Click the Assessment step/tab\n3. Add a practical task with a prompt, time limit, and rubric\n4. Or click 'Generate with AI' to auto-create questions from your job description\n5. Save and preview as a candidate before posting",
