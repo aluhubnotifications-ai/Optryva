@@ -80,6 +80,29 @@ assistant.get('/sessions', async (req, res) => {
   }
 })
 
+/* ---------- Delete session ---------- */
+assistant.delete('/sessions/:id', async (req, res) => {
+  const userId = req.user!.id
+  const sid = req.params.id
+  try {
+    const { error: msgErr } = await sb
+      .from('assistant_messages')
+      .delete()
+      .eq('session_id', sid)
+    if (msgErr) return res.status(400).json({ error: msgErr.message })
+
+    const { error: sessErr } = await sb
+      .from('assistant_sessions')
+      .delete()
+      .eq('id', sid)
+      .eq('user_id', userId)
+    if (sessErr) return res.status(400).json({ error: sessErr.message })
+    res.status(204).json({ ok: true })
+  } catch {
+    res.json({ ok: false })
+  }
+})
+
 /* ---------- Demo: Fixed-40 matcher ---------- */
 assistant.get('/match/:studentId', async (req, res) => {
   const matches = await getFixed40Matches(req.params.studentId)
