@@ -39,7 +39,6 @@ import type { Application, ApplicationStatus, JobListing, Message } from '@/type
 import { VIOLATION_LABEL } from '@/components/ProctorMonitor'
 import { Card, CardBody, Badge, Avatar, Label, Textarea, Input } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
-import { ChatOpenButton } from '@/components/RightSidebar'
 import { AppProgressSteps } from '@/components/AppProgressSteps'
 import { DocumentList } from '@/components/DocumentList'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs'
@@ -1010,19 +1009,9 @@ export default function ApplicantView() {
                 </Button>
               )}
             </div>
-           </SectionCard>
+            </SectionCard>
 
-            <div className="mt-4">
-              <ChatOpenButton
-                label="Ask AI about this candidate"
-                message="Explain this candidate's fit for the role and highlight any evidence gaps"
-                sublabel="Opens in the AI assistant sidebar"
-                icon={MessageSquare}
-                candidateId={app.student_id}
-                jobId={app.job_id}
-              />
-            </div>
-         </TabsContent>
+          </TabsContent>
        </Tabs>
 
       {/* Sticky action bar — disposition actions stay within reach while scrolling */}

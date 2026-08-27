@@ -607,51 +607,6 @@ function ActivityPanelCompact() {
   )
 }
 
-/**
- * Button that opens the RightSidebar AI assistant with a pre-filled message.
- * Usage: <ChatOpenButton message="Start a Smart Shortlist for this job." jobId={jobId} />
- * The button dispatches a global `optryva:open_chat` event that RightSidebar listens for.
- */
-export function ChatOpenButton({
-  label = 'Ask AI',
-  message,
-  sublabel,
-  icon,
-  jobId,
-  candidateId,
-}: {
-  label?: string
-  message: string
-  sublabel?: string
-  icon?: React.ComponentType<any>
-  jobId?: string
-  candidateId?: string
-}) {
-  const handleClick = () => {
-    window.dispatchEvent(
-      new CustomEvent('optryva:open_chat', {
-        detail: {
-          message,
-          job_id: jobId,
-          candidate_id: candidateId,
-        },
-      }),
-    )
-  }
-  const Icon = icon ?? MessageSquare
-  return (
-    <button
-      onClick={handleClick}
-      className="flex w-full items-center gap-2 rounded-xl border border-border bg-background/60 px-4 py-3 text-left text-sm font-medium hover:bg-muted transition-colors"
-    >
-      <Icon className="h-4 w-4 text-primary" />
-      <div>
-        <span>{label}</span>
-        {sublabel && <p className="mt-0.5 text-xs text-muted-foreground">{sublabel}</p>}
-      </div>
-    </button>
-  )
-}
 
 function ActivityRow({ task }: { task: any }) {
   const icon =

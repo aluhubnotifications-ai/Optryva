@@ -116,36 +116,14 @@ function StudentDashboard({ user }: { user: Profile }) {
       perf('dashboard DATA READY', { jobs: j.length, apps: a.length, ms })
     })()
 
-    // Kick off AI matching only once the browser is idle, so it never competes
-    // with the dashboard's first paint / data load. The runner itself is
-    // idempotent, so navigating back reuses the same scores.
+    // Show any already-computed (cached) matches instantly — NO AI work runs on
+    // the login path, so the dashboard paints in well under a second. Live scoring
+    // is triggered where the student actually looks at matches (Insights / Jobs /
+    // Research), not here, keeping first login fast.
     void useMatchProgress.getState().hydrate(user.id)
 
-    const startMatching = () => {
-      if (!active) return
-      perf('idle callback fired → starting AI matching')
-      const mStart = performance.now()
-      void useMatchProgress
-        .getState()
-        .run(user.id)
-        .then(() => {
-          const ms = Math.round((performance.now() - mStart) * 10) / 10
-          perf('AI matching COMPLETE', { ms })
-        })
-        .catch(() => perf('AI matching FAILED'))
-    }
-    const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback
-    let idleId: number
-    if (ric) {
-      idleId = ric(startMatching, { timeout: 2000 })
-    } else {
-      idleId = window.setTimeout(startMatching, 1200)
-    }
     return () => {
       active = false
-      const cic = (window as unknown as { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback
-      if (ric && cic) cic(idleId)
-      else clearTimeout(idleId)
     }
   }, [user.id])
 

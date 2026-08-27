@@ -14,11 +14,15 @@ function loadJwtSecret(name: 'JWT_ACCESS_SECRET' | 'JWT_REFRESH_SECRET', devFall
 
 const ACCESS_SECRET = loadJwtSecret('JWT_ACCESS_SECRET', 'dev-access-secret')
 const REFRESH_SECRET = loadJwtSecret('JWT_REFRESH_SECRET', 'dev-refresh-secret')
+// The 15m access token is a SHORT-LIVED, silently-rotated bearer. It is NOT a
+// logout timer: every 15m the client trades the httpOnly refresh cookie for a
+// fresh access token, invisibly. Keep it short (XSS blast-radius is small).
 const ACCESS_TTL = '15m'
-// Sessions are capped at 5 hours. The access token rotates every 15 min via the
-// refresh flow; the refresh token/cookie (and this TTL) live no longer than 5h,
-// so after 5h `/auth/refresh` returns 401 and the client logs the user out.
-const REFRESH_TTL = '5h'
+// Session lifetime. The refresh token/cookie (and this TTL) live up to 7 days,
+// so a user stays signed in for a week; only after 7d does `/auth/refresh`
+// return 401 and the client log them out. Auth-cookie maxAge (lib/cookies.ts)
+// and the client watchdog (client/src/lib/store.ts) must match this.
+const REFRESH_TTL = '7d'
 
 export interface AuthUser {
   id: string

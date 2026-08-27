@@ -8,7 +8,6 @@ import { Avatar, Badge, Card, CardBody, Skeleton, Textarea } from '@/components/
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { avatarRingStyle } from '@/pages/company/ApplicantView'
-import { ChatOpenButton } from '@/components/RightSidebar'
 import { cn, formatDate } from '@/lib/utils'
 
 export const statusTone = { draft: 'outline', pending: 'default', reviewed: 'primary', shortlisted: 'accent', hired: 'success', rejected: 'danger', cancelled: 'danger', withdrawn: 'outline' } as const
@@ -433,19 +432,6 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
               <RefreshCw className="h-3.5 w-3.5" /> Rescore
             </Button>
           </div>
-        </CardBody>
-      </Card>
-
-      <Card>
-        <CardBody className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm font-medium">AI Assistant</p>
-          <ChatOpenButton
-            label="Start Smart Shortlist"
-            message="Start a Smart Shortlist for this job"
-            sublabel="Opens in the AI assistant sidebar"
-            icon={Sparkles}
-            jobId={jobId}
-          />
         </CardBody>
       </Card>
 
