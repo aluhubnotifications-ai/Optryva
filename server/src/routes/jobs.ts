@@ -14,13 +14,13 @@ import { claudeText, hasClaude } from '@/lib/claude'
 export const jobs = Router()
 jobs.use(requireAuth)
 
-// Lean column set for list views — the full `assignment` (proctor questions) is
-// only needed on the apply/assessment routes, so it stays excluded to keep the
-// 100+ row list payload small. `description` IS included: the Opportunities list
-// renders the job description (required skills, responsibilities, etc.) on each
-// card, so it must travel with the list.
+// Lean column set for list views — full `description`/`assignment` are only
+// needed on the single-job detail/apply routes, so they're excluded by default
+// (keeps the 100+ row list payload small → faster transfer + parse). The
+// Opportunities (Jobs) page requests ?detail=1 to get the description for its
+// master-detail panel.
 const LIST_COLUMNS =
-  'id,company_id,title,description,type,listing_type,location,country,remote,pay,currency,duration,deadline,tags,status,apply_url,allowed_years,allowed_schools,students_only,posted_by_role,original_company_name,original_company_logo_url,created_at'
+  'id,company_id,title,type,listing_type,location,country,remote,pay,currency,duration,deadline,tags,status,apply_url,allowed_years,allowed_schools,students_only,posted_by_role,original_company_name,original_company_logo_url,created_at'
 
 // The responsibilities/benefits/qualifications columns are optional (added by a
 // later migration). Detect their presence so create/update still work before the
@@ -124,13 +124,17 @@ jobs.get('/', async (req, res) => {
   // instead of the entire directory). Scope both the query and the cache key.
   const idsRaw = req.query.ids as string | undefined
   const ids = idsRaw ? idsRaw.split(',').filter(Boolean) : null
-  const scopeKey = ids ? `ids:${ids.join(',')}` : 'active'
-  // The dashboard, nav badges, and the Jobs page all hit this; the full active
-  // set changes rarely, so cache the visibility-filtered result per viewer.
-  const cacheKey = `jobs:${scopeKey}:${req.user!.id}`
-  const cached = cacheGet<any[]>(cacheKey)
-  if (cached) return res.json(cached)
-  let q = sb.from('job_listings').select(LIST_COLUMNS).eq('status', 'active')
+    const scopeKey = ids ? `ids:${ids.join(',')}` : 'active'
+    const detail = req.query.detail === '1'
+    // The dashboard, nav badges, and the Jobs page all hit this; the full active
+    // set changes rarely, so cache the visibility-filtered result per viewer.
+    // `detail` (with description) is cached separately because it's only the
+    // Opportunities page that asks for it.
+    const cacheKey = `jobs:${scopeKey}:${detail ? 'detail' : 'lean'}:${req.user!.id}`
+    const cached = cacheGet<any[]>(cacheKey)
+    if (cached) return res.json(cached)
+    const cols = detail ? LIST_COLUMNS + ',description' : LIST_COLUMNS
+    let q = sb.from('job_listings').select(cols).eq('status', 'active')
   if (ids) q = q.in('id', ids)
   const rows = must(await q.order('created_at', { ascending: false })) as any[]
   const gates = await schoolGates(rows.map((r) => r.company_id))

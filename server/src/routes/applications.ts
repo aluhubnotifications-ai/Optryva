@@ -3,6 +3,7 @@ import { sb, must, j } from '@/db'
 import { requireAuth, loadUserType } from '@/lib/auth'
 import { rowToApplication } from '@/lib/serialize'
 import { uid, now, notify } from '@/lib/util'
+import { cacheGet, cacheSet } from '@/lib/cache'
 import { isAdminEmail } from '@/lib/admin'
 import { storeDocument, validateDocuments, DOCUMENT_BUCKET } from '@/lib/documents'
 import { scoreAssignmentWithAI } from '@/routes/ai/assignment'
@@ -110,8 +111,13 @@ async function deleteApplicationDocuments(app: any) {
 }
 
 applications.get('/mine', async (req, res) => {
+  const cacheKey = `apps:student:${req.user!.id}`
+  const cached = cacheGet<any[]>(cacheKey)
+  if (cached) return res.json(cached)
   const rows = must(await sb.from('applications').select('*').eq('student_id', req.user!.id).order('created_at', { ascending: false })) as any[]
-  res.json(rows.map(rowToApplication))
+  const payload = rows.map(rowToApplication)
+  cacheSet(cacheKey, payload, 120_000)
+  res.json(payload)
 })
 
 applications.get('/job/:jobId', async (req, res) => {

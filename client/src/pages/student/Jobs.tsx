@@ -132,7 +132,7 @@ export default function Jobs() {
       // list is fully usable without AI scores.
       try {
         const [js, cs, sc] = await Promise.all([
-          jobsApi.list(user),
+          jobsApi.list(user, undefined, { detail: true }),
           profilesApi.list('company'),
           profilesApi.list('school'),
         ])

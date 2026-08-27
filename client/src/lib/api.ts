@@ -365,10 +365,15 @@ export const resumesApi = {
 // visibility for the authenticated viewer, so `list()` ignores its argument
 // (kept for call-site compatibility).
 export const jobsApi = {
-  async list(_viewer?: Profile | null, ids?: string[]): Promise<JobListing[]> {
-    const qs = ids ? `?ids=${encodeURIComponent(ids.join(','))}` : ''
-    const key = `jobs:list:${ids ? ids.join(',') : 'all'}`
-    return cached(key, () => apiFetch(`/jobs${qs}`) as Promise<JobListing[]>)
+  async list(_viewer?: Profile | null, ids?: string[], opts?: { detail?: boolean }): Promise<JobListing[]> {
+    const qs = new URLSearchParams()
+    if (ids) qs.set('ids', ids.join(','))
+    if (opts?.detail) qs.set('detail', '1')
+    const qsStr = qs.toString() ? `?${qs.toString()}` : ''
+    // `detail` (full descriptions) is a different payload, so cache it under a
+    // distinct key — the dashboard's lean list must not poison the Opportunities view.
+    const key = `jobs:list:${ids ? ids.join(',') : 'all'}:${opts?.detail ? 'detail' : 'lean'}`
+    return cached(key, () => apiFetch(`/jobs${qsStr}`) as Promise<JobListing[]>)
   },
   async get(id: string): Promise<JobListing | null> {
     try {

@@ -37,6 +37,13 @@ const clampInt = (n: any, lo = 0, hi = 99) => Math.max(lo, Math.min(hi, Math.rou
 // scorer + honest breakdown + smooth caps.)
 const ENGINE_VERSION = 'v2-sonnet-2026-06'
 
+// Columns the matcher needs from a job row. Deliberately EXCLUDES `assignment`
+// (the large proctoring-test JSON, only needed on apply/assessment) and the
+// display-only company/brand columns — those bloat the visibility/candidate
+// fetches the dashboard and matcher hit on every load.
+const MATCH_COLUMNS =
+  'id,company_id,title,description,type,listing_type,location,country,remote,pay,duration,deadline,tags,status,allowed_years,allowed_schools,students_only,responsibilities,qualifications,benefits,created_at'
+
 // ---- Match funnel: turn up to 1M live jobs into the few the LLM actually scores.
 const RETRIEVE_K = 600 // Stage 1 — ANN candidates pulled from Postgres per student.
 const SCORE_K = 40 // Stage 3 — final set the LLM scores, after the rerank narrows.
@@ -117,7 +124,7 @@ export async function candidateJobs(viewer: any, rp: ResumeProfile | null): Prom
   if (ann) {
     for (const a of ann) if (a.similarity != null) sim.set(a.job_id, a.similarity)
     const ids = ann.map((a) => a.job_id)
-    rows = ids.length ? (must(await sb.from('job_listings').select('*').in('id', ids)) as any[]) : []
+    rows = ids.length ? (must(await sb.from('job_listings').select(MATCH_COLUMNS).in('id', ids)) as any[]) : []
   } else {
     rows = await visibleJobs(viewer) // fallback: in-memory scan (small catalog only)
   }
@@ -411,9 +418,13 @@ export async function getMatch(studentId: string, job: MatchJob, opts: MatchOpts
 /** Active jobs visible to a student — same gates as /jobs (year/school +
  *  school-domain/privacy), so restricted listings are never scored or surfaced. */
 export async function visibleJobs(viewer: any): Promise<any[]> {
-  const rows = must(await sb.from('job_listings').select('*').eq('status', 'active')) as any[]
+  const cached = cacheGet<any[]>(`visibleJobs:${viewer.id}`)
+  if (cached) return cached
+  const rows = must(await sb.from('job_listings').select(MATCH_COLUMNS).eq('status', 'active')) as any[]
   const gates = await schoolGates(rows.map((r) => r.company_id))
-  return rows.filter((r) => jobVisibleTo(r, viewer, gates))
+  const out = rows.filter((r) => jobVisibleTo(r, viewer, gates))
+  cacheSet(`visibleJobs:${viewer.id}`, out, 300_000)
+  return out
 }
 
 /** Build a MatchJob from an already-loaded job row (avoids a per-job re-query). */
