@@ -144,6 +144,7 @@ export function EmployerEvidenceSummary({ studentId, job }: { studentId: string;
                 detail: {
                   message: `Candidate ${studentId} applied for "${job?.title ?? 'this role'}". Their evidence:\n${ctx}\n\nCritique this candidate's fit for the role with specific proof from their evidence.`,
                   candidate_id: studentId,
+                  origin: 'evidence',
                 },
               }))
             }}

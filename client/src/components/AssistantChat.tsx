@@ -149,17 +149,15 @@ export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessio
       setIsAutonomous(false)
       resetState()
     }
-  }, [isSending, input, currentSessionId, mode, effectivePageContext, onSessionId, onAction, onNew, aborted])
+  }, [isSending, input, currentSessionId, mode, effectivePageContext, onSessionId, onAction, aborted])
 
   // Auto-send injected messages (e.g. from "Ask the AI assistant" links).
   useEffect(() => {
     if (pendingMessage && onPendingConsumed) {
       onPendingConsumed()
-      // Start a fresh conversation and send the injected message immediately.
-      onNew?.()
       void handleSend({ injectedMessage: pendingMessage })
     }
-  }, [pendingMessage, onPendingConsumed, handleSend, onNew])
+  }, [pendingMessage, onPendingConsumed, handleSend])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })

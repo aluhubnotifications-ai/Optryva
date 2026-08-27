@@ -92,6 +92,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
   const [pendingContext, setPendingContext] = useState<Record<string, unknown> | null>(null)
+  const [chatOrigin, setChatOrigin] = useState<string | null>(null)
   const { toast } = useToast()
   const navigate = useTransitionNavigate()
   const currentUser = useCurrentUser()
@@ -130,6 +131,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
           candidate_id: e.detail.candidate_id,
         })
       }
+      if (e.detail?.origin) setChatOrigin(e.detail.origin)
     }
     window.addEventListener('optryva:open_chat', handler as EventListener)
     return () => window.removeEventListener('optryva:open_chat', handler as EventListener)
@@ -229,10 +231,15 @@ export function RightSidebar({ mode }: RightSidebarProps) {
           }
           break
         case 'navigate':
+          // When chat was opened from the evidence summary, stay on the current
+          // page so the user keeps their context. Only allow sidebar tab switches.
+          if (chatOrigin === 'evidence') {
+            // Allow candidate_id / job_id routes that are already in the URL —
+            // just ignore the navigate action entirely.
+            break
+          }
           // Prevent AI from sending users to pages meant for a different role.
-          // /app/insights is a student page — employers should go to /app/insights (Smart Shortlist)
-          // which is already handled via start_shortlist. For a plain navigate, redirect
-          // role-inappropriate destinations.
+          // /app/insights is a student page — employers should go to /app/listings.
           if (mode === 'employer' && action.target === '/app/insights') {
             navigate('/app/listings', { replace: true })
             setActiveTab(mode === 'employer' ? 'candidates' : 'activity')
@@ -242,8 +249,20 @@ export function RightSidebar({ mode }: RightSidebarProps) {
           break
         case 'start_shortlist': {
           const jobId = (detail as any)?.job_id || action.target
+          // When opened from evidence, suppress main-page navigation but still
+          // switch the sidebar tab to candidates.
+          if (chatOrigin === 'evidence') {
+            setActiveTab(mode === 'employer' ? 'candidates' : 'activity')
+            toast({
+              title: 'Shortlist started',
+              description: `Analyzing candidates for job ${(jobId as string)?.slice(0, 8) ?? 'this role'}…`,
+              tone: 'info',
+            })
+            break
+          }
+          const shortlistPath = mode === 'employer' ? '/app/listings' : '/app/insights'
           if (jobId && typeof jobId === 'string') {
-            navigate('/app/insights', { replace: true })
+            navigate(shortlistPath, { replace: true })
             setActiveTab(mode === 'employer' ? 'candidates' : 'activity')
             toast({
               title: 'Shortlist started',
@@ -251,7 +270,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
               tone: 'info',
             })
           } else {
-            navigate('/app/insights', { replace: true })
+            navigate(shortlistPath, { replace: true })
             toast({ title: 'Shortlist', description: 'Open the Smart Shortlist on this page.', tone: 'info' })
           }
           break
@@ -425,10 +444,11 @@ export function RightSidebar({ mode }: RightSidebarProps) {
                      initialMessages={messages}
                      pendingMessage={pendingMessage}
                      pendingContext={pendingContext ?? urlContext}
-                    onPendingConsumed={() => {
-                      setPendingMessage(null)
-                      setPendingContext(null)
-                    }}
+                     onPendingConsumed={() => {
+                       setPendingMessage(null)
+                       setPendingContext(null)
+                       setChatOrigin(null)
+                     }}
                   />
                 )}
               </TabPanel>
