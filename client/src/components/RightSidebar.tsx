@@ -406,15 +406,16 @@ export function RightSidebar({ mode }: RightSidebarProps) {
                   />
                 ) : (
                    <AssistantChat
-                    key={sessionId ?? 'new'}
-                    mode={mode}
-                    sessionId={sessionId}
-                    pageContext={typeof window !== 'undefined' ? window.location.pathname : undefined}
-                    onAction={handleAction}
-                    onSessionId={setSessionId}
-                    initialMessages={messages}
-                    pendingMessage={pendingMessage}
-                    pendingContext={pendingContext ?? urlContext}
+                     key={sessionId ?? 'new'}
+                     mode={mode}
+                     sessionId={sessionId}
+                     pageContext={typeof window !== 'undefined' ? window.location.pathname : undefined}
+                     onAction={handleAction}
+                     onSessionId={setSessionId}
+                     onNew={startNewConversation}
+                     initialMessages={messages}
+                     pendingMessage={pendingMessage}
+                     pendingContext={pendingContext ?? urlContext}
                     onPendingConsumed={() => {
                       setPendingMessage(null)
                       setPendingContext(null)

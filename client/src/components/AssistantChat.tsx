@@ -21,6 +21,7 @@ export interface AssistantChatProps {
   pageContext?: string
   onAction?: (action: AssistantAction) => void
   onSessionId?: (id: string) => void
+  onNew?: () => void
   initialMessages?: ChatMessage[]
   pendingMessage?: string | null
   pendingContext?: Record<string, unknown> | null
@@ -35,7 +36,7 @@ interface ToolEvent {
   status: 'calling' | 'done' | 'error'
 }
 
-export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessionId, initialMessages, pendingMessage, pendingContext, onPendingConsumed }: AssistantChatProps) {
+export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessionId, onNew, initialMessages, pendingMessage, pendingContext, onPendingConsumed }: AssistantChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages ?? [])
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
@@ -61,28 +62,18 @@ export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessio
     return base
   }, [pageContext, pendingContext])
 
-  useEffect(() => {
-    if (pendingMessage && onPendingConsumed) {
-      setInput(pendingMessage)
-      onPendingConsumed()
-    }
-  }, [pendingMessage, onPendingConsumed])
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, toolEvents])
-
   const resetState = () => {
     setToolEvents([])
     setAborted(false)
     abortRef.current = null
   }
 
-  const handleSend = async (opts?: { autonomous?: boolean }) => {
+  const handleSend = useCallback(async (opts?: { autonomous?: boolean; injectedMessage?: string }) => {
     const autonomous = opts?.autonomous ?? false
-    if (!input.trim() || isSending) return
-    const userText = input.trim()
-    setInput('')
+    const injectedMessage = opts?.injectedMessage
+    const userText = (injectedMessage ?? input).trim()
+    if (!userText || isSending) return
+    if (!injectedMessage) setInput('')
     setIsSending(true)
     setIsAutonomous(autonomous)
     resetState()
@@ -158,7 +149,21 @@ export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessio
       setIsAutonomous(false)
       resetState()
     }
-  }
+  }, [isSending, input, currentSessionId, mode, effectivePageContext, onSessionId, onAction, onNew, aborted])
+
+  // Auto-send injected messages (e.g. from "Ask the AI assistant" links).
+  useEffect(() => {
+    if (pendingMessage && onPendingConsumed) {
+      onPendingConsumed()
+      // Start a fresh conversation and send the injected message immediately.
+      onNew?.()
+      void handleSend({ injectedMessage: pendingMessage })
+    }
+  }, [pendingMessage, onPendingConsumed, handleSend, onNew])
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, toolEvents])
 
   function handleEvent(ev: any, aiMsgId: string) {
     switch (ev.event) {
