@@ -1506,17 +1506,17 @@ export const evidenceApi = {
   async confirm(id: string, confirmed: string[]): Promise<EvidenceItem> {
     return (await apiFetch(`/evidence/${id}/confirm`, { method: 'POST', body: JSON.stringify({ confirmed }) })) as EvidenceItem
   },
-  async summary(studentId: string, jobDescription?: string): Promise<{ summary: string }> {
-    const key = `evidence:summary:${studentId}:${jobDescription ?? ''}`
-    return cached(
-      key,
-      () =>
-        apiFetch(`/evidence/student/${studentId}/summary`, {
-          method: 'POST',
-          body: JSON.stringify({ jobDescription: jobDescription ?? '' }),
-        }) as Promise<{ summary: string }>,
-      10 * 60 * 1000,
-    )
+   async summary(studentId: string, jobDescription?: string): Promise<{ summary: string }> {
+     const key = `evidence:summary:${studentId}:${jobDescription ?? ''}`
+     return cached(
+       key,
+       () =>
+         apiFetch(`/evidence/student/${studentId}/summary`, {
+           method: 'POST',
+           body: JSON.stringify({ jobDescription: jobDescription ?? '' }),
+         }) as Promise<{ summary: string }>,
+       2 * 60 * 1000, // 2 min — keep short because summaries change with evidence
+     )
   },
   async listChat(studentId: string): Promise<Array<{ id: string; role: 'employer' | 'ai'; content: string; created_at: string }>> {
     return (await apiFetch(`/evidence/student/${studentId}/chat`)) as Array<{ id: string; role: 'employer' | 'ai'; content: string; created_at: string }>
