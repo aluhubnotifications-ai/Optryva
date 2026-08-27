@@ -229,6 +229,15 @@ export function RightSidebar({ mode }: RightSidebarProps) {
           }
           break
         case 'navigate':
+          // Prevent AI from sending users to pages meant for a different role.
+          // /app/insights is a student page — employers should go to /app/insights (Smart Shortlist)
+          // which is already handled via start_shortlist. For a plain navigate, redirect
+          // role-inappropriate destinations.
+          if (mode === 'employer' && action.target === '/app/insights') {
+            navigate('/app/listings', { replace: true })
+            setActiveTab(mode === 'employer' ? 'candidates' : 'activity')
+            break
+          }
           navigate(action.target.startsWith('/') ? action.target : `/${action.target}`, { replace: true })
           break
         case 'start_shortlist': {
