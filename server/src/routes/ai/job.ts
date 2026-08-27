@@ -232,6 +232,29 @@ function coerceListingType(t: string): string {
   return partial ?? 'Internship'
 }
 
+/** Derive fallback tags/skills from the job title, category, and description. */
+function deriveTags(title: string, category: string, description: string): string[] {
+  const cat = coerceCategory(category)
+  const catTags: Record<string, string[]> = {
+    'Software Engineering': ['JavaScript', 'TypeScript', 'Git', 'REST API'],
+    'Data': ['Python', 'SQL', 'Analytics', 'Pandas'],
+    'Design': ['Figma', 'UX', 'User Research', 'Prototyping'],
+    'Marketing': ['SEO', 'Content', 'Google Analytics', 'Growth'],
+    'Operations': ['Excel', 'Process Improvement', 'Project Management'],
+    'Finance': ['Excel', 'Financial Modeling', 'Analysis', 'Data'],
+    'Product': ['Product Strategy', 'Roadmapping', 'User Stories', 'Agile'],
+  }
+  const fallback = catTags[cat] ?? ['Communication', 'Problem Solving', 'Teamwork']
+
+  // Extract keywords from description that look like skills (capitalized terms)
+  const desc = description ?? ''
+  const skillLike = desc.match(/\b([A-Z][a-z]+(?: [A-Z][a-z]+)*)\b/g)
+    ?.filter((t) => t.length > 3 && !['The', 'This', 'Role', 'Join', 'Your', 'With', 'From', 'And', 'You', 'For'].includes(t))
+    ?.slice(0, 3) ?? []
+
+  return [...new Set([...fallback, ...skillLike])].slice(0, 8)
+}
+
 function strArr(v: unknown, cap = 10): string[] {
   if (Array.isArray(v)) return v.map((x) => String(x ?? '').trim()).filter(Boolean).slice(0, cap)
   if (typeof v === 'string' && v.trim()) {
@@ -295,7 +318,7 @@ function normalize(r: GeneratedJob) {
     location: (r.location ?? '').toString().trim().slice(0, 120),
     pay: (r.pay ?? '').toString().trim().slice(0, 80),
     duration: (r.duration ?? '').toString().trim().slice(0, 60),
-    tags: strArr(r.tags, 8),
+     tags: strArr(r.tags, 8).length > 0 ? strArr(r.tags, 8) : deriveTags(r.title, r.category, r.description),
     responsibilities,
     qualifications,
     benefits,
