@@ -228,8 +228,6 @@ function StudentDashboard({ user }: { user: Profile }) {
   return (
     <div className="space-y-6">
       {showNudge && <NudgeModal items={nudgeItems} onClose={() => setNudgeHidden(true)} />}
-      <Hero user={user} />
-
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {stats.map((s, i) => (
@@ -423,30 +421,7 @@ function StudentDashboard({ user }: { user: Profile }) {
 
 /* ============================ new blocks ============================ */
 
-function Hero({ user }: { user: Profile }) {
-  return (
-    <Card className="overflow-hidden">
-      <div className="relative bg-gradient-to-br from-primary/10 via-card to-accent/10 p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-4">
-            <Avatar name={user.full_name} src={user.avatar_url} size={56} className="ring-4 ring-card" />
-            <div>
-              <p className="text-sm text-muted-foreground">{greeting()},</p>
-              <h1 className="text-2xl font-bold tracking-tight">{user.full_name.split(' ')[0]}</h1>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link to="/app/jobs">
-              <Button className="gap-1.5">
-                Browse jobs <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </div>
-    </Card>
-  )
-}
+// Hero banner (profile picture + browse jobs) removed per user request
 
 // NextBestAction promotional banner removed per user request
 
@@ -576,12 +551,7 @@ function SectionHeader({ icon: Icon, title, action }: { icon: typeof Sparkles; t
   )
 }
 
-function greeting() {
-  const h = new Date().getHours()
-  if (h < 12) return 'Good morning'
-  if (h < 18) return 'Good afternoon'
-  return 'Good evening'
-}
+// greeting() helper removed along with the Hero banner
 
 function profileCompleteness(u: Profile) {
   const checks = [u.full_name, u.bio, u.major, u.year, u.cv_text, u.skills?.length, u.desired_roles?.length, u.linkedin]

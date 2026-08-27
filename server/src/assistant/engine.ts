@@ -325,9 +325,19 @@ export async function processAssistantMessage(
     ? `${historyStr}\n\nCURRENT REQUEST:\n${message}`
     : `CURRENT REQUEST:\n${message}`
 
-  // 6. LLM structured output
+  // 6. Deterministic intent handler FIRST — catches simple queries
+  // ("shortlist", "my jobs", "my skills") before the AI, so these always work
+  // even when an LLM is configured but misinterprets the intent.
+  let fallback: { text: string; actions: AssistantAction[] } | null = null
+  try {
+    fallback = await fallbackIntentHandler(userId, mode, message)
+  } catch {
+    fallback = null
+  }
+
+  // 7. LLM structured output — only if the intent handler didn't match
   let output: AssistantAIOutput | null = null
-  if (hasAI()) {
+  if (!fallback && hasAI()) {
     output = await generateStructured<AssistantAIOutput>({
       system,
       user: userMsg,
@@ -336,22 +346,12 @@ export async function processAssistantMessage(
     })
   }
 
-  // 7. Fallback + deterministic action injection
   const actions: AssistantAction[] = []
 
-  if (!output || !output.text?.trim()) {
-    // No AI or empty response — try simple intent handler, then generic fallback
-    let fallback: { text: string; actions: AssistantAction[] } | null
-    try {
-      fallback = await fallbackIntentHandler(userId, mode, message)
-    } catch {
-      fallback = null
-    }
-    if (fallback) {
-      output = { text: fallback.text, actions: fallback.actions }
-    } else {
-      output = { text: FALLBACK_REPLY, actions: [] }
-    }
+  if (fallback) {
+    output = { text: fallback.text, actions: fallback.actions }
+  } else if (!output || !output.text?.trim()) {
+    output = { text: FALLBACK_REPLY, actions: [] }
   } else {
     // Re-run deep inspect results as explicit add_evidence actions (server-side
     // guarantee, not dependent on Claude's output parsing).
