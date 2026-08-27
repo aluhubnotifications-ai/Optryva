@@ -30,17 +30,17 @@ export function useRightSidebarOpen(): boolean {
 // user. A successful login (real backend) stores the access token + the user
 // profile returned by the server.
 //
-// Sessions are hard-capped at 7 days (SESSION_TTL_MS) to match the server-side
-// refresh-token TTL (REFRESH_TTL = '7d' in server/src/lib/auth.ts). We enforce
+// Sessions are hard-capped at 5 days (SESSION_TTL_MS) to match the server-side
+// refresh-token TTL (REFRESH_TTL = '5d' in server/src/lib/auth.ts). We enforce
 // this both ways:
-//   - Boot-time guard: a persisted session older than 7d is force-logged-out
+//   - Boot-time guard: a persisted session older than 5d is force-logged-out
 //     before the app renders (so a stale tab can't ride a silently-rotated
 //     access token past the window).
-//   - Live watchdog: login() schedules a single timeout that fires at the 7d
+//   - Live watchdog: login() schedules a single timeout that fires at the 5d
 //     mark and logs the user out of the open tab immediately.
 // ----------------------------------------------------------------------------
 
-export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
+export const SESSION_TTL_MS = 5 * 24 * 60 * 60 * 1000
 
 interface SessionState {
   userId: string | null
