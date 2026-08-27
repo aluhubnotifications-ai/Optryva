@@ -117,15 +117,22 @@ async function saveMessage(
   content: string,
   actions: AssistantAction[] = [],
 ): Promise<void> {
-  await sb.from('assistant_messages').insert({
-    session_id: sessionId,
-    role,
-    content,
-    actions: JSON.stringify(actions),
-  })
+  try {
+    await sb.from('assistant_messages').insert({
+      session_id: sessionId,
+      role,
+      content,
+      actions: JSON.stringify(actions),
+    })
+  } catch { /* non-critical — continue without persistence */ }
 }
 
 const FALLBACK_REPLY = "I'm here to help with your Optryva internship journey. Try asking me to add a skill to your profile, draft a cover letter, or explain a job posting."
+
+/** Dev fallback: generates a fake session ID when Supabase is unreachable. */
+function fallbackSession(userId: string, mode: AssistantMode): string {
+  return `${userId}_${mode}_${Date.now()}`
+}
 
 export async function processAssistantMessage(
   userId: string,
@@ -133,14 +140,23 @@ export async function processAssistantMessage(
   message: string,
   opts?: { sessionId?: string; pageContext?: string },
 ): Promise<AssistantResponse> {
-  // 1. Session
-  const sessionId = await resolveSession(userId, mode, opts?.sessionId)
+  // 1. Session (with DB fallback)
+  let sessionId: string
+  try {
+    sessionId = await resolveSession(userId, mode, opts?.sessionId)
+  } catch {
+    sessionId = opts?.sessionId ?? fallbackSession(userId, mode)
+  }
 
-  // 2. Context
+  // 2. Context (with DB fallback)
   let context: string
-  if (mode === 'student') context = await getStudentContext(userId)
-  else if (mode === 'employer') context = await getEmployerContext(userId)
-  else context = await getUniversityContext(userId)
+  try {
+    if (mode === 'student') context = await getStudentContext(userId)
+    else if (mode === 'employer') context = await getEmployerContext(userId)
+    else context = await getUniversityContext(userId)
+  } catch {
+    context = `User ${userId} in ${mode} mode (no context available).`
+  }
 
   // 3. Deep-inspect any URLs the user dropped in
   const urls = extractUrls(message)
@@ -161,8 +177,11 @@ export async function processAssistantMessage(
     }
   }
 
-  // 4. Conversation history
-  const history = await fetchHistory(sessionId)
+  // 4. Conversation history (with DB fallback)
+  let history: any[] = []
+  try {
+    history = await fetchHistory(sessionId)
+  } catch { /* no history — start fresh */ }
   const historyStr = formatHistory(history)
 
   // 5. Build prompts

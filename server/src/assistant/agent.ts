@@ -167,11 +167,13 @@ const TOOL_EXECUTORS: Record<string, (input: ToolInput, userId: string, mode: As
     return JSON.stringify({ emitted: true, type, target })
   },
   save_message: async (input) => {
-    await sb.from('assistant_messages').insert({
-      session_id: input.session_id,
-      role: input.role,
-      content: input.content,
-    })
+    try {
+      await sb.from('assistant_messages').insert({
+        session_id: input.session_id,
+        role: input.role,
+        content: input.content,
+      })
+    } catch { /* non-critical */ }
     return JSON.stringify({ saved: true })
   },
 }
@@ -225,13 +227,24 @@ export async function* runAgent(
   }
 
   const maxIters = 3
-  const sessionId = await resolveSession(userId, mode, opts?.sessionId)
 
-  // 1. Gather context
+  // 0. Resolve session (with fallback when Supabase is unavailable)
+  let sessionId: string
+  try {
+    sessionId = await resolveSession(userId, mode, opts?.sessionId)
+  } catch {
+    sessionId = opts?.sessionId ?? `${userId}_${mode}_${Date.now()}`
+  }
+
+  // 1. Gather context (with fallback)
   let context: string
-  if (mode === 'student') context = await getStudentContext(userId)
-  else if (mode === 'employer') context = await getEmployerContext(userId)
-  else context = await getUniversityContext(userId)
+  try {
+    if (mode === 'student') context = await getStudentContext(userId)
+    else if (mode === 'employer') context = await getEmployerContext(userId)
+    else context = await getUniversityContext(userId)
+  } catch {
+    context = `User ${userId} in ${mode} mode (no Supabase context available).`
+  }
 
   // 2. Build conversation
   const turnMessages: TurnMessage[] = [
@@ -241,12 +254,14 @@ export async function* runAgent(
     },
   ]
 
-  // 2b. Persist the user's message immediately for audit.
-  await sb.from('assistant_messages').insert({
-    session_id: sessionId,
-    role: 'user',
-    content: message,
-  })
+  // 2b. Persist the user's message (best-effort)
+  try {
+    await sb.from('assistant_messages').insert({
+      session_id: sessionId,
+      role: 'user',
+      content: message,
+    })
+  } catch { /* non-critical */ }
 
   // 3. Agent loop
   for (let iter = 0; iter < maxIters; iter++) {

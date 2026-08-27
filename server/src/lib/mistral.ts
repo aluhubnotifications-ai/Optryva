@@ -41,6 +41,8 @@ async function mistralJson<T>(opts: {
   if (!hasMistral()) return null
   const model = opts.model ?? MISTRAL_MODEL
   try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 12000)
     const res = await fetch(ENDPOINT, {
       method: 'POST',
       headers: {
@@ -57,7 +59,8 @@ async function mistralJson<T>(opts: {
         max_tokens: opts.maxTokens ?? 1200,
         ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
       }),
-    })
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeoutId))
     if (!res.ok) return null
     const data: any = await res.json()
     const usage = data?.usage
@@ -125,6 +128,8 @@ export async function mistralChat<T>(opts: {
     ? `${opts.system}\n\nReturn ONLY valid JSON matching this schema (no prose, no code fences):\n${JSON.stringify(opts.schema)}`
     : opts.system
   try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 12000)
     const res = await fetch(ENDPOINT, {
       method: 'POST',
       headers: {
@@ -138,7 +143,8 @@ export async function mistralChat<T>(opts: {
         max_tokens: opts.maxTokens ?? 2000,
         ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
       }),
-    })
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeoutId))
     if (!res.ok) return null
     const data: any = await res.json()
     const usage = data?.usage
@@ -169,6 +175,8 @@ export async function mistralChat<T>(opts: {
 export async function mistralText(opts: { system: string; user: string; maxTokens?: number }): Promise<string | null> {
   if (!hasMistral()) return null
   try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 12000)
     const res = await fetch(ENDPOINT, {
       method: 'POST',
       headers: {
@@ -183,7 +191,8 @@ export async function mistralText(opts: { system: string; user: string; maxToken
         ],
         max_tokens: opts.maxTokens ?? 1000,
       }),
-    })
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeoutId))
     if (!res.ok) return null
     const data: any = await res.json()
     const usage = data?.usage
