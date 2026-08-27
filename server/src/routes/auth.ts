@@ -69,13 +69,22 @@ auth.post('/register', async (req, res) => {
 auth.post('/login', async (req, res) => {
   const { email, password } = req.body ?? {}
   if (!email || !password) return res.status(400).json({ error: 'invalid' })
-  const u = must(await sb.from('app_users').select('*').eq('email', email).maybeSingle()) as any
+  // One round-trip, not two: nest the profile next to the account row so we don't
+  // pay a second Supabase request just to look up the profile we already need.
+  // Profiles always exist for valid accounts, so an inner join preserves the
+  // "no such account" semantics (a missing profile now 401s instead of 500ing).
+  const row = await sb
+    .from('app_users')
+    .select('id, email, password_hash, email_verified, auth_provider, profiles:profiles!inner(*)')
+    .eq('email', email)
+    .maybeSingle()
+  const u = must(row) as any
   if (!u) return res.status(401).json({ error: 'bad_credentials' })
   // Google-only accounts have no password — send them to Google sign-in rather
   // than letting bcrypt.compare(password, null) throw an unhandled 500.
   if (!u.password_hash) return res.status(401).json({ error: 'account_google' })
   if (!(await bcrypt.compare(password, u.password_hash))) return res.status(401).json({ error: 'bad_credentials' })
-  const profile = await fullProfile(u.id)
+  const profile = u.profiles as any
   const user = await authUserFromRow(profile)
   res.cookie(REFRESH_COOKIE, signRefresh(user), authCookieOptions(req))
   res.json({ accessToken: signAccess(user), user: rowToProfile(profile, true), isNew: false })

@@ -71,11 +71,14 @@ server/src/routes/assistant.ts  — Hono router → /api/assistant/*
 ## Client structure
 ```
 client/src/components/
-  AssistantWidget.tsx    — floating widget, follows user across pages
+  RightSidebar.tsx       — persistent right sidebar with AI tabs (replaces floating widgets)
+    Tabs: Assistant (chat), Activity (AI activity log), Research (quick info)
   AssistantChat.tsx      — chat UI with streaming + tool event display
+client/src/app/AppShell.tsx  — layout: left sidebar | main content | RightSidebar
 client/src/lib/api.ts
   assistantApi           — chat(), runTask(), sessions(), messages(), etc.
-  profilesApi.updateSkills — convenience method for skill injection
+  jobsApi.create()        — direct job creation (used by create_job action)
+  profilesApi.updateSkills — skill injection
 ```
 
 ## Running
