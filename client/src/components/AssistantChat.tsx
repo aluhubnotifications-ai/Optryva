@@ -340,6 +340,7 @@ function ActionPreview({ action }: { action: AssistantAction }) {
     navigate: 'Navigated to',
     update_profile: 'Updated profile',
     add_evidence: 'Added evidence to',
+    start_shortlist: 'Started shortlist for',
   }[action.type] ?? action.type
 
   return (

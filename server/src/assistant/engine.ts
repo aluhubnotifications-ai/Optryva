@@ -28,7 +28,7 @@ const RESPONSE_SCHEMA = {
       items: {
         type: 'object' as const,
         properties: {
-           type: { type: 'string' as const, enum: ['inject_data', 'navigate', 'update_profile', 'add_evidence', 'create_job'] },
+           type: { type: 'string' as const, enum: ['inject_data', 'navigate', 'update_profile', 'add_evidence', 'create_job', 'start_shortlist'] },
           target: { type: 'string' as const, description: 'Where the action applies — a component name, DB table, or route path.' },
           data: { type: 'object' as const, additionalProperties: true },
         },
@@ -56,7 +56,8 @@ function buildSystemPrompt(mode: AssistantMode, context: string, pageContext?: s
   prompt += `- navigate target='/app/listings/new' (employer: create job), '/app/listings' (employer: view/edit postings), '/app/applications/:id/assessment' (student: take test)\n`
   prompt += `- navigate target='/app/insights' (employer: shortlist) or '/app/profile' (edit profile)\n`
   prompt += `- update_profile data={skills: [...], full_name: '...'}\n`
-  prompt += `- add_evidence data={url, title, skills: [...], achievements: [...]}\n\n`
+   prompt += `- add_evidence data={url, title, skills: [...], achievements: [...]}\n`
+   prompt += `- start_shortlist target='{job_id}' data={job_id: string} — triggers Smart Shortlist for a job posting (employer)\n\n`
   prompt += `GROUNDING CONTEXT:\n${context}\n\n`
   if (pageContext) {
     prompt += `CURRENT PAGE: ${pageContext}\n\n`
@@ -231,6 +232,27 @@ async function fallbackIntentHandler(
       }, {})
       const breakdown = Object.entries(byStatus).map(([s, c]) => `${s}: ${c}`).join(', ')
       return { text: `You have ${total} application(s): ${breakdown || 'no breakdown available'}`, actions: [{ type: 'navigate', target: '/app/insights', data: {} }] }
+    }
+
+    if (lower.includes('shortlist')) {
+      const { data: jobs } = await sb
+        .from('job_listings')
+        .select('id, title')
+        .eq('company_id', userId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      if (jobs && jobs.length === 1) {
+        return {
+          text: `Starting Smart Shortlist for "${jobs[0].title}".`,
+          actions: [{ type: 'start_shortlist', target: jobs[0].id, data: { job_id: jobs[0].id } }],
+        }
+      }
+      return {
+        text: "Navigate to Insights to view your shortlist.",
+        actions: [{ type: 'navigate', target: '/app/insights', data: {} }],
+      }
     }
   }
 

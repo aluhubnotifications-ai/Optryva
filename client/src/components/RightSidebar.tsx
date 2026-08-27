@@ -192,6 +192,22 @@ export function RightSidebar({ mode }: RightSidebarProps) {
         case 'navigate':
           navigate(action.target.startsWith('/') ? action.target : `/${action.target}`, { replace: true })
           break
+        case 'start_shortlist': {
+          const jobId = (detail as any)?.job_id || action.target
+          if (jobId && typeof jobId === 'string') {
+            navigate('/app/insights', { replace: true })
+            setActiveTab(mode === 'employer' ? 'candidates' : 'activity')
+            toast({
+              title: 'Shortlist started',
+              description: `Analyzing candidates for job ${jobId.slice(0, 8)}…`,
+              tone: 'info',
+            })
+          } else {
+            navigate('/app/insights', { replace: true })
+            toast({ title: 'Shortlist', description: 'Open the Smart Shortlist on this page.', tone: 'info' })
+          }
+          break
+        }
         case 'add_evidence':
           window.dispatchEvent(new CustomEvent('optryva:add_evidence', { detail }))
           toast({ title: 'Evidence added', description: 'Verified evidence injected.', tone: 'success' })

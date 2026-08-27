@@ -29,14 +29,7 @@ export function ScorePill({ label, score }: { label: string; score?: number }) {
 }
 
 export function HumanAuthorityBanner() {
-  return (
-    <div className="flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm">
-      <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-      <p className="text-muted-foreground">
-        <span className="font-medium text-foreground">You decide — AI only suggests.</span> Fit and test scores help you prioritise; every accept or reject is a human action and is recorded.
-      </p>
-    </div>
-  )
+  return null
 }
 
 export function ApplicantInbox({

@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Sparkles, ExternalLink, ImageIcon, Loader2, MessageSquare } from 'lucide-react'
+import { Sparkles, ExternalLink, ImageIcon, Loader2 } from 'lucide-react'
 import { evidenceApi } from '@/lib/api'
 import type { JobListing } from '@/types'
 import { Card, CardBody, Badge } from '@/components/ui/primitives'
-import { Drawer } from '@/components/ui/Drawer'
-import { EvidenceChat } from '@/components/EvidenceChat'
 
 // Minimal Markdown renderer for the AI summary: handles **bold**, "- " bullets,
 // and short **Heading** lines. Avoids pulling in a full Markdown dependency for
@@ -80,7 +78,6 @@ export function EmployerEvidenceSummary({ studentId, job }: { studentId: string;
   const [summary, setSummary] = useState<string | null>(null)
   const [count, setCount] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
-  const [chatOpen, setChatOpen] = useState(false)
 
   // Build a single job-role context string so the summary only surfaces what's
   // relevant to THIS posting (not a generic dump of everything).
@@ -136,29 +133,16 @@ export function EmployerEvidenceSummary({ studentId, job }: { studentId: string;
 
         <p className="mt-3 text-xs text-muted-foreground">
           {job
-            ? 'This summary is scoped to what matters for the role you’re hiring for. Open the evidence assistant if you want specifics or proof.'
-            : 'This summary is generated from the candidate’s submitted evidence. Open the full gallery to review the original files and links.'}
+            ? 'This summary is scoped to what matters for the role you\'re hiring for.'
+            : 'This summary is generated from the candidate\'s submitted evidence.'}
+          <Link
+            to={`/app/u/${studentId}`}
+            className="ml-1 inline text-primary hover:underline"
+          >
+            Ask the AI assistant <span aria-hidden>→</span>
+          </Link>{' '}
+          for proof or deeper analysis — it's connected to this view.
         </p>
-
-        <button
-          type="button"
-          onClick={() => setChatOpen(true)}
-          className="mt-4 flex w-full items-center gap-2 rounded-xl border border-border px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-muted"
-        >
-          <MessageSquare className="h-4 w-4 text-primary" />
-          Ask about this evidence
-          <span className="ml-auto text-xs font-normal text-muted-foreground">Opens assistant →</span>
-        </button>
-
-        <Drawer
-          open={chatOpen}
-          onClose={() => setChatOpen(false)}
-          title="Evidence assistant"
-          description={job ? 'Answers are scoped to this role.' : 'Ask about this candidate’s submitted evidence.'}
-          width="lg"
-        >
-          <EvidenceChat studentId={studentId} />
-        </Drawer>
 
         <div className="mt-3">
           <Link

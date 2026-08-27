@@ -4,7 +4,7 @@ export type AssistantMode = 'student' | 'employer' | 'university'
 
 /** Immediate injection actions the engine can return. The client executes these
  *  directly against app state or via DOM events — no confirmation card. */
-export type AssistantActionType = 'inject_data' | 'navigate' | 'update_profile' | 'add_evidence' | 'create_job'
+export type AssistantActionType = 'inject_data' | 'navigate' | 'update_profile' | 'add_evidence' | 'create_job' | 'start_shortlist'
 
 export interface AssistantAction {
   type: AssistantActionType

@@ -1536,7 +1536,7 @@ export const evidenceApi = {
 
 /* ----------------------------- Optryva Assistant ----------------------------- */
 export type AssistantAction = {
-  type: 'inject_data' | 'navigate' | 'update_profile' | 'add_evidence' | 'create_job'
+  type: 'inject_data' | 'navigate' | 'update_profile' | 'add_evidence' | 'create_job' | 'start_shortlist'
   target: string
   data: Record<string, unknown>
 }

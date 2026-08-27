@@ -744,11 +744,6 @@ export default function ApplicantView() {
             {attempts.length <= 1 && (
               <p className="text-xs text-muted-foreground">Attempt {activeAttemptIdx + 1} of {attempts.length}{attempt?.is_retake ? ' (retake)' : ' (first)'}</p>
             )}
-            <div className="flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm">
-              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-              <p className="text-muted-foreground"><span className="font-medium text-foreground">You decide — AI only suggests.</span> Scores below are decision aids, not the final call.</p>
-            </div>
-
             {/* ONE decision. Match + assessment appear only as labeled input chips below,
                 so there is no second "consider" competing with the Smart Shortlist. */}
             <div className="mt-4 rounded-xl border border-accent/30 bg-accent/5 p-4">

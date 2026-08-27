@@ -43,7 +43,7 @@ function parseAction(input: ToolInput): AssistantAction | null {
   const target = input.target
   const data = input.data
   if (typeof type !== 'string' || typeof target !== 'string') return null
-  const validTypes: AssistantAction['type'][] = ['inject_data', 'navigate', 'update_profile', 'add_evidence']
+  const validTypes: AssistantAction['type'][] = ['inject_data', 'navigate', 'update_profile', 'add_evidence', 'create_job', 'start_shortlist']
   if (!validTypes.includes(type as AssistantAction['type'])) return null
   // Validate navigation targets are within the allowlist
   if (type === 'navigate' && !ALLOWED_NAV_TARGETS.has(target)) return null
@@ -105,7 +105,7 @@ const TOOL_DESCRIPTIONS = `Available tools and their EXACT parameter names:
 
 5. get_employer_shortlist(job_id: string) — Get ranked candidates for a posted job.
 
-  6. emit_action(type: "inject_data"|"navigate"|"update_profile"|"add_evidence", target: string, data: object) — Emit a client-side action to execute immediately (e.g. navigate to a page, auto-fill a form). Navigation targets: /app/jobs, /app/listings, /app/listings/new, /app/applications, /app/insights, /app/profile.
+  6. emit_action(type: "inject_data"|"navigate"|"update_profile"|"add_evidence"|"create_job"|"start_shortlist", target: string, data: object) — Emit a client-side action to execute immediately (e.g. navigate to a page, auto-fill a form, trigger a shortlist). Navigation targets: /app/jobs, /app/listings, /app/listings/new, /app/applications, /app/insights, /app/profile, /app/applicants. For start_shortlist, target = the job_id and data = { job_id: string }.
 
 7. save_message(session_id: string, role: string, content: string) — Persist a message to conversation history for audit.
 `

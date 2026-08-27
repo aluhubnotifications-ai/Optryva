@@ -18,14 +18,21 @@ try {
   console.warn(`⚠️  Supabase unavailable — auth and DB routes will fail, but static/file routes work. (${e?.message ?? String(e)})`)
 }
 
-// Keep the pooled Supabase (PostgREST over HTTPS) connection warm. After ~60s of
-// idle the pooler closes the connection and the next auth query pays a ~5s
-// reconnect/TLS penalty — which is what made "login takes so long" after the dev
-// server sat idle. A cheap read every 45s keeps the pool hot so login stays
-// fast even after the server has been sitting unused. Only on Node (Workers
-// reuse a fresh pool per invocation anyway); no-op if Supabase was unreachable.
+// Keep the pooled Supabase (PostgREST over HTTPS) connection warm. After the pooler
+// idles out (~15s) the next auth query pays a ~5s reconnect/TLS penalty — the
+// "login takes so long after the dev server sits idle" symptom. A cheap read
+// every 12s (well under the pooler idle window) keeps the pool hot so login stays
+// fast even after the server has been unused. No-op on Workers (fresh pool per
+// invocation) and if Supabase was unreachable at boot.
 if (supabaseReady) {
-  setInterval(() => { void sb.from('profiles').select('id').limit(1).maybeSingle() }, 45_000)
+  setInterval(async () => {
+    const t = Date.now()
+    try { await sb.from('profiles').select('id').limit(1).maybeSingle() }
+    catch { /* keepalive is best-effort */ }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[keepalive] supabase ping in ${Date.now() - t}ms`)
+    }
+  }, 12_000)
 }
 
 const port = Number(process.env.PORT ?? 4000)
