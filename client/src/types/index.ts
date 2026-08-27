@@ -143,14 +143,15 @@ export interface AiAssignment {
 export type AiQuestionType = 'single_choice' | 'multiple_choice' | 'true_false' | 'essay'
 
 export interface AiAssignmentQuestion {
-  id: string
-  type: AiQuestionType
-  prompt: string
-  required: boolean
-  options?: string[]
-  minWords?: number | null
-  maxWords?: number | null
-}
+   id: string
+   type: AiQuestionType
+   prompt: string
+   required: boolean
+   options?: string[]
+   correct?: string
+   minWords?: number | null
+   maxWords?: number | null
+ }
 
 export type ApplicationStatus = 'draft' | 'pending' | 'reviewed' | 'shortlisted' | 'hired' | 'rejected' | 'cancelled' | 'withdrawn'
 

@@ -111,7 +111,10 @@ async function buildAssignmentContent(job: any, sources: any, instruction?: stri
       'Design a STREAMLINED candidate assignment for this role based on the material above. ' +
       'Return ONLY the JSON requested. Use 3-5 questions, each prompt 1-2 clear sentences, and ' +
       'ONLY these "type" values: essay, single_choice, multiple_choice, true_false ' +
-      '(choice questions must include 2-4 options). Rubric: 3-4 criteria whose points sum to 100.',
+      '(choice questions must include 2-4 options AND the "correct" field with the answer key — ' +
+      'for single_choice/true_false that is "A"/"B"/"C"/"D" or "true"/"false"; ' +
+      'for multiple_choice that is comma-separated letters like "A,C"). ' +
+      'The correct answers let the AI later grade objectively. Rubric: 3-4 criteria whose points sum to 100.',
   })
   return content
 }
@@ -143,7 +146,10 @@ async function buildMistralContent(job: any, docs: any[], instruction?: string, 
       'Design a STREAMLINED candidate assignment for this role based on the material above. ' +
       'Return ONLY the JSON requested. Use 3-5 questions, each prompt 1-2 clear sentences, and ' +
       'ONLY these "type" values: essay, single_choice, multiple_choice, true_false ' +
-      '(choice questions must include 2-4 options). Rubric: 3-4 criteria whose points sum to 100.',
+      '(choice questions must include 2-4 options AND the "correct" field with the answer key — ' +
+      'for single_choice/true_false that is "A"/"B"/"C"/"D" or "true"/"false"; ' +
+      'for multiple_choice that is comma-separated letters like "A,C"). ' +
+      'The correct answers let the AI later grade objectively. Rubric: 3-4 criteria whose points sum to 100.',
   })
   return parts
 }
@@ -179,7 +185,10 @@ async function buildGroqContent(job: any, docs: any[], instruction?: string, exi
     'Design a STREAMLINED candidate assignment for this role based on the material above. ' +
     'Return ONLY the JSON requested. Use 3-5 questions, each prompt 1-2 clear sentences, and ' +
     'ONLY these "type" values: essay, single_choice, multiple_choice, true_false ' +
-    '(choice questions must include 2-4 options). Rubric: 3-4 criteria whose points sum to 100.',
+    '(choice questions must include 2-4 options AND the "correct" field with the answer key — ' +
+    'for single_choice/true_false that is "A"/"B"/"C"/"D" or "true"/"false"; ' +
+    'for multiple_choice that is comma-separated letters like "A,C"). ' +
+    'The correct answers let the AI later grade objectively. Rubric: 3-4 criteria whose points sum to 100.',
   )
   return parts.join('\n\n')
 }
@@ -257,8 +266,8 @@ Rules:
 - Questions must be grounded in the uploaded material / role context. Avoid generic filler ("Tell us about yourself").
 - ALWAYS use exactly one of these question "type" values, and never any other word: "essay", "single_choice", "multiple_choice", "true_false".
   • essay: a written answer (1-3 short paragraphs).
-  • single_choice / multiple_choice: MUST include 2-4 "options" (strings). For single_choice pick one; for multiple_choice any number.
-  • true_false: a statement the candidate marks true/false.
+   • single_choice / multiple_choice: MUST include 2-4 "options" (strings) AND the "correct" field (answer key: "A"/"B"/"+C"/... for single_choice; comma-separated like "A,C" for multiple_choice). For single_choice pick one; for multiple_choice any number.
+   • true_false: a statement the candidate marks true/false. MUST include the "correct" field ("true" or "false") so the AI can grade it objectively.
 - Keep it STREAMLINED: 3-5 questions total, each prompt a single clear sentence or two (no numbered sub-lists inside a prompt). Mix types — typically 1-2 essay + 1-2 choice/true-false. Do NOT use file or video uploads; keep everything text-based so candidates answer inline.
 - Set "required" true for the most important questions; allow 1-2 optional.
 - The rubric must have 3-4 criteria; each "points" is an integer and the criteria sum to EXACTLY 100. Labels name what is judged (e.g. "Problem framing", "Technical approach").
@@ -282,6 +291,7 @@ const ASSIGNMENT_SCHEMA = {
           prompt: { type: 'string' },
           required: { type: 'boolean' },
           options: { type: 'array', items: { type: 'string' }, description: 'Required only for single/multiple choice.' },
+          correct: { type: 'string', description: 'Required for single_choice and true_false: the correct option letter (e.g. "A","B","C","D") or "true"/"false". For multiple_choice: comma-separated letters.' },
           minWords: { type: 'integer', description: 'Optional minimum word count for essay answers.' },
           maxWords: { type: 'integer', description: 'Optional maximum word count for essay answers.' },
         },
@@ -310,7 +320,7 @@ const ASSIGNMENT_SCHEMA = {
 interface GeneratedAssignment {
   title: string
   prompt: string
-  questions: { type: string; prompt: string; required?: boolean; options?: string[]; minWords?: number; maxWords?: number }[]
+   questions: { type: string; prompt: string; required?: boolean; options?: string[]; correct?: string; minWords?: number; maxWords?: number }[]
   rubric: { label: string; points: number }[]
 }
 
@@ -346,6 +356,7 @@ function normalize(r: GeneratedAssignment) {
         : undefined,
       minWords: Number(q.minWords) > 0 ? Math.floor(Number(q.minWords)) : null,
       maxWords: Number(q.maxWords) > 0 ? Math.floor(Number(q.maxWords)) : null,
+      correct: ['single_choice', 'multiple_choice', 'true_false'].includes(type) && q.correct ? String(q.correct).trim().slice(0, 20) : undefined,
     }
   })
   const rubric = (r.rubric ?? [])
@@ -385,6 +396,10 @@ export interface MatchContext {
 }
 
 const SCORE_SYSTEM = `You are an assistant to a human reviewer hiring for early-career roles. You evaluate a candidate's submitted assessment answers against the employer's approved rubric. You are rigorous and fair, you never invent information that is not in the answers, and you keep feedback specific and actionable.
+
+For multiple-choice, single-choice, and true/false questions, the assignment JSON includes the correct answer(s). You MUST check whether the candidate's selection matches the correct answer and say so explicitly in the per-question feedback (e.g. "Correct — the right answer was X" or "Incorrect — the candidate chose Y but the correct answer is X"). Do NOT grade these as essays.
+
+For essay questions, evaluate against the rubric and provide substantive feedback on content, not just word count.
 
 Return ONLY JSON matching the requested schema. Score is 0..100. Recommendation must be one of: advance (strong evidence), consider (mixed), hold (weak or incomplete). Per-question feedback is a short sentence.`
 
@@ -444,7 +459,7 @@ export async function scoreAssignmentWithAI(
     { type: 'text', text: `ASSIGNMENT:\n${JSON.stringify({ title: assignment?.title, prompt: assignment?.prompt, questions: assignment?.questions, rubric: assignment?.rubric }, null, 2)}` },
     { type: 'text', text: `CANDIDATE SUBMISSION:\n${answerText}` },
     ...(priorBlock ? [{ type: 'text', text: priorBlock }] : []),
-    { type: 'text', text: 'Evaluate the submission against the approved rubric. Return ONLY the requested JSON.' },
+    { type: 'text', text: 'For single-choice, multiple-choice, and true/false questions: compare the candidate\'s answer to the "correct" field and state whether it is right or wrong. For essay questions: evaluate content against the rubric. Return ONLY the requested JSON.' },
   ]
 
   // Transparent fallback used when no AI provider succeeds: a completion-based
@@ -462,8 +477,20 @@ export async function scoreAssignmentWithAI(
     }
   }
 
-  // Mistral is preferred for scoring (so its behaviour is observable to the
-  // employer during testing), then Claude, then the transparent estimate.
+  // Groq is preferred for scoring, then Mistral, then Claude, then the transparent estimate.
+  if (hasGroq()) {
+    try {
+      const result = await groqChatJson<any>({ system: SCORE_SYSTEM, messages: content.map((c: any) => ({ role: 'user' as const, content: c.text })), schema: SCORE_SCHEMA, maxTokens: 1500 })
+      if (result) {
+        const score = Math.max(0, Math.min(100, Math.round(Number(result.score) || 0)))
+        const recommendation = ['advance', 'consider', 'hold'].includes(result.recommendation) ? result.recommendation : (score >= 75 ? 'advance' : score >= 55 ? 'consider' : 'hold')
+        const perQuestion = (result.per_question ?? []).map((p: any) => ({ id: String(p.id), feedback: String(p.feedback ?? '') }))
+        return { score, recommendation, feedback: { overall: String(result.overall_feedback ?? ''), perQuestion } }
+      }
+    } catch (e) {
+      console.warn('[routes:ai:assignment] ⚠ Groq scoring failed, falling through:', (e as Error).message)
+    }
+  }
   if (hasMistral()) {
     try {
       const result = await mistralJsonBlocks<any>({ model: MISTRAL_MODEL, maxTokens: 1500, system: SCORE_SYSTEM, content, schema: SCORE_SCHEMA })

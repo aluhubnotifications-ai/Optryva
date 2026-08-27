@@ -93,8 +93,17 @@ export function SubmittedAnswers({
 								{(q.type === "true_false"
 									? ["True", "False"]
 									: (q.options ?? [])
-								).map((opt: string) => {
+								).map((opt: string, oi: number) => {
 									const sel = selected.includes(opt);
+									const isCorrect = (() => {
+										if (!q.correct) return false;
+										if (q.type === "true_false") {
+											return q.correct.toLowerCase() === opt.toLowerCase();
+										}
+										const correctLetters = q.correct.split(",").map((c: string) => c.trim());
+										const optLabel = String.fromCharCode(65 + oi);
+										return correctLetters.includes(optLabel);
+									})();
 									return (
 										<div
 											key={opt}
@@ -109,6 +118,11 @@ export function SubmittedAnswers({
 											{sel && (
 												<span className="text-xs font-medium text-primary">
 													Your answer
+												</span>
+											)}
+											{isCorrect && (
+												<span className="text-xs font-medium text-success">
+													Correct
 												</span>
 											)}
 										</div>

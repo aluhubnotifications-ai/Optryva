@@ -831,6 +831,33 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
                         <Button type="button" variant="outline" size="sm" onClick={() => setAssignment({ ...assignment, questions: assignment.questions.map((q, idx) => idx === i ? { ...q, options: [...(q.options ?? []), ''] } : q) })}>Add choice</Button>
                       </div>
                     )}
+                    {(question.type === 'single_choice' || question.type === 'multiple_choice') && (question.options ?? []).filter(Boolean).length > 0 && (
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">Correct answer{question.type === 'multiple_choice' ? 's' : ''}</label>
+                        <input
+                          type={question.type === 'multiple_choice' ? 'text' : 'text'}
+                          value={question.correct ?? ''}
+                          onChange={(e) => setAssignment({ ...assignment, questions: assignment.questions.map((q, idx) => idx === i ? { ...q, correct: e.target.value } : q) })}
+                          placeholder={question.type === 'multiple_choice' ? 'e.g. A,C' : 'e.g. A or true/false'}
+                          className="w-full rounded-md border border-border px-3 py-2 text-sm"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {question.type === 'multiple_choice'
+                            ? 'Enter comma-separated letters (e.g. A,C) matching the correct choices.'
+                            : 'Enter the letter of the correct choice, or "true"/"false".'}
+                        </p>
+                      </div>
+                    )}
+                    {question.type === 'true_false' && (
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">Correct answer</label>
+                        <Select value={question.correct ?? ''} onChange={(e) => setAssignment({ ...assignment, questions: assignment.questions.map((q, idx) => idx === i ? { ...q, correct: e.target.value } : q) })}>
+                          <option value="">Select...</option>
+                          <option value="true">True</option>
+                          <option value="false">False</option>
+                        </Select>
+                      </div>
+                    )}
                   </div>
                 ))}
                 <Button type="button" variant="outline" size="sm" onClick={() => setAssignment({ ...assignment, questions: [...assignment.questions, { id: `question-${assignment.questions.length + 1}`, type: 'essay', prompt: '', required: true }] })}>Add question</Button>
