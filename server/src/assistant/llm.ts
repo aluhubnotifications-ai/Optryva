@@ -122,7 +122,7 @@ export async function generateTurn<T>(opts: {
       user: history,
       schema: opts.schema ?? { type: 'object' },
       maxTokens: opts.maxTokens,
-      thinking: true,
+      thinking: false,
     })
   }
 

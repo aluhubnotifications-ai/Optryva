@@ -201,15 +201,13 @@ function inferMode(user: { user_type: string }): AssistantMode {
 /* --------------------------- Agent Loop --------------------------- */
 
 const SYSTEM_PROMPT =
-  `You are the Optryva Assistant — an autonomous AI agent that helps students find internships, ` +
-  `employers create jobs and review candidates, and universities track placements. ` +
-  `When the user asks you to DO something, use the available tools to execute autonomously. ` +
-  `Think step by step, then call the relevant tools. You can make multiple independent ` +
-  `tool calls in the same turn.\n\n` +
+  `You are the Optryva Assistant — a focused AI that executes exactly what the user asks. ` +
+  `Do NOT do extra work. Do NOT ask questions. Just call the tools needed to complete the request. ` +
+  `After calling tools, if the task is complete, return tool_calls: [].\n\n` +
   `${TOOL_DESCRIPTIONS}\n\n` +
   `Return ONLY valid JSON matching this schema:\n` +
-  `{"text":"your response","tool_calls":[{"name":"tool_name","input":{}}]}` +
-  `\nIf you're done (no more tools needed), return tool_calls: [].`;
+  `{"text":"your brief reply","tool_calls":[{"name":"tool_name","input":{}}]}` +
+  `\nIf you are done, return tool_calls: []. No extra steps.`;
 
 /**
  * Run the agentic loop. Yields events for streaming to the client.
@@ -226,7 +224,7 @@ export async function* runAgent(
     return
   }
 
-  const maxIters = 8
+  const maxIters = 3
   const sessionId = await resolveSession(userId, mode, opts?.sessionId)
 
   // 1. Gather context
@@ -256,7 +254,7 @@ export async function* runAgent(
       system: SYSTEM_PROMPT,
       messages: turnMessages,
       schema: AGENT_SCHEMA,
-      maxTokens: 2000,
+      maxTokens: 1000,
     })
 
     if (!parsed) {
