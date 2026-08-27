@@ -37,13 +37,17 @@ export default function JobEditor() {
   const [job, setJob] = useState<JobListing | null | undefined>(undefined)
 
   useEffect(() => {
+    if (id) {
+      // Always fetch the full job (with description, assignment, etc.) from the
+      // single-job endpoint. The listings page may pass a lean object via state
+      // that omits the description — we need the full row for editing.
+      jobsApi.get(id).then((j) => setJob(j ?? null)).catch(() => setJob(null))
+      return
+    }
+    // New job from AI assistant / blank creation
     const fromState = (location.state as any)?.job as JobListing | undefined
     if (fromState) {
       setJob(fromState)
-      return
-    }
-    if (id) {
-      jobsApi.get(id).then((j) => setJob(j ?? null)).catch(() => setJob(null))
       return
     }
     setJob(null)
