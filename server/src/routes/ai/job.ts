@@ -1,6 +1,6 @@
 import { Router } from '@/lib/http'
 import { requireAuth } from '@/lib/auth'
-import { claudeJsonBlocks, parseDataUrl, extractDocxText, hasClaude, MODELS } from '@/lib/claude'
+import { claudeJsonBlocks, parseDataUrl, extractDocxText, hasClaude, MODELS, extractAnyDocumentText } from '@/lib/claude'
 import { mistralJsonBlocks, hasMistral, MISTRAL_MODEL, MISTRAL_VISION_MODEL, extractPdfText } from '@/lib/mistral'
 import { groqChatJson, hasGroq, groqModel } from '@/lib/groq'
 import { sourceToMistralPart, sourceToBlock } from './assignment'
@@ -29,11 +29,10 @@ export function registerJob(r: Router) {
 
       if (hasGroq()) {
         console.log('[routes:ai:job] → using Groq for job generation')
-        const parts = await buildMistralContent(brief, docs, instruction, existing)
-        if (!parts.length) return res.status(400).json({ error: 'no_input', message: 'Upload a document or describe the role first.' })
+        const content = await buildGroqContent(brief, docs, instruction, existing)
         const result = await groqChatJson<GeneratedJob>({
           system: JOB_SYSTEM,
-          messages: [{ role: 'user', content: parts.map((p) => p.text).filter(Boolean).join('\n\n') }],
+          messages: [{ role: 'user', content }],
           schema: JOB_SCHEMA,
           maxTokens: 2000,
           temperature: 0.3,
@@ -120,6 +119,35 @@ async function buildClaudeContent(brief: string | undefined, docs: any[], instru
       'Draft a complete, ready-to-post job listing from the material above. Return ONLY the JSON requested.',
   })
   return content
+}
+
+/** Assemble text content for Groq — extracts text from ANY document type locally. */
+async function buildGroqContent(brief: string | undefined, docs: any[], instruction?: string, existing?: any): Promise<string> {
+  const parts: string[] = []
+  if (brief?.trim()) parts.push(`EMPLOYER BRIEF:\n${brief.trim().slice(0, 8000)}`)
+
+  for (const src of docs) {
+    if (!src?.dataUrl) continue
+    const parsed = parseDataUrl(src.dataUrl)
+    if (!parsed) continue
+    const { mediaType } = parsed
+    if (mediaType.startsWith('image/')) {
+      parts.push(`[Image attached: ${src.name ?? 'image'} — ${mediaType}]`)
+    } else {
+      const text = await extractAnyDocumentText(src.dataUrl)
+      if (text) parts.push(`CONTENT OF ${src.name ?? 'document'}:\n${text.slice(0, 20000)}`)
+    }
+  }
+
+  if (existing) {
+    parts.push('CURRENT DRAFT TO REVISE:\n' + JSON.stringify(existing, null, 2))
+  }
+
+  parts.push(
+    (instruction?.trim() ? `EMPLOYER INSTRUCTION: ${instruction.trim()}\n\n` : '') +
+    'Draft a complete, ready-to-post job listing from the material above. Return ONLY the JSON requested.',
+  )
+  return parts.join('\n\n')
 }
 
 const JOB_SYSTEM = `You are an expert job-posting writer for early-career roles (internships, graduate programmes, fellowships, part-time and full-time positions) across Africa and globally. You turn a real brief or document into a clear, compelling, ready-to-post listing.

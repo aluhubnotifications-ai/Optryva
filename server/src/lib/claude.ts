@@ -324,6 +324,181 @@ export function extractDocxText(data: string): string | null {
 }
 
 /**
+ * Universal local document text extractor.
+ * Handles PDF, DOCX, PPTX, DOC, RTF, HTML, CSV, JSON, XML, and plain text —
+ * all locally without any API key. Falls back to Claude's document API for
+ * PDFs that can't be parsed locally (e.g. image-only/scanned PDFs).
+ *
+ * Returns the extracted text, or null if the format is unsupported.
+ */
+export async function extractAnyDocumentText(dataUrl: string): Promise<string | null> {
+  const m = dataUrl.match(/^data:([^;]+);base64,(.*)$/s)
+  if (!m) return null
+  const mediaType = m[1].toLowerCase()
+  const data = m[2]
+
+  // Text-based formats — decode directly
+  if (mediaType.startsWith('text/') || mediaType === 'application/json' || mediaType === 'application/xml' || mediaType === 'application/javascript') {
+    try {
+      const text = Buffer.from(data, 'base64').toString('utf-8').trim()
+      if (text) return text
+    } catch {}
+    return null
+  }
+
+  const looksLikeZip = /^UEsDB/.test(data) // base64 of "PK\x03\x04"
+
+  // PDF
+  if (mediaType === 'application/pdf') {
+    const { extractPdfText } = await import('@/lib/mistral')
+    const text = await extractPdfText(data)
+    if (text) return text
+    // If local extraction fails and Claude is available, try Claude's PDF support
+    if (client) {
+      try {
+        const res: any = await client.messages.create({
+          model: MODELS.score,
+          max_tokens: 4096,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } },
+              { type: 'text', text: 'Output ONLY the full plain text of this document — keep structure, omit nothing.' },
+            ],
+          }],
+        })
+        const text = (res.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('').trim()
+        if (text) return text
+      } catch {}
+    }
+    return null
+  }
+
+  // DOCX / OOXML (also catches PPTX, XLSX via zip detection)
+  if (looksLikeZip) {
+    try {
+      const files = unzipSync(new Uint8Array(Buffer.from(data, 'base64')))
+
+      // DOCX: word/document.xml
+      if (files['word/document.xml']) {
+        return extractDocxText(data)
+      }
+
+      // PPTX: ppt/slides/slide1.xml + ppt/slides/slideN.xml + ppt/notesSlides/notesSlideN.xml
+      const pptxSlides = Object.keys(files).filter((f) => f.startsWith('ppt/slides/slide') && f.endsWith('.xml'))
+      if (pptxSlides.length) {
+        const slides = pptxSlides
+          .sort((a, b) => {
+            const na = parseInt(a.match(/slide(\d+)\.xml$/)?.[1] ?? '0')
+            const nb = parseInt(b.match(/slide(\d+)\.xml$/)?.[1] ?? '0')
+            return na - nb
+          })
+          .map((f) => {
+            const xml = strFromU8(files[f])
+            return extractTextFromPptxXml(xml)
+          })
+          .filter(Boolean)
+          .join('\n\n---\n\n')
+        if (slides) return slides
+      }
+
+      // XLSX: xlsx/sharedStrings.xml + xlsx/worksheets/sheetN.xml
+      if (files['xl/sharedStrings.xml']) {
+        const shared = strFromU8(files['xl/sharedStrings.xml'])
+        const sharedStrings = (shared.match(/<t[^>]*>([^<]*)<\/t>/g) ?? []).map((t) =>
+          t.replace(/<t[^>]*>/, '').replace(/<\/t>/, ''),
+        )
+        const sheetFiles = Object.keys(files).filter((f) => f.startsWith('xl/worksheets/sheet') && f.endsWith('.xml'))
+        const rows: string[] = []
+        for (const sf of sheetFiles.sort()) {
+          const xml = strFromU8(files[sf])
+          const cells = xml.match(/<c[^>]*r="[A-Z]+\d+"[^>]*t="s"[^>]*>([^<]*)<\/c>/g)
+          if (cells) {
+            for (const c of cells) {
+              const idx = parseInt(c.match(/>(\d+)</)?.[1] ?? '0')
+              if (sharedStrings[idx]) rows.push(sharedStrings[idx])
+            }
+          }
+        }
+        if (rows.length) return rows.join('\n')
+      }
+
+      // Generic: try extracting from any XML file inside the zip
+      for (const key of Object.keys(files)) {
+        if (key.endsWith('.xml') && !key.startsWith('xl/meta') && !key.includes('theme')) {
+          const xml = strFromU8(files[key])
+          const text = xml.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/\s{2,}/g, ' ').trim()
+          if (text && text.length > 20) return text.slice(0, 50000)
+        }
+      }
+    } catch {}
+    return null
+  }
+
+  // Legacy DOC (binary OLE Compound File) — check for OLE header
+  if (/^D0CF11E0A1B11AE1/.test(data)) {
+    // OLE2 compound document — try extracting text from WordDocument stream
+    return extractTextFromOleDoc(data)
+  }
+
+  // RTF
+  if (mediaType === 'application/rtf' || data.startsWith('e1xy')) {
+    const text = Buffer.from(data, 'base64').toString('utf-8')
+    return text.replace(/\{\\[^{}]*\}/g, '').replace(/[{}]/g, '').replace(/\s+/g, ' ').trim() || null
+  }
+
+  // HTML
+  if (mediaType === 'text/html' || mediaType === 'application/xhtml+xml') {
+    const html = Buffer.from(data, 'base64').toString('utf-8')
+    const text = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      .replace(/\s{2,}/g, ' ').trim()
+    return text || null
+  }
+
+  // Unknown format — try text decode as last resort
+  try {
+    const text = Buffer.from(data, 'base64').toString('utf-8').trim()
+    if (text && text.length > 10 && /[a-zA-Z]/.test(text)) return text.slice(0, 10000)
+  } catch {}
+
+  return null
+}
+
+/** Extract text from a PPTX slide XML — handles <a:t> text elements. */
+function extractTextFromPptxXml(xml: string): string {
+  return (xml.match(/<a:t>([^<]*)<\/a:t>/g) ?? [])
+    .map((t) => t.replace(/<a:t>/, '').replace(/<\/a:t>/, ''))
+    .filter(Boolean)
+    .join(' ')
+}
+
+/** Extract text from legacy DOC (OLE2 compound) — very basic support. */
+function extractTextFromOleDoc(data: string): string | null {
+  try {
+    const buf = Buffer.from(data, 'base64')
+    // Very rough: find ASCII text runs in the binary data
+    let text = ''
+    let current = ''
+    for (let i = 0; i < buf.length; i++) {
+      const b = buf[i]
+      if (b >= 0x20 && b <= 0x7e) {
+        current += String.fromCharCode(b)
+      } else {
+        if (current.length > 10) text += current + '\n'
+        current = ''
+      }
+    }
+    if (current.length > 10) text += current
+    return text.trim() || null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Pull the plain text out of an uploaded résumé file stored as a data URL — so
  * the whole AI layer can read the candidate's actual CV regardless of format.
  * PDFs are read by Claude's native document support; .docx (Word) is unzipped

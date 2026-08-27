@@ -1,6 +1,6 @@
 import { Router } from '@/lib/http'
 import { requireAuth } from '@/lib/auth'
-import { claudeJsonBlocks, parseDataUrl, extractDocxText, hasClaude, MODELS } from '@/lib/claude'
+import { claudeJsonBlocks, parseDataUrl, extractDocxText, hasClaude, MODELS, extractAnyDocumentText } from '@/lib/claude'
 import { mistralJsonBlocks, hasMistral, MISTRAL_MODEL, MISTRAL_VISION_MODEL, extractPdfText } from '@/lib/mistral'
 import { groqChatJson, hasGroq, groqModel } from '@/lib/groq'
 
@@ -26,11 +26,10 @@ export function registerAssignment(r: Router) {
       // With no AI key at all, fail clearly instead of faking a result.
       if (hasGroq()) {
         console.log('[routes:ai:assignment] → using Groq for assignment generation')
-        const parts = await buildMistralContent(job, docs, instruction, existing)
-        if (!parts.length) return res.status(400).json({ error: 'no_input', message: 'Upload a document or describe the role first.' })
+        const content = await buildGroqContent(job, docs, instruction, existing)
         const result = await groqChatJson<GeneratedAssignment>({
           system: ASSIGNMENT_SYSTEM,
-          messages: [{ role: 'user', content: parts.map((p) => p.text).filter(Boolean).join('\n\n') }],
+          messages: [{ role: 'user', content }],
           schema: ASSIGNMENT_SCHEMA,
           maxTokens: 2000,
           temperature: 0.4,
@@ -147,6 +146,42 @@ async function buildMistralContent(job: any, docs: any[], instruction?: string, 
       '(choice questions must include 2-4 options). Rubric: 3-4 criteria whose points sum to 100.',
   })
   return parts
+}
+
+/** Assemble content for Groq (and other text-only providers). Extracts text from
+ *  ANY document type locally — PDF, DOCX, PPTX, XLSX, DOC, RTF, HTML, CSV, JSON,
+ *  plain text. Images are described inline (Groq/OpenAI compatible API supports
+ *  base64 data URLs in some models; for text-only we embed a note). */
+async function buildGroqContent(job: any, docs: any[], instruction?: string, existing?: any): Promise<string> {
+  const parts: string[] = []
+  const jobCtx = buildJobContext(job)
+  if (jobCtx) parts.push(jobCtx)
+
+  for (const src of docs) {
+    if (!src?.dataUrl) continue
+    const parsed = parseDataUrl(src.dataUrl)
+    if (!parsed) continue
+    const { mediaType } = parsed
+    if (mediaType.startsWith('image/')) {
+      parts.push(`[Image attached: ${src.name ?? 'image'} — ${mediaType}]`)
+    } else {
+      const text = await extractAnyDocumentText(src.dataUrl)
+      if (text) parts.push(`CONTENT OF ${src.name ?? 'document'}:\n${text.slice(0, 20000)}`)
+    }
+  }
+
+  if (existing?.questions?.length || existing?.rubric?.length) {
+    parts.push('CURRENT ASSIGNMENT TO REVISE:\n' + JSON.stringify({ questions: existing.questions ?? [], rubric: existing.rubric ?? [] }, null, 2))
+  }
+
+  parts.push(
+    (instruction?.trim() ? `EMPLOYER INSTRUCTION: ${instruction.trim()}\n\n` : '') +
+    'Design a STREAMLINED candidate assignment for this role based on the material above. ' +
+    'Return ONLY the JSON requested. Use 3-5 questions, each prompt 1-2 clear sentences, and ' +
+    'ONLY these "type" values: essay, single_choice, multiple_choice, true_false ' +
+    '(choice questions must include 2-4 options). Rubric: 3-4 criteria whose points sum to 100.',
+  )
+  return parts.join('\n\n')
 }
 
 /** Turn an uploaded source into a Mistral content part (image_url / extracted text). */
