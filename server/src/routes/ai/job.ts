@@ -13,7 +13,7 @@ const LISTING_TYPES = ['Internship', 'Full-time', 'Part-time', 'Fellowship']
 export function registerJob(r: Router) {
   /* ---------- §9.x AI job generator ----------
    * An employer uploads a brief (PDF/docx/txt/image) and/or writes what they want;
-   * Mistral (preferred) or Claude drafts a complete, ready-to-post job listing:
+   * Groq (preferred) or Mistral/Claude drafts a complete, ready-to-post job listing:
    * title, description, category, listing type, location, pay, duration, tags,
    * responsibilities, qualifications and benefits. The employer then reviews and
    * edits the draft in the normal editor (or tweaks it with an instruction).
@@ -27,6 +27,22 @@ export function registerJob(r: Router) {
         return res.status(400).json({ error: 'no_input', message: 'Upload a document or describe the role first.' })
       }
 
+      if (hasGroq()) {
+        console.log('[routes:ai:job] → using Groq for job generation')
+        const content = await buildClaudeContent(brief, docs, instruction, existing)
+        const result = await groqChatJson<GeneratedJob>({
+          system: JOB_SYSTEM,
+          messages: [{ role: 'user', content: content.map((c) => c.text).filter(Boolean).join('\n\n') }],
+          schema: JOB_SCHEMA,
+          maxTokens: 2000,
+          temperature: 0.3,
+        })
+        if (result) {
+          console.log('[routes:ai:job] ✓ Groq returned valid job draft')
+          return res.json(normalize(result))
+        }
+        console.warn('[routes:ai:job] ⚠ Groq returned null — falling through to Mistral')
+      }
       if (hasMistral()) {
         const parts = await buildMistralContent(brief, docs, instruction, existing)
         if (!parts.length) return res.status(400).json({ error: 'no_input', message: 'Upload a document or describe the role first.' })
@@ -42,22 +58,6 @@ export function registerJob(r: Router) {
         })
         if (result) return res.json(normalize(result))
         return res.status(503).json({ error: 'ai_unavailable', message: 'Mistral did not return a valid job draft.' })
-      }
-      if (hasGroq()) {
-        console.log('[routes:ai:job] → using Groq for job generation')
-        const content = await buildClaudeContent(brief, docs, instruction, existing)
-        const result = await groqChatJson<GeneratedJob>({
-          system: JOB_SYSTEM,
-          messages: [{ role: 'user', content: content.map((c) => c.text).filter(Boolean).join('\n\n') }],
-          schema: JOB_SCHEMA,
-          maxTokens: 2000,
-          temperature: 0.3,
-        })
-        if (result) {
-          console.log('[routes:ai:job] ✓ Groq returned valid job draft')
-          return res.json(normalize(result))
-        }
-        console.warn('[routes:ai:job] ⚠ Groq returned null — falling through to Claude')
       }
       if (hasClaude()) {
         const content = await buildClaudeContent(brief, docs, instruction, existing)

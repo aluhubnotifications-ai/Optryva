@@ -22,10 +22,24 @@ export function registerAssignment(r: Router) {
       }
 
       // Assessment generation is AI-only (no deterministic template — a real brief
-      // needs a model). When MISTRAL_API_KEY is set, Mistral designs the assignment
-      // (pixtral reads images, unpdf extracts PDF text). If Mistral is configured it
-      // is used on its own so its behaviour is observable; otherwise we fall back to
-      // Claude. With no AI key at all, fail clearly instead of faking a result.
+      // needs a model). Groq (preferred) or Mistral/Claude designs the assignment.
+      // With no AI key at all, fail clearly instead of faking a result.
+      if (hasGroq()) {
+        console.log('[routes:ai:assignment] → using Groq for assignment generation')
+        const content = await buildAssignmentContent(job, docs, instruction, existing)
+        const result = await groqChatJson<GeneratedAssignment>({
+          system: ASSIGNMENT_SYSTEM,
+          messages: [{ role: 'user', content: content.map((c) => c.text).filter(Boolean).join('\n\n') }],
+          schema: ASSIGNMENT_SCHEMA,
+          maxTokens: 2000,
+          temperature: 0.4,
+        })
+        if (result) {
+          console.log('[routes:ai:assignment] ✓ Groq returned valid assignment')
+          return res.json(normalize(result))
+        }
+        console.warn('[routes:ai:assignment] ⚠ Groq returned null — falling through to Mistral')
+      }
       if (hasMistral()) {
         const parts = await buildMistralContent(job, docs, instruction, existing)
         if (!parts.length) return res.status(400).json({ error: 'no_input', message: 'Upload a document or describe the role first.' })
@@ -41,22 +55,6 @@ export function registerAssignment(r: Router) {
         })
         if (result) return res.json(normalize(result))
         return res.status(503).json({ error: 'ai_unavailable', message: 'Mistral did not return a valid assignment.' })
-      }
-      if (hasGroq()) {
-        console.log('[assistant:assignment] → using Groq for assignment generation')
-        const content = await buildAssignmentContent(job, docs, instruction, existing)
-        const result = await groqChatJson<GeneratedAssignment>({
-          system: ASSIGNMENT_SYSTEM,
-          messages: [{ role: 'user', content: content.map((c) => c.text).filter(Boolean).join('\n\n') }],
-          schema: ASSIGNMENT_SCHEMA,
-          maxTokens: 2000,
-          temperature: 0.4,
-        })
-        if (result) {
-          console.log('[assistant:assignment] ✓ Groq returned valid assignment')
-          return res.json(normalize(result))
-        }
-        console.warn('[assistant:assignment] ⚠ Groq returned null — falling through to Claude')
       }
       if (hasClaude()) {
         const content = await buildAssignmentContent(job, docs, instruction, existing)
