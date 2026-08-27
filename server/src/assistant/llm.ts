@@ -78,11 +78,19 @@ export async function generateStructured<T>(opts: {
         maxTokens: opts.maxTokens,
         temperature: opts.temperature,
       })
-      if (result) {
-        console.log('[assistant:llm] ✓ Mistral returned:', JSON.stringify(result).slice(0, 300))
-      } else {
-        console.warn('[assistant:llm] ⚠ Mistral returned null — falling through to Claude')
-      }
+       if (result) {
+         console.log('[assistant:llm] ✓ Mistral returned:', JSON.stringify(result).slice(0, 300))
+         // Validate it looks like our AssistantAIOutput shape
+         const r = result as any
+         if (typeof r.text !== 'string' && r.text !== undefined) {
+           console.warn('[assistant:llm] ⚠ Mistral returned object but "text" is not string:', typeof r.text)
+         }
+         if (result && !r.text && !r.actions) {
+           console.warn('[assistant:llm] ⚠ Mistral returned object without text or actions — may be malformed schema')
+         }
+       } else {
+         console.warn('[assistant:llm] ⚠ Mistral returned null — falling through to Claude')
+       }
     } catch (e: any) {
       console.error('[assistant:llm] ✗ Mistral error in generateStructured:', { message: e?.message, stack: e?.stack?.split('\n').slice(0, 3) })
     }
