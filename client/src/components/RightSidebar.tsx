@@ -276,7 +276,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.2 }}
-            className="flex w-[420px] flex-shrink-0 flex-col border-l border-border bg-card/50 shadow-xl"
+            className="flex w-[420px] flex-shrink-0 flex-col border-l border-border bg-card shadow-xl"
           >
             {/* Header with gradient */}
             <div className="flex items-center justify-between border-b border-border bg-gradient-to-r from-primary/10 via-accent/5 to-primary/10 px-4 py-3">
@@ -312,7 +312,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
             </div>
 
             {/* Tab navigation */}
-            <div className="flex border-b border-border bg-muted/30 px-3">
+            <div className="flex border-b border-border bg-muted/60 px-3">
               {tabs.map((tab) => {
                 const Icon = tab.icon
                 const active = activeTab === tab.key
@@ -408,7 +408,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
 
       {/* Collapsed state — icon strip */}
       {!open && (
-        <div className="flex w-12 flex-shrink-0 flex-col items-center gap-2 border-l border-border bg-card/50 py-3 shadow-xl">
+        <div className="flex w-12 flex-shrink-0 flex-col items-center gap-2 border-l border-border bg-card py-3 shadow-xl">
           {tabs.map((tab) => {
             const Icon = tab.icon
             return (
@@ -561,7 +561,7 @@ function ActivityRow({ task }: { task: any }) {
       <Activity className="h-4 w-4 text-success" />
     )
   return (
-    <div className="flex items-start gap-2.5 rounded-lg border border-border/20 bg-background/30 px-3 py-2">
+    <div className="flex items-start gap-2.5 rounded-lg border border-border/30 bg-background/80 px-3 py-2">
       <span className="mt-0.5">{icon}</span>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium">{task.label}</p>
