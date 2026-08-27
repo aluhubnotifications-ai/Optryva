@@ -76,6 +76,7 @@ export default function Listings() {
   }
 
   async function remove(id: string) {
+    if (!confirm('Delete this listing? This cannot be undone.')) return
     await jobsApi.remove(id)
     toast({ title: 'Listing removed', tone: 'info' })
     if (selection === id) chooseListing('all')

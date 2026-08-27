@@ -120,6 +120,8 @@ const TOOL_DESCRIPTIONS = `Available tools and their EXACT parameter names:
   12. save_message(session_id: string, role: string, content: string) — Persist a message to conversation history for audit.
 
   13. count_applicants(job_id?: string) — Count total applicants across all employer jobs, or for a specific job_id if provided. Returns total count, per-job breakdown, and per-candidate score/evidence summary.
+
+  14. delete_job(job_id: string, confirm?: boolean) — Delete a job listing (and its applications). Requires explicit confirmation via confirm=true. Only callable in employer mode.
 `
 
 type TurnMessage = { role: 'user' | 'assistant'; content: string }
@@ -417,6 +419,37 @@ const TOOL_EXECUTORS: Record<string, (input: ToolInput, userId: string, mode: As
       })
     } catch (e: any) {
       console.error('[assistant:agent:tool] ✗ count_applicants error:', e?.message)
+      return JSON.stringify({ error: e?.message ?? 'tool_execution_failed' })
+    }
+  },
+  delete_job: async (input, userId, mode) => {
+    const jobId = getStr(input, 'job_id', 'id')
+    const confirmed = getParam(input, 'confirm', 'confirmed') === true
+    console.log('[assistant:agent:tool] delete_job', { userId, jobId, confirmed, mode })
+    if (mode !== 'employer') {
+      return JSON.stringify({ error: 'delete_job requires employer mode' })
+    }
+    if (!jobId) return JSON.stringify({ error: 'job_id is required' })
+    if (!confirmed) {
+      return JSON.stringify({ error: 'confirmation_required', message: 'Pass confirm=true to delete this job listing and all its applications.' })
+    }
+    try {
+      // Verify ownership
+      const { data: job, error: jobErr } = await sb.from('job_listings').select('id, title').eq('id', jobId).eq('company_id', userId).maybeSingle()
+      if (jobErr || !job) {
+        console.warn('[assistant:agent:tool] ✗ job not found or access denied:', { jobId, userId })
+        return JSON.stringify({ error: 'not_found' })
+      }
+      // Delete the job (applications cascade or can be cleaned up)
+      const { error: delErr } = await sb.from('job_listings').delete().eq('id', jobId)
+      if (delErr) {
+        console.error('[assistant:agent:tool] ✗ Supabase error deleting job:', delErr.message)
+        return JSON.stringify({ error: delErr.message })
+      }
+      console.log('[assistant:agent:tool] ✓ job deleted:', { jobId, userId })
+      return JSON.stringify({ ok: true, job_id: jobId, job_title: job.title })
+    } catch (e: any) {
+      console.error('[assistant:agent:tool] ✗ delete_job error:', e?.message)
       return JSON.stringify({ error: e?.message ?? 'tool_execution_failed' })
     }
   },
