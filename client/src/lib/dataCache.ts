@@ -6,7 +6,7 @@
 
 type Entry<T> = { value: T; expire: number; promise?: Promise<T> }
 
-const DEFAULT_TTL = 20_000
+const DEFAULT_TTL = 60_000
 const cache = new Map<string, Entry<unknown>>()
 
 export function cached<T>(key: string, fn: () => Promise<T>, ttl: number = DEFAULT_TTL): Promise<T> {

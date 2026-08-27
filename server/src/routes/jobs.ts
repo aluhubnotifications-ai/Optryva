@@ -17,8 +17,10 @@ jobs.use(requireAuth)
 // Lean column set for list views — full descriptions/arrays are only needed on
 // the single-job detail route. Trimming them keeps the 100+ row list payload
 // small (faster transfer + parse) while cards still have everything they show.
+// `description` and `assignment` are intentionally excluded: they're large and
+// only consumed on the detail/apply routes, which query the full row.
 const LIST_COLUMNS =
-  'id,company_id,title,description,type,listing_type,location,country,remote,pay,currency,duration,deadline,tags,status,apply_url,allowed_years,allowed_schools,students_only,posted_by_role,original_company_name,original_company_logo_url,assignment,created_at'
+  'id,company_id,title,type,listing_type,location,country,remote,pay,currency,duration,deadline,tags,status,apply_url,allowed_years,allowed_schools,students_only,posted_by_role,original_company_name,original_company_logo_url,created_at'
 
 // The responsibilities/benefits/qualifications columns are optional (added by a
 // later migration). Detect their presence so create/update still work before the
@@ -148,7 +150,10 @@ jobs.get('/', async (req, res) => {
     }
   }
   const payload = visible.map(rowToJob)
-  cacheSet(cacheKey, payload, 20_000)
+  // The active set changes rarely (new posts), so cache the visibility-filtered
+  // result for 5 min — the expensive first query is amortised across every
+  // student/dashboard load; only one request per 5 min hits Supabase.
+  cacheSet(cacheKey, payload, 300_000)
   res.json(payload)
 })
 
