@@ -222,7 +222,12 @@ function coerceListingType(t: string): string {
 }
 
 function strArr(v: unknown, cap = 10): string[] {
-  return Array.isArray(v) ? v.map((x) => String(x ?? '').trim()).filter(Boolean).slice(0, cap) : []
+  if (Array.isArray(v)) return v.map((x) => String(x ?? '').trim()).filter(Boolean).slice(0, cap)
+  if (typeof v === 'string' && v.trim()) {
+    // AI sometimes returns a comma/semicolon/newline-separated string instead of an array
+    return v.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean).slice(0, cap)
+  }
+  return []
 }
 
 /** Coerce/repair the model output so the client always gets a usable, on-vocabulary draft. */
