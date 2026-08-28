@@ -154,19 +154,19 @@ async function fallbackIntentHandler(
   // skip the fallback and let the LLM handle the query with full context.
   const isDedicatedSidebar = pageContext !== undefined
 
+  // In dedicated sidebar context, skip the fallback handler entirely — let the
+  // LLM handle the query with full shortlist/evidence context.
+  if (isDedicatedSidebar) {
+    console.log('[assistant:engine:fallback] dedicated sidebar context — skipping fallback, falling through to AI')
+    return null
+  }
+
   // Only match as greeting if the message IS a greeting (short, no question words)
   const isGreeting = /^\b(hello|hi|hey)\b[\s.!?\u2026]*$/i.test(message) &&
     !lower.includes('shortlist') && !lower.includes('candidate') && !lower.includes('job') && !lower.includes('intern')
   if (isGreeting) {
     console.log('[assistant:engine:fallback] ✓ matched greeting intent')
     return { text: "Hi! I'm the Optryva Assistant. Ask me about your jobs, applications, skills, or profile.", actions: [] }
-  }
-
-  // In dedicated sidebar context, skip the fallback handler entirely — let the
-  // LLM handle the query with full shortlist/evidence context.
-  if (isDedicatedSidebar) {
-    console.log('[assistant:engine:fallback] dedicated sidebar context — skipping fallback, falling through to AI')
-    return null
   }
 
   // Student: "what jobs/applications do I have", "my skills", "my profile"
