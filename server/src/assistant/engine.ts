@@ -483,6 +483,48 @@ export async function processAssistantMessage(
   }
   const historyStr = formatHistory(history)
 
+  // 5. Proactively fetch data context for data-related queries.
+  // This gives the LLM real database results so it can answer questions about
+  // candidates, shortlists, applicants, etc. directly — instead of hallucinating
+  // or returning generic responses.
+  const dataQueryMatch = message.toLowerCase().match(/(?:how|n|tell me|show me|list|who|which)\s+(?:many|much|longer|candit|cand|applic|shortlist|match|score)/)
+  const wantsData = /candit|cand|applic|shortlist|match.*score|score.*match|who should|who to adv|/i.test(message) && !opts?.pageContext
+  if (mode === 'employer' && (dataQueryMatch || (wantsData && message.length < 200))) {
+    console.log('[assistant:engine] proactive data fetch for employer query…')
+    try {
+      // Get the employer's jobs
+      const { data: jobs } = await sb.from('job_listings').select('id, title, company_name').eq('company_id', userId).order('created_at', { ascending: false }).limit(5)
+      const jobIds = jobs?.map((j: any) => j.id) ?? []
+
+      if (jobIds.length) {
+        const { count } = await sb.from('applications').select('*', { count: 'exact', head: true }).in('job_id', jobIds)
+        const { data: apps } = await sb
+          .from('applications')
+          .select('id, job_id, student_id, full_name, status, match_score, created_at, profiles!left(evidence_summary)')
+          .in('job_id', jobIds)
+          .order('created_at', { ascending: false })
+          .limit(20)
+
+        const jobMap = new Map((jobs ?? []).map((j: any) => [j.id, j.title]))
+        const byStatus = (apps ?? []).reduce((acc: Record<string, number>, a: any) => {
+          acc[a.status] = (acc[a.status] ?? 0) + 1
+          return acc
+        }, {})
+
+        let dataContext = `\nSHORTLIST DATA (proactively fetched for this query):\n`
+        dataContext += `Total applicants across your job postings: ${count ?? 0}\n`
+        dataContext += `Status breakdown: ${Object.entries(byStatus).map(([s, c]) => `${s}: ${c}`).join(', ') || 'none'}\n`
+        dataContext += `Recent candidates:\n${(apps ?? []).slice(0, 10).map((a: any) =>
+          `  - ${a.full_name || 'unknown'} → ${jobMap.get(a.job_id) || 'unknown role'} — ${a.status}${a.match_score ? ` (match ${Math.round(a.match_score)}%)` : ''}`
+        ).join('\n')}\n`
+        context += dataContext
+        console.log('[assistant:engine] ✓ proactive data context added:', { ctx_len: dataContext.length })
+      }
+    } catch (e: any) {
+      console.warn('[assistant:engine] ⚠ proactive data fetch failed:', e?.message)
+    }
+  }
+
   // 5. Build prompts
   const system = buildSystemPrompt(mode, context, opts?.pageContext)
   const userMsg = historyStr

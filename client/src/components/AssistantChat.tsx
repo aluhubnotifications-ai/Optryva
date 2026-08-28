@@ -125,15 +125,28 @@ export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessio
           setCurrentSessionId(resp.session_id)
           onSessionId?.(resp.session_id)
         }
-        // Replace ack text with the actual reply (treat as delta)
-        setMessages((m) =>
-          m.map((msg) =>
-            msg.id === aiMsgId
-              ? { id: msg.id, role: 'assistant', content: resp.text, actions: resp.actions, isStreaming: false }
-              : msg,
-          ),
-        )
-        resp.actions?.forEach((a) => onAction?.(a))
+         // Replace ack text with the actual reply (treat as delta)
+         setMessages((m) =>
+           m.map((msg) =>
+             msg.id === aiMsgId
+               ? { id: msg.id, role: 'assistant', content: resp.text, actions: resp.actions, isStreaming: false }
+               : msg,
+           ),
+         )
+         // Display any tool events the server collected during agent execution
+         if (resp.tool_events && resp.tool_events.length > 0) {
+           setToolEvents((t) => [
+             ...t,
+             ...resp.tool_events!.map((te: any) => ({
+               id: `${te.name ?? 'tool'}_${Date.now()}`,
+               name: te.name ?? 'unknown',
+               status: te.type === 'tool_result' ? 'done' as const : 'calling' as const,
+               input: te.input,
+               result: te.result,
+             })),
+           ])
+         }
+         resp.actions?.forEach((a) => onAction?.(a))
       }
     } catch (e: any) {
       if (aborted || e?.name === 'AbortError') {

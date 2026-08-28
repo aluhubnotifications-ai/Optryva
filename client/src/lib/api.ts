@@ -1561,10 +1561,18 @@ export type AssistantAction = {
   target: string
   data: Record<string, unknown>
 }
+export interface AssistantToolEvent {
+  type: 'tool_use' | 'tool_result'
+  name?: string
+  input?: Record<string, unknown>
+  result?: string
+}
+
 export interface AssistantChatResponse {
   text: string
   session_id: string
   actions: AssistantAction[]
+  tool_events?: AssistantToolEvent[]
 }
 
 export const assistantApi = {
