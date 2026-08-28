@@ -239,7 +239,7 @@ const TOOL_EXECUTORS: Record<string, (input: ToolInput, userId: string, mode: As
     try {
     const { data: apps, error } = await sb
       .from('applications')
-      .select('id,student_id,full_name,email,school,year,status,match_score,match_rationale,created_at')
+      .select('id,student_id,full_name,email,school,year,status,match_score,match_rationale,created_at,profiles!left(evidence_summary)')
       .eq('job_id', jobId)
       .limit(40)
     if (error) {
@@ -247,18 +247,22 @@ const TOOL_EXECUTORS: Record<string, (input: ToolInput, userId: string, mode: As
       return JSON.stringify({ error: error.message })
     }
     console.log('[assistant:agent:tool] ✓ candidates fetched:', { jobId, count: apps?.length ?? 0 })
-    const candidates = (apps ?? []).map((a: any) => ({
-      id: a.id,
-      student_id: a.student_id,
-      name: a.full_name,
-      email: a.email,
-      school: a.school,
-      year: a.year,
-      status: a.status,
-      match_score: a.match_score,
-      match_rationale: a.match_rationale,
-      applied_at: a.created_at,
-    }))
+    const candidates = (apps ?? []).map((a: any) => {
+      const prof = a.profiles?.[0] ?? {}
+      return {
+        id: a.id,
+        student_id: a.student_id,
+        name: a.full_name,
+        email: a.email,
+        school: a.school,
+        year: a.year,
+        status: a.status,
+        match_score: a.match_score,
+        match_rationale: a.match_rationale,
+        evidence_summary: prof?.evidence_summary ?? null,
+        applied_at: a.created_at,
+      }
+    })
     return JSON.stringify({ count: candidates.length, candidates })
     } catch (e: any) {
       console.error('[assistant:agent:tool] ✗ get_job_candidates error:', e?.message)
@@ -270,19 +274,21 @@ const TOOL_EXECUTORS: Record<string, (input: ToolInput, userId: string, mode: As
     if (!studentId) return JSON.stringify({ error: 'student_id is required' })
     const { data: profile } = await sb
       .from('profiles')
-      .select('evidence_summary, full_name, school, major, year')
+      .select('evidence_summary, full_name, school, major, year, skills')
       .eq('id', studentId)
       .maybeSingle()
     const { data: items, error: itemsErr } = await sb
       .from('evidence_items')
-      .select('id,title,type,created_at')
+      .select('id, title, description, ai_summary, links, files, extracted_skills, confirmed_skills, status, used_in, type, created_at')
       .eq('student_id', studentId)
-      .limit(20)
+      .order('created_at', { ascending: false })
+      .limit(50)
     return JSON.stringify({
       candidate_name: profile?.full_name ?? 'Unknown',
       school: profile?.school ?? null,
       major: profile?.major ?? null,
       year: profile?.year ?? null,
+      skills: profile?.skills ?? null,
       evidence_summary: profile?.evidence_summary ?? 'No evidence submitted yet.',
       evidence_count: items?.length ?? 0,
       evidence: itemsErr ? [] : items ?? [],
