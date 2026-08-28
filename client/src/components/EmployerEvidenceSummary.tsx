@@ -170,13 +170,12 @@ export function EmployerEvidenceSummary({ studentId, job }: { studentId: string;
       onClose={() => setShowAssistant(false)}
       onOpen={() => setShowAssistant(true)}
       candidate_id={studentId}
-       candidateName={profile?.full_name}
-       candidateMeta={[profile?.school, profile?.major, profile?.year].filter(Boolean).join(', ')}
-       job={job}
-       evidenceItems={items}
-       summary={summary}
-       initialMessage="Critique this candidate's fit. Cite specific evidence. Highlight gaps."
-      />
+      candidateName={profile?.full_name}
+      candidateMeta={[profile?.school, profile?.major, profile?.year].filter(Boolean).join(', ')}
+      job={job}
+      evidenceItems={items}
+      summary={summary}
+    />
     </>
   )
 }

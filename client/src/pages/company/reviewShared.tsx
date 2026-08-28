@@ -621,7 +621,6 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
         job={data?.job}
         summary={data?.summary ?? null}
         candidates={data?.candidates ?? []}
-        initialMessage="Quick read — who should I advance from this shortlist, and what are the biggest risks?"
       />
     </>
   )

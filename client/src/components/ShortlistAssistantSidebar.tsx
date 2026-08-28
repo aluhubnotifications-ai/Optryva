@@ -19,7 +19,6 @@ interface ShortlistAssistantSidebarProps {
   jobId?: string
   summary?: string | null
   candidates?: SmartShortlistCandidate[]
-  initialMessage?: string
 }
 
 export function ShortlistAssistantSidebar({
@@ -35,7 +34,6 @@ export function ShortlistAssistantSidebar({
   jobId,
   summary,
   candidates,
-  initialMessage,
 }: ShortlistAssistantSidebarProps) {
   const { toast } = useToast()
   const [sidebarKey, setSidebarKey] = useState<string>('new')
@@ -113,6 +111,11 @@ export function ShortlistAssistantSidebar({
     [job, toast],
   )
 
+  const handleClose = useCallback(() => {
+    setSidebarKey((k) => `${Date.now()}`)
+    onClose()
+  }, [onClose])
+
   return (
     <AnimatePresence>
       {open && (
@@ -135,7 +138,7 @@ export function ShortlistAssistantSidebar({
               </span>
             </div>
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="rounded-full p-1 text-muted-foreground hover:bg-muted"
               aria-label="Close"
             >
@@ -143,19 +146,29 @@ export function ShortlistAssistantSidebar({
             </button>
           </div>
 
-          {/* AI Chat */}
-          <div className="flex-1 overflow-hidden">
-            <AssistantChat
-              key={`shortlist-chat-${sidebarKey}`}
-              mode={mode}
-              pageContext={pageContext}
-              onAction={handleAction}
-              onPendingConsumed={() => {}}
-              initialMessages={[]}
-              pendingMessage={initialMessage ?? ''}
-              pendingContext={{ job_id: jobId, pageContext }}
-            />
-          </div>
+           {/* AI Chat */}
+           <div className="flex-1 overflow-hidden">
+             <AssistantChat
+               key={`shortlist-chat-${sidebarKey}`}
+               mode={mode}
+               pageContext={pageContext}
+               onAction={handleAction}
+               onPendingConsumed={() => {}}
+               initialMessages={[
+                 {
+                   id: 'welcome',
+                   role: 'assistant',
+                   content: candidates && candidates.length > 0
+                     ? `I'm looking at the Smart Shortlist for ${job?.title ?? 'this role'} at ${job?.company_name ?? 'your company'} with ${candidates.length} candidates. Who should I advance, and what are the biggest risks?`
+                     : candidate_id
+                       ? `I'm reviewing evidence for ${candidateName ?? 'this candidate'} for ${job?.title ?? 'this role'} at ${job?.company_name ?? 'your company'}. What's your take on their fit?`
+                       : 'I have the context for this view loaded. Ask me anything.',
+                 },
+               ]}
+               pendingMessage={null}
+               pendingContext={null}
+             />
+           </div>
         </motion.div>
       )}
       {!open && (
