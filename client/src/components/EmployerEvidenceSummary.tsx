@@ -4,6 +4,7 @@ import { Sparkles, ExternalLink, ImageIcon, Loader2 } from 'lucide-react'
 import { evidenceApi, profilesApi } from '@/lib/api'
 import type { JobListing, EvidenceItem, Profile } from '@/types'
 import { Card, CardBody, Badge } from '@/components/ui/primitives'
+import { ShortlistAssistantSidebar } from '@/components/ShortlistAssistantSidebar'
 
 // Minimal Markdown renderer for the AI summary: handles **bold**, "- " bullets,
 // and short **Heading** lines. Avoids pulling in a full Markdown dependency for
@@ -80,6 +81,7 @@ export function EmployerEvidenceSummary({ studentId, job }: { studentId: string;
   const [count, setCount] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [showAssistant, setShowAssistant] = useState(false)
 
   // Build a single job-role context string so the summary only surfaces what's
   // relevant to THIS posting (not a generic dump of everything).
@@ -111,7 +113,8 @@ export function EmployerEvidenceSummary({ studentId, job }: { studentId: string;
   }, [studentId, jobDescription])
 
   return (
-    <Card>
+    <>
+      <Card>
       <CardBody>
         <div className="mb-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -139,48 +142,41 @@ export function EmployerEvidenceSummary({ studentId, job }: { studentId: string;
           <p className="text-sm text-muted-foreground">No evidence summary available.</p>
         )}
 
-        <p className="mt-3 text-xs text-muted-foreground">
-          {job
-            ? 'This summary is scoped to what matters for the role you\'re hiring for.'
-            : 'This summary is generated from the candidate\'s submitted evidence.'}
-           <button
-            onClick={() => {
-               const candidateName = profile?.full_name ?? 'this candidate'
-               const candidateMeta = [profile?.school, profile?.major, profile?.year].filter(Boolean).join(', ')
-               const evidenceLines = items.map((i) => {
-                 const parts = [`**${i.title}**`]
-                 if (i.ai_summary) parts.push(i.ai_summary)
-                 else if (i.description) parts.push(i.description)
-                 if (i.links?.length) parts.push('Links: ' + i.links.join(', '))
-                 if (i.files?.length) parts.push('Files: ' + i.files.map((f) => f.name).join(', '))
-                 return parts.join('\n')
-               }).join('\n\n')
-               const contextStr = `${candidateName}${candidateMeta ? ` (${candidateMeta})` : ''} applied for "${job?.title ?? 'this role'}" at ${job?.company_name ?? 'your company'}.\n\nEvidence:\n${evidenceLines}`
-               window.dispatchEvent(new CustomEvent('optryva:open_chat', {
-                 detail: {
-                   message: `Critique ${candidateName}'s fit for the role. Cite specific evidence. Highlight gaps.`,
-                   candidate_id: studentId,
-                   origin: 'evidence',
-                   context: contextStr,
-                 },
-               }))
-            }}
-            className="ml-1 inline text-primary hover:underline"
-          >
-            Ask the AI assistant <span aria-hidden>→</span>
-          </button>{' '}
-          for proof or deeper analysis — it's connected to this view.
-        </p>
+         <p className="mt-3 text-xs text-muted-foreground">
+           {job
+             ? 'This summary is scoped to what matters for the role you\'re hiring for.'
+             : 'This summary is generated from the candidate\'s submitted evidence.'}
+            <button
+             onClick={() => setShowAssistant(true)}
+             className="ml-1 inline text-primary hover:underline"
+           >
+             Ask the AI assistant <span aria-hidden>→</span>
+           </button>{' '}
+           for proof or deeper analysis — it's connected to this view.
+         </p>
 
-        <div className="mt-3">
-          <Link
-            to={`/app/u/${studentId}`}
-            className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-          >
-            Go to applicant profile <ExternalLink className="h-3.5 w-3.5" />
-          </Link>
-        </div>
-      </CardBody>
-    </Card>
+         <div className="mt-3">
+           <Link
+             to={`/app/u/${studentId}`}
+             className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+           >
+             Go to applicant profile <ExternalLink className="h-3.5 w-3.5" />
+           </Link>
+         </div>
+       </CardBody>
+     </Card>
+    <ShortlistAssistantSidebar
+      open={showAssistant}
+      onClose={() => setShowAssistant(false)}
+      onOpen={() => setShowAssistant(true)}
+      candidate_id={studentId}
+       candidateName={profile?.full_name}
+       candidateMeta={[profile?.school, profile?.major, profile?.year].filter(Boolean).join(', ')}
+       job={job}
+       evidenceItems={items}
+       summary={summary}
+       initialMessage="Critique this candidate's fit. Cite specific evidence. Highlight gaps."
+      />
+    </>
   )
 }

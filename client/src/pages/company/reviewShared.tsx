@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, Check, CheckSquare, ExternalLink, Eye, RefreshCw, ShieldCheck, Sparkles, Square, Trash2, Undo2, Archive, X } from 'lucide-react'
 import { applicationsApi, jobsApi } from '@/lib/api'
-import type { SmartShortlistResponse } from '@/lib/api'
+import type { SmartShortlistResponse, SmartShortlistCandidate } from '@/lib/api'
 import type { Application, ApplicationStatus, JobListing } from '@/types'
 import { Avatar, Badge, Card, CardBody, Skeleton, Textarea } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { avatarRingStyle } from '@/pages/company/ApplicantView'
 import { cn, formatDate } from '@/lib/utils'
+import { ShortlistAssistantSidebar } from '@/components/ShortlistAssistantSidebar'
 
 export const statusTone = { draft: 'outline', pending: 'default', reviewed: 'primary', shortlisted: 'accent', hired: 'success', rejected: 'danger', cancelled: 'danger', withdrawn: 'outline' } as const
 export const FILTERS: (ApplicationStatus | 'all')[] = ['all', 'pending', 'reviewed', 'shortlisted', 'hired', 'rejected']
@@ -338,6 +339,7 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
+  const [showAssistant, setShowAssistant] = useState(false)
 
   // Scores once on open; an animated percentage is shown while the request runs so
   // the employer sees loading progress before the candidate cards appear.
@@ -434,35 +436,13 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
             <Button
               size="sm"
               variant="success"
-              onClick={() => {
-                const topCandidates = (data.candidates ?? []).slice(0, 5).map((c) =>
-                  `- ${c.name} (${c.major ?? 'no major'}) — fit score ${Math.round(c.fit_score ?? c.score * 100)}, ${c.category ?? 'uncategorized'}\n  Matched skills: ${(c.matched_skills ?? []).join(', ') || 'none'}\n  Gaps: ${(c.mismatch_flags ?? []).join(', ') || 'none'}`
-                ).join('\n')
-                const shortlistContext = [
-                  `Smart Shortlist for "${data.job?.title ?? 'this role'}" at ${data.job?.company_name ?? 'your company'}`,
-                  `Job tags: ${(data.job?.tags ?? []).join(', ') || 'none'}`,
-                  `AI summary: ${data.summary ?? 'No summary available'}`,
-                  '',
-                  'Top candidates:',
-                  topCandidates,
-                  '',
-                  'User is viewing this shortlist. They may ask who to advance, what to look out for, or for evidence-based recommendations.',
-                ].join('\n')
-                window.dispatchEvent(new CustomEvent('optryva:open_chat', {
-                  detail: {
-                    message: 'Quick read — who should I advance from this shortlist, and what are the biggest risks?',
-                    job_id: jobId,
-                    origin: 'shortlist',
-                    context: shortlistContext,
-                  },
-                }))
-              }}
+              onClick={() => setShowAssistant(true)}
             >
               <Sparkles className="h-3.5 w-3.5" /> Follow up with AI
             </Button>
-          </div>
-        </CardBody>
-        </Card>
+           </div>
+         </CardBody>
+         </Card>
 
        {/* Job details — full role info so employers see everything at a glance */}
         {data.job && (
@@ -633,6 +613,16 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
           )
         })}
       </div>
+      <ShortlistAssistantSidebar
+        open={showAssistant}
+        onClose={() => setShowAssistant(false)}
+        onOpen={() => setShowAssistant(true)}
+        jobId={jobId}
+        job={data?.job}
+        summary={data?.summary ?? null}
+        candidates={data?.candidates ?? []}
+        initialMessage="Quick read — who should I advance from this shortlist, and what are the biggest risks?"
+      />
     </>
   )
 }

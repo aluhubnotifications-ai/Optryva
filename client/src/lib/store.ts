@@ -13,16 +13,24 @@ import type { Profile } from '@/types'
 interface UiState {
   rightSidebarOpen: boolean
   setRightSidebarOpen: (open: boolean) => void
+  hideGlobalSidebar: boolean
+  setHideGlobalSidebar: (hide: boolean) => void
 }
 
 export const useUiStore = create<UiState>()((set) => ({
   rightSidebarOpen: true,
   setRightSidebarOpen: (open) => set({ rightSidebarOpen: open }),
+  hideGlobalSidebar: false,
+  setHideGlobalSidebar: (hide) => set({ hideGlobalSidebar: hide }),
 }))
 
 /** Convenience hook for components that need to know sidebar state. */
 export function useRightSidebarOpen(): boolean {
   return useUiStore((s) => s.rightSidebarOpen)
+}
+
+export function useHideGlobalSidebar(): boolean {
+  return useUiStore((s) => s.hideGlobalSidebar)
 }
 
 // ----------------------------------------------------------------------------

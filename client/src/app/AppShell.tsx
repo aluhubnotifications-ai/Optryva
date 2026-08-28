@@ -26,7 +26,7 @@ import {
 import { ChevronDown, Globe, Wifi } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/lib/theme'
-import { useSession, useCurrentUser, useRightSidebarOpen } from '@/lib/store'
+import { useSession, useCurrentUser, useRightSidebarOpen, useHideGlobalSidebar } from '@/lib/store'
 import { useGeo, COUNTRIES, useCountryStats, type Country } from '@/lib/geo'
 import { messagesApi, jobsApi, applicationsApi } from '@/lib/api'
 import { perf } from '@/lib/perf'
@@ -122,6 +122,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [isCompany, user?.is_admin])
   const location = useLocation()
   const badges = useNavBadges(user?.id ?? null, isCompany)
+  const hideGlobalSidebar = useHideGlobalSidebar()
+
+  // Routes that use a dedicated sidebar instead of the global AI panel.
+  const isDedicatedSidebarRoute =
+    hideGlobalSidebar ||
+    /^\/app\/listings\/[^/]+$/m.test(location.pathname) ||
+    /^\/app\/applicants\/[^/]+$/m.test(location.pathname)
 
   // Focus mode: the proctored assessment gets a clean, distraction-free,
   // full-screen experience — no sidebar, top bar, mobile drawer, or AI panel.
@@ -161,10 +168,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Right sidebar — integrated AI assistant, activity panel, and research.
           Replaces the old floating AssistantWidget and AiActivityPanel. Lazy:
-          it streams in after first paint so it never blocks the dashboard. */}
-      <Suspense fallback={null}>
-        <RightSidebar mode={isCompany ? 'employer' : 'student'} />
-      </Suspense>
+          it streams in after first paint so it never blocks the dashboard.
+          Skipped on dedicated sidebar routes (shortlist, applicant evidence)
+          where a context-aware sidebar is rendered inline. */}
+      {!isDedicatedSidebarRoute && (
+        <Suspense fallback={null}>
+          <RightSidebar mode={isCompany ? 'employer' : 'student'} />
+        </Suspense>
+      )}
     </div>
   )
 }
