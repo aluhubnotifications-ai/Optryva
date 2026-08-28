@@ -184,6 +184,27 @@ jobs.get('/company/:companyId', async (req, res) => {
 const SHORTLIST_STATUS = ['pending', 'reviewed', 'shortlisted', 'hired', 'rejected']
 const SHORTLIST_VERSION = 1
 
+// Extract the public-facing job details for display alongside the shortlist.
+function jobDetails(job: any) {
+  return {
+    id: job.id,
+    title: job.title,
+    description: job.description,
+    company_name: job.company_name,
+    company_id: job.company_id,
+    location: job.location,
+    country: job.country,
+    remote: job.remote === 1,
+    pay: job.pay,
+    duration: job.duration,
+    listing_type: job.listing_type,
+    tags: j.parse(job.tags, []),
+    responsibilities: j.parse(job.responsibilities, []),
+    qualifications: j.parse(job.qualifications, []),
+    benefits: j.parse(job.benefits, []),
+  }
+}
+
 // Build the full Smart Shortlist payload for a job.
 // - `force` re-scores EVERY applicant (employer "Rescore"); otherwise getMatch
 //   reuses each applicant's cached score, so only NEW applicants (no cache entry)
@@ -296,7 +317,7 @@ async function buildShortlist(job: any, force: boolean): Promise<any> {
   for (const c of candidates as any[]) if (c.score_unavailable) c.fit_score = null
 
   const scored = candidates.filter((c: any) => !c.score_unavailable).length
-  return { job_id: jobId, mistral: hasMistral(), summary, candidates, scored, total: candidates.length, note: null }
+  return { job_id: jobId, mistral: hasMistral(), summary, candidates, scored, total: candidates.length, note: null, job: jobDetails(job) }
 }
 
 jobs.get('/:jobId/shortlist', async (req, res) => {
@@ -326,7 +347,7 @@ jobs.get('/:jobId/shortlist', async (req, res) => {
   }
 
   const result = await buildShortlist(job, force)
-  const payload = { job_id: result.job_id, mistral: result.mistral, summary: result.summary, candidates: result.candidates, scored: result.scored, total: result.total, note: result.note }
+  const payload = { job_id: result.job_id, mistral: result.mistral, summary: result.summary, candidates: result.candidates, scored: result.scored, total: result.total, note: result.note, job: result.job }
   const computedAt = new Date().toISOString()
   try {
     await sb.from('shortlist_cache').upsert({

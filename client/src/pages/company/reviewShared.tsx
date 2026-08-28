@@ -431,11 +431,73 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
             <Button size="sm" variant="outline" onClick={async () => { setBusyId('rescore'); try { setData(await jobsApi.rescoreShortlist(jobId)) } finally { setBusyId(null) } }} disabled={busyId === 'rescore'}>
               <RefreshCw className="h-3.5 w-3.5" /> Rescore
             </Button>
+            <Button
+              size="sm"
+              variant="success"
+              onClick={() => {
+                const topCandidates = (data.candidates ?? []).slice(0, 5).map((c) =>
+                  `- ${c.name} (${c.major ?? 'no major'}) — score ${Math.round(c.fit_score ?? c.score * 100)}, ${c.category ?? 'uncategorized'}\n  Matched skills: ${(c.matched_skills ?? []).join(', ') || 'none'}\n  Gaps: ${(c.mismatch_flags ?? []).join(', ') || 'none'}`
+                ).join('\n')
+                const shortlistSummary = data.summary ? `AI summary: ${data.summary}\n\n` : ''
+                const msg = `Analyze the Smart Shortlist for "${data.job?.title ?? 'this role'}" at ${data.job?.company_name ?? 'your company'}.\n\n${shortlistSummary}Top candidates:\n${topCandidates}\n\nFor each top candidate, summarize their fit, highlight what evidence supports it, and identify the biggest risk or gap. Recommend which 2-3 to advance.`
+                window.dispatchEvent(new CustomEvent('optryva:open_chat', {
+                  detail: {
+                    message: msg,
+                    job_id: jobId,
+                    origin: 'shortlist',
+                  },
+                }))
+              }}
+            >
+              <Sparkles className="h-3.5 w-3.5" /> Follow up with AI
+            </Button>
           </div>
         </CardBody>
-      </Card>
+        </Card>
 
-      {data.mistral && data.summary && (
+       {/* Job details — full role info so employers see everything at a glance */}
+        {data.job && (
+          <Card>
+            <CardBody>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-foreground">{data.job.title}</h3>
+                  {data.job.company_name && <p className="text-sm text-muted-foreground">{data.job.company_name} · {data.job.location || 'Remote'}</p>}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {data.job.tags?.slice(0, 8).map((t) => (
+                    <Badge key={t} tone="outline" className="text-xs">{t}</Badge>
+                  ))}
+                </div>
+              </div>
+              {data.job.description && (
+                <p className="mt-2 text-sm text-muted-foreground line-clamp-3">{data.job.description}</p>
+              )}
+              {(data.job.responsibilities?.length || data.job.qualifications?.length || data.job.benefits?.length) && (
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {data.job.responsibilities?.length && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase">Responsibilities</p>
+                      <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-foreground/80">
+                        {data.job.responsibilities.slice(0, 4).map((r, i) => <li key={i}>{r}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {data.job.qualifications?.length && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase">Qualifications</p>
+                      <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-foreground/80">
+                        {data.job.qualifications.slice(0, 4).map((q, i) => <li key={i}>{q}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardBody>
+          </Card>
+        )}
+
+       {data.mistral && data.summary && (
         <Card>
           <CardBody>
             <p className="flex items-center gap-2 text-sm font-medium text-foreground">

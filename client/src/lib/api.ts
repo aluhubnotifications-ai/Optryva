@@ -474,7 +474,23 @@ export interface SmartShortlistResponse {
   // Scoring progress: how many applicants have a real match score vs the total.
   scored?: number
   total?: number
-  // Cache metadata (server sets these).
+  job?: {
+    id: string
+    title: string
+    description: string
+    company_name: string
+    company_id: string
+    location: string
+    country: string
+    remote: boolean
+    pay: string
+    duration: string
+    listing_type: string
+    tags: string[]
+    responsibilities: string[]
+    qualifications: string[]
+    benefits: string[]
+  }
   cached?: boolean
   computed_at?: string
   rescored?: boolean
