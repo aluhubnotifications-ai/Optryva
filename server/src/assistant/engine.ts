@@ -45,8 +45,8 @@ const URL_REGEX = /https?:\/\/[^\s<"')]+/g
 /** Build the system prompt for a given mode + context. */
 function buildSystemPrompt(mode: AssistantMode, context: string, pageContext?: string): string {
   const modeName = { student: 'Student', employer: 'Employer', university: 'University' }[mode]
-  let prompt = `You are the Optryva Assistant — a concise AI helper for the ${modeName} internship platform.\n\n`
-  prompt += `Keep replies short: 1-2 sentences max. No markdown formatting (no *, **, #, bullets).\n`
+  let prompt = `You are the Optryva Assistant — an AI helper for the ${modeName} internship platform.\n\n`
+  prompt += `Keep replies concise unless the user asks for a detailed analysis, critique, or review — then be thorough.\n`
   prompt += `Do not list generic capabilities. Act on what the user actually asked.\n\n`
   prompt += `When the user asks to create, add, update, or modify data, include an 'inject_data' action with the right 'target' so the app updates instantly:\n`
   prompt += `- inject_data target='profile_skills' data={skills: [...], mode: 'add'|'replace'}\n`
@@ -475,12 +475,12 @@ export async function processAssistantMessage(
   if (!fallback && hasAI()) {
     console.log('[assistant:engine] calling LLM (generateStructured)…')
     try {
-      output = await generateStructured<AssistantAIOutput>({
-        system,
-        user: userMsg,
-        schema: RESPONSE_SCHEMA,
-        maxTokens: 1600,
-      })
+       output = await generateStructured<AssistantAIOutput>({
+         system,
+         user: userMsg,
+         schema: RESPONSE_SCHEMA,
+         maxTokens: 3000,
+       })
       if (output) {
         console.log('[assistant:engine] ✓ LLM returned:', {
           text_len: (output.text || '').length, text_preview: output.text?.slice(0, 200),
