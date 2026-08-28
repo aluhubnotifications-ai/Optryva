@@ -17,7 +17,6 @@ import {
   BarChart3,
   Check,
   User,
-  FileText,
 } from 'lucide-react'
 import { useUiStore } from '@/lib/store'
 import { cn, formatDate } from '@/lib/utils'
@@ -48,7 +47,6 @@ const STUDENT_TABS: TabDef[] = [
 
 const EMPLOYER_TABS: TabDef[] = [
   { key: 'assistant', label: 'Assistant', icon: MessageSquare },
-  { key: 'evidence', label: 'Evidence', icon: FileText },
   { key: 'assessments', label: 'Assessments', icon: ClipboardCheck },
   { key: 'candidates', label: 'Candidates', icon: Users },
   { key: 'decisions', label: 'Decisions', icon: BarChart3 },
@@ -124,13 +122,8 @@ export function RightSidebar({ mode }: RightSidebarProps) {
   useEffect(() => {
     const handler = (e: CustomEvent) => {
       setOpen(true)
+      setActiveTab('assistant')
       setAssistantView('chat')
-      if (e.detail?.origin === 'evidence') {
-        // Open the Evidence tab instead of the Assistant tab when triggered from evidence view.
-        setActiveTab('evidence')
-      } else {
-        setActiveTab('assistant')
-      }
       if (e.detail?.message) setPendingMessage(e.detail.message)
       if (e.detail?.job_id || e.detail?.candidate_id) {
         setPendingContext({
@@ -471,27 +464,6 @@ export function RightSidebar({ mode }: RightSidebarProps) {
                 <div className="h-full overflow-y-auto p-4">
                   <StudentResearchPanel />
                 </div>
-              </TabPanel>
-
-              {/* Evidence tab — same AssistantChat, scoped to candidate evidence */}
-              <TabPanel active={activeTab === 'evidence' && mode === 'employer'}>
-                <AssistantChat
-                  key={sessionId ?? 'evidence-new'}
-                  mode={mode}
-                  sessionId={sessionId}
-                  pageContext={typeof window !== 'undefined' ? window.location.pathname : undefined}
-                  onAction={handleAction}
-                  onSessionId={setSessionId}
-                  onNew={startNewConversation}
-                  initialMessages={messages}
-                  pendingMessage={pendingMessage}
-                  pendingContext={pendingContext ?? urlContext}
-                  onPendingConsumed={() => {
-                    setPendingMessage(null)
-                    setPendingContext(null)
-                    setChatOrigin(null)
-                  }}
-                />
               </TabPanel>
 
               {/* Employer tabs */}
