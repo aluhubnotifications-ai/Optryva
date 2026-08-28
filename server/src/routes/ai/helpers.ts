@@ -6,6 +6,7 @@ import { sb, must, j } from '@/db'
 import { cacheGet, cacheSet } from '@/lib/cache'
 import { now } from '@/lib/util'
 import { claudeText, claudeJson, claudeTextWithSearch, streamClaude, extractJson, hasClaude, MODELS } from '@/lib/claude'
+import { groqChatJson, hasGroq } from '@/lib/groq'
 import { type MatchJob, type MatchStudent, type AiMatch } from '@/lib/matching'
 import type { ResumeProfile } from '@/lib/resume'
 import { ensureResumeProfile, ensureCvText, asResumeProfile, retrieveCandidateJobs, retrieveJobsByVector } from '@/lib/enrich'
@@ -295,16 +296,45 @@ async function claudeScore(student: MatchStudent, job: MatchJob, rp: ResumeProfi
     bullets('Benefits', job.benefits)
   const { addendum } = await calibration()
 
-  const parsed = await claudeJson<LlmScore>({
-    model: MODELS.match,
-    maxTokens: 800,
-    temperature: 0, // stable, repeatable scores — same résumé+job → same number
-    system: buildScoringSystem(jobBlock, addendum),
-    schema: SCORE_SCHEMA,
-    user:
-      `CANDIDATE\nField of study: ${student.major ?? '—'}\nStated target roles: ${(student.desired_roles ?? []).join(', ') || '—'}\n` +
-      `Self-reported skills (these are CLAIMS — credit only where the résumé evidences them): ${(student.skills ?? []).join(', ') || '—'}\n\n${evidence}`,
-  })
+  const claudeSystem = buildScoringSystem(jobBlock, addendum)
+  const groqSystem = claudeSystem.map((b) => b.text).join('\n\n')
+  const user =
+    `CANDIDATE\nField of study: ${student.major ?? '—'}\nStated target roles: ${(student.desired_roles ?? []).join(', ') || '—'}\n` +
+    `Self-reported skills (these are CLAIMS — credit only where the résumé evidences them): ${(student.skills ?? []).join(', ') || '—'}\n\n${evidence}`
+
+  // Groq is primary for scoring; Claude is the fallback.
+  let parsed: LlmScore | null = null
+  if (hasGroq()) {
+    try {
+      parsed = await groqChatJson<LlmScore>({
+        system: groqSystem,
+        schema: SCORE_SCHEMA,
+        maxTokens: 800,
+        temperature: 0,
+        messages: [{ role: 'user', content: user }],
+      })
+      if (parsed?.score != null) console.log('[assistant:helpers] ✓ Groq scored match')
+    } catch (e: any) {
+      console.warn('[assistant:helpers] ⚠ Groq scoring failed, falling back to Claude:', e?.message)
+      parsed = null
+    }
+  }
+  if (!parsed && hasClaude()) {
+    try {
+      parsed = await claudeJson<LlmScore>({
+        model: MODELS.match,
+        maxTokens: 800,
+        temperature: 0,
+        system: claudeSystem,
+        schema: SCORE_SCHEMA,
+        user,
+      })
+      if (parsed?.score != null) console.log('[assistant:helpers] ✓ Claude scored match')
+    } catch (e: any) {
+      console.warn('[assistant:helpers] ⚠ Claude scoring failed:', e?.message)
+      parsed = null
+    }
+  }
   if (!parsed || typeof parsed.score !== 'number') return null
   return {
     score: Math.max(1, Math.min(99, Math.round(parsed.score))),
