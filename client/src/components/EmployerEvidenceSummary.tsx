@@ -145,23 +145,25 @@ export function EmployerEvidenceSummary({ studentId, job }: { studentId: string;
             : 'This summary is generated from the candidate\'s submitted evidence.'}
            <button
             onClick={() => {
-              const candidateName = profile?.full_name ?? 'this candidate'
-              const candidateMeta = [profile?.school, profile?.major, profile?.year].filter(Boolean).join(', ')
-              const evidenceLines = items.map((i) => {
-                const parts = [`**${i.title}**`]
-                if (i.ai_summary) parts.push(i.ai_summary)
-                else if (i.description) parts.push(i.description)
-                if (i.links?.length) parts.push('Links: ' + i.links.join(', '))
-                if (i.files?.length) parts.push('Files: ' + i.files.map((f) => f.name).join(', '))
-                return parts.join('\n')
-              }).join('\n\n')
-              window.dispatchEvent(new CustomEvent('optryva:open_chat', {
-                detail: {
-                  message: `${candidateName}${candidateMeta ? ` (${candidateMeta})` : ''} applied for "${job?.title ?? 'this role'}" at ${job?.company_name ?? 'your company'}.\n\nEvidence:\n${evidenceLines}\n\nCritique ${candidateName}'s fit for the role. For each evidence item, cite specific proof. Highlight gaps. If you need more detail, ask to inspect any links provided.`,
-                  candidate_id: studentId,
-                  origin: 'evidence',
-                },
-              }))
+               const candidateName = profile?.full_name ?? 'this candidate'
+               const candidateMeta = [profile?.school, profile?.major, profile?.year].filter(Boolean).join(', ')
+               const evidenceLines = items.map((i) => {
+                 const parts = [`**${i.title}**`]
+                 if (i.ai_summary) parts.push(i.ai_summary)
+                 else if (i.description) parts.push(i.description)
+                 if (i.links?.length) parts.push('Links: ' + i.links.join(', '))
+                 if (i.files?.length) parts.push('Files: ' + i.files.map((f) => f.name).join(', '))
+                 return parts.join('\n')
+               }).join('\n\n')
+               const contextStr = `${candidateName}${candidateMeta ? ` (${candidateMeta})` : ''} applied for "${job?.title ?? 'this role'}" at ${job?.company_name ?? 'your company'}.\n\nEvidence:\n${evidenceLines}`
+               window.dispatchEvent(new CustomEvent('optryva:open_chat', {
+                 detail: {
+                   message: `Critique ${candidateName}'s fit for the role. Cite specific evidence. Highlight gaps.`,
+                   candidate_id: studentId,
+                   origin: 'evidence',
+                   context: contextStr,
+                 },
+               }))
             }}
             className="ml-1 inline text-primary hover:underline"
           >

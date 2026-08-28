@@ -126,12 +126,11 @@ export function RightSidebar({ mode }: RightSidebarProps) {
       setActiveTab('assistant')
       setAssistantView('chat')
       if (e.detail?.message) setPendingMessage(e.detail.message)
-      if (e.detail?.job_id || e.detail?.candidate_id) {
-        setPendingContext({
-          job_id: e.detail.job_id,
-          candidate_id: e.detail.candidate_id,
-        })
-      }
+      setPendingContext({
+        job_id: e.detail?.job_id,
+        candidate_id: e.detail?.candidate_id,
+        ...(e.detail?.context ? { pageContext: e.detail.context } : {}),
+      })
       if (e.detail?.origin) setChatOrigin(e.detail.origin)
     }
     window.addEventListener('optryva:open_chat', handler as EventListener)

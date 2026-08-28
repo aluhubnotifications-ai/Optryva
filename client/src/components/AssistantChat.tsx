@@ -55,6 +55,12 @@ export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessio
     let base = pageContext || (typeof window !== 'undefined' ? window.location.pathname : '')
     if (pendingContext) {
       const parts = [base]
+      if (pendingContext.pageContext) {
+        // Rich context injected from the originating page (e.g. shortlist data,
+        // candidate evidence). This becomes hidden system context, not a chat
+        // message, so the AI gets the data without echoing it back to the user.
+        parts.push(pendingContext.pageContext as string)
+      }
       if (pendingContext.job_id) parts.push(`job_id: ${pendingContext.job_id}`)
       if (pendingContext.candidate_id) parts.push(`candidate_id: ${pendingContext.candidate_id}`)
       base = parts.join('\n')

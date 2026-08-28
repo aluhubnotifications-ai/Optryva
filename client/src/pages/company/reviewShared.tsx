@@ -436,15 +436,24 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
               variant="success"
               onClick={() => {
                 const topCandidates = (data.candidates ?? []).slice(0, 5).map((c) =>
-                  `- ${c.name} (${c.major ?? 'no major'}) — score ${Math.round(c.fit_score ?? c.score * 100)}, ${c.category ?? 'uncategorized'}\n  Matched skills: ${(c.matched_skills ?? []).join(', ') || 'none'}\n  Gaps: ${(c.mismatch_flags ?? []).join(', ') || 'none'}`
+                  `- ${c.name} (${c.major ?? 'no major'}) — fit score ${Math.round(c.fit_score ?? c.score * 100)}, ${c.category ?? 'uncategorized'}\n  Matched skills: ${(c.matched_skills ?? []).join(', ') || 'none'}\n  Gaps: ${(c.mismatch_flags ?? []).join(', ') || 'none'}`
                 ).join('\n')
-                const shortlistSummary = data.summary ? `AI summary: ${data.summary}\n\n` : ''
-                const msg = `Analyze the Smart Shortlist for "${data.job?.title ?? 'this role'}" at ${data.job?.company_name ?? 'your company'}.\n\n${shortlistSummary}Top candidates:\n${topCandidates}\n\nFor each top candidate, summarize their fit, highlight what evidence supports it, and identify the biggest risk or gap. Recommend which 2-3 to advance.`
+                const shortlistContext = [
+                  `Smart Shortlist for "${data.job?.title ?? 'this role'}" at ${data.job?.company_name ?? 'your company'}`,
+                  `Job tags: ${(data.job?.tags ?? []).join(', ') || 'none'}`,
+                  `AI summary: ${data.summary ?? 'No summary available'}`,
+                  '',
+                  'Top candidates:',
+                  topCandidates,
+                  '',
+                  'User is viewing this shortlist. They may ask who to advance, what to look out for, or for evidence-based recommendations.',
+                ].join('\n')
                 window.dispatchEvent(new CustomEvent('optryva:open_chat', {
                   detail: {
-                    message: msg,
+                    message: 'Quick read — who should I advance from this shortlist, and what are the biggest risks?',
                     job_id: jobId,
                     origin: 'shortlist',
+                    context: shortlistContext,
                   },
                 }))
               }}
