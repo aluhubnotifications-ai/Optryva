@@ -148,12 +148,13 @@ export function ShortlistAssistantSidebar({
 
           {/* AI Chat */}
           <div className="flex-1 overflow-hidden">
-            <AssistantChat
-              key={`shortlist-chat-${sidebarKey}`}
-              mode={mode}
-              pageContext={pageContext}
-              onAction={handleAction}
-              onPendingConsumed={() => {}}
+             <AssistantChat
+               key={`shortlist-chat-${sidebarKey}`}
+               mode={mode}
+               pageContext={pageContext}
+               onAction={handleAction}
+               onPendingConsumed={() => {}}
+               suppressActions
               initialMessages={[
                 {
                   id: 'welcome',

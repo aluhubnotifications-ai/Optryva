@@ -26,6 +26,7 @@ export interface AssistantChatProps {
   pendingMessage?: string | null
   pendingContext?: Record<string, unknown> | null
   onPendingConsumed?: () => void
+  suppressActions?: boolean
 }
 
 interface ToolEvent {
@@ -36,7 +37,7 @@ interface ToolEvent {
   status: 'calling' | 'done' | 'error'
 }
 
-export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessionId, onNew, initialMessages, pendingMessage, pendingContext, onPendingConsumed }: AssistantChatProps) {
+export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessionId, onNew, initialMessages, pendingMessage, pendingContext, onPendingConsumed, suppressActions }: AssistantChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages ?? [])
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
@@ -246,8 +247,8 @@ export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessio
           </div>
         ) : (
           messages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} />
-          ))
+             <MessageBubble key={msg.id} message={msg} showActions={!suppressActions} />
+           ))
         )}
         {toolEvents.length > 0 && (
           <div className="ml-11 space-y-2">
@@ -304,7 +305,7 @@ export function AssistantChat({ mode, sessionId, pageContext, onAction, onSessio
   )
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({ message, showActions = true }: { message: ChatMessage; showActions?: boolean }) {
   const isUser = message.role === 'user'
   return (
     <div className="flex items-start gap-3">
@@ -324,7 +325,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       >
         <div className="whitespace-pre-wrap break-words">{message.content}</div>
         {message.isStreaming && <span className="animate-pulse">|</span>}
-        {message.actions && message.actions.length > 0 && (
+        {showActions && message.actions && message.actions.length > 0 && (
           <div className="mt-2 space-y-1 border-t border-border/20 pt-2">
             {message.actions.map((a, i) => (
               <ActionPreview key={i} action={a} />

@@ -144,8 +144,14 @@ async function fallbackIntentHandler(
   userId: string,
   mode: AssistantMode,
   message: string,
+  pageContext?: string,
 ): Promise<{ text: string; actions: AssistantAction[] } | null> {
   const lower = message.toLowerCase().trim()
+
+  // Detect if we're in a dedicated sidebar context (shortlist/evidence) where
+  // navigation away would be undesirable.
+  const isDedicatedSidebar = pageContext !== undefined && !/^\/app\/(listings|applicants)/.test(pageContext || '')
+  const suppressNavigate = pageContext !== undefined
 
   // Only match as greeting if the message IS a greeting (short, no question words)
   const isGreeting = /^\b(hello|hi|hey)\b[\s.!?\u2026]*$/i.test(message) &&
@@ -263,7 +269,7 @@ async function fallbackIntentHandler(
       !lower.includes('fit for') &&
       !lower.includes('fit review') &&
       !lower.includes('get_candidate_evidence') &&
-      (lower.includes('applicant') || lower.includes('application') || lower.includes('candidate') || (lower.includes('test') && lower.includes('how')) || (lower.includes('test') && /\b(do|did|score|perform)\b/.test(lower)) || (lower.includes('good') && lower.includes('candidate')))
+      (lower.includes('applicant') || lower.includes('application') || lower.includes('candidate') || lower.includes('candit') || lower.includes('cand') || (lower.includes('test') && lower.includes('how')) || (lower.includes('test') && /\b(do|did|score|perform)\b/.test(lower)) || (lower.includes('good') && lower.includes('candidate')))
     ) {
       console.log('[assistant:engine:fallback] ✓ matched employer application intent')
       try {
@@ -368,8 +374,20 @@ async function fallbackIntentHandler(
       }
     }
   }
+  // Filter out navigate/start_shortlist actions when in a dedicated sidebar context
+  // to prevent the AI from navigating away from the shortlist/evidence page.
+  const result = { text: '', actions: [] as AssistantAction[] }
   console.log('[assistant:engine:fallback] no intent matched — will fall through to AI')
   return null
+}
+
+/** Wrap fallback results to suppress navigation in dedicated sidebar context. */
+function suppressSidebarActions(result: { text: string; actions: AssistantAction[] } | null, pageContext?: string): { text: string; actions: AssistantAction[] } | null {
+  if (!result || !pageContext) return result
+  return {
+    text: result.text,
+    actions: result.actions.filter((a) => a.type !== 'navigate' && a.type !== 'start_shortlist'),
+  }
 }
 
 /** Dev fallback: generates a fake session ID when Supabase is unreachable. */
@@ -460,7 +478,8 @@ export async function processAssistantMessage(
   console.log('[assistant:engine] running fallback intent handler...')
   let fallback: { text: string; actions: AssistantAction[] } | null = null
   try {
-    fallback = await fallbackIntentHandler(userId, mode, message)
+     fallback = await fallbackIntentHandler(userId, mode, message, opts?.pageContext)
+     fallback = suppressSidebarActions(fallback, opts?.pageContext)
     if (fallback) {
       console.log('[assistant:engine] ✓ fallback handler matched:', { text_preview: fallback.text.slice(0, 100), actions: fallback.actions?.length })
     } else {
@@ -528,11 +547,23 @@ export async function processAssistantMessage(
     }
   }
 
-  // Merge Claude's actions with any we computed deterministically (dedup by target+type)
-  for (const a of output.actions ?? []) {
-    const exists = actions.some((x) => x.type === a.type && x.target === a.target)
-    if (!exists) actions.push(a)
-  }
+   // Merge Claude's actions with any we computed deterministically (dedup by target+type)
+   for (const a of output.actions ?? []) {
+     const exists = actions.some((x) => x.type === a.type && x.target === a.target)
+     if (!exists) actions.push(a)
+   }
+   // Suppress navigation in dedicated sidebar context (shortlist/evidence pages)
+   if (opts?.pageContext) {
+     const before = actions.length
+     for (let i = actions.length - 1; i >= 0; i--) {
+       if (actions[i].type === 'navigate' || actions[i].type === 'start_shortlist') {
+         actions.splice(i, 1)
+       }
+     }
+     if (actions.length !== before) {
+       console.log('[assistant:engine] ✓ suppressed navigate/start_shortlist actions in dedicated sidebar context')
+     }
+   }
   if (actions.length) {
     console.log('[assistant:engine] final actions:', actions.map((a) => ({ type: a.type, target: a.target })))
   }
