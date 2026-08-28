@@ -256,7 +256,14 @@ async function fallbackIntentHandler(
     }
 
     // Applicant/candidate handler BEFORE job listing — "is he a good candidate for the JOb?" contains "job"
-    if (lower.includes('applicant') || lower.includes('application') || lower.includes('candidate') || (lower.includes('test') && lower.includes('how')) || (lower.includes('test') && /\b(do|did|score|perform)\b/.test(lower)) || (lower.includes('good') && lower.includes('candidate'))) {
+    // Skip if the user is asking for a candidate critique/analysis (contains critique, fit, evidence, get_candidate_evidence)
+    if (
+      !lower.includes('critique') &&
+      !lower.includes('fit for') &&
+      !lower.includes('fit review') &&
+      !lower.includes('get_candidate_evidence') &&
+      (lower.includes('applicant') || lower.includes('application') || lower.includes('candidate') || (lower.includes('test') && lower.includes('how')) || (lower.includes('test') && /\b(do|did|score|perform)\b/.test(lower)) || (lower.includes('good') && lower.includes('candidate')))
+    ) {
       console.log('[assistant:engine:fallback] ✓ matched employer application intent')
       try {
         // applications → job_listings → profiles (company_id). The applications
