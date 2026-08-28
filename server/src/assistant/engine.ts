@@ -223,7 +223,7 @@ async function fallbackIntentHandler(
   // Employer/University: handle create requests first, then listing queries
   if (mode === 'employer' || mode === 'university') {
     console.log('[assistant:engine:fallback] checking employer/university intents…')
-    if (lower.includes('create') || lower.includes('new') || lower.includes('draft')) {
+    if (lower.includes('create') || lower.includes('new') || lower.includes('draft') || lower.includes('edit')) {
       console.log('[assistant:engine:fallback] ✓ matched employer create intent')
       if (lower.includes('document') || lower.includes('file') || lower.includes('pdf') || lower.includes('upload') || lower.includes('do it for you') || lower.includes('generate')) {
         return {
@@ -234,6 +234,15 @@ async function fallbackIntentHandler(
       return {
         text: "Opening the job editor. Here's what to fill in:\n1. Job title (e.g. Intern Management)\n2. Description — paste the full role description\n3. Location, listing type, tags, pay\n4. Click Save to create the draft\n5. Then add an assignment for assessments if needed",
         actions: [{ type: 'navigate', target: '/app/listings/new', data: {} }],
+      }
+    }
+
+    // Edit job listing intent — navigate to /app/listings (where listings can be edited)
+    if (lower.includes('edit') && (lower.includes('job') || lower.includes('listing') || lower.includes('posting'))) {
+      console.log('[assistant:engine:fallback] ✓ matched employer edit job intent')
+      return {
+        text: "Taking you to your job listings so you can pick one to edit.",
+        actions: [{ type: 'navigate', target: '/app/listings', data: {} }],
       }
     }
 
