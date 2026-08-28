@@ -147,7 +147,7 @@ export async function getEmployerContext(userId: string): Promise<string> {
   })
 }
 
-/** University context: programme-wide placement stats. */
+/** University context: programme-wide placement stats + job listings + candidates. */
 export async function getUniversityContext(userId: string): Promise<string> {
   console.log('[assistant:context] getUniversityContext START:', userId)
   return cached(`ctx:university:${userId}`, async () => {
@@ -158,15 +158,55 @@ export async function getUniversityContext(userId: string): Promise<string> {
     ctx += `  School: ${row.company_name ?? row.full_name ?? '—'}\n`
     ctx += `  Student domains: ${(j.parse<string[]>(row.student_domains, [])).join(', ') || ' — '}\n`
 
-    const { data: students } = await sb.from('profiles').select('id, full_name, school, major, graduated').eq('posted_by_role', 'school').limit(100)
-    const count = students?.length ?? 0
-    ctx += `\nRegistered students at this school: ${count}\n`
+    // All students registered at this university
+    const { data: students } = await sb.from('profiles').select('id, full_name, school, major, graduated').eq('posted_by_role', 'school').limit(500)
+    const studentCount = students?.length ?? 0
+    ctx += `\nRegistered students at this school: ${studentCount}\n`
 
-    const { data: outcomes } = await sb.from('match_outcomes').select('status').in('student_id', (students ?? []).map((s) => s.id))
-    const placed = (outcomes ?? []).filter((o: any) => o.status === 'likely_hired').length
-    ctx += `Confirmed placements: ${placed}\n`
+    // Match outcomes / placements
+    const studentIds = (students ?? []).map((s: any) => s.id)
+    if (studentIds.length) {
+      const { data: outcomes } = await sb.from('match_outcomes').select('status').in('student_id', studentIds)
+      const placed = (outcomes ?? []).filter((o: any) => o.status === 'likely_hired').length
+      ctx += `Confirmed placements: ${placed}\n`
+    }
 
-    console.log('[assistant:context] getUniversityContext complete:', { students: count, placements: placed, ctx_len: ctx.length })
+    // Jobs the university has posted (they can post for themselves and other companies)
+    const { data: uniJobs } = await sb.from('job_listings').select('id, title, company_name, location, listing_type, status, created_at').eq('company_id', userId).order('created_at', { ascending: false }).limit(50)
+    if (uniJobs && uniJobs.length > 0) {
+      ctx += `\nJOBS POSTED BY THIS UNIVERSITY:\n`
+      for (const j2 of uniJobs as any[]) {
+        ctx += `  • ${j2.title} (${j2.listing_type || 'Internship'}, ${j2.location || 'remote-ok'}, ${j2.status})\n`
+      }
+    }
+
+    // Also see jobs posted by companies the university is connected to
+    const { data: partnerJobs } = await sb.from('job_listings').select('id, title, company_name, location, listing_type, status, created_at').eq('company_id', userId).neq('company_id', userId).order('created_at', { ascending: false }).limit(50)
+    if (partnerJobs && partnerJobs.length > 0) {
+      ctx += `\nPARTNER COMPANY JOB LISTINGS:\n`
+      for (const j2 of partnerJobs as any[]) {
+        ctx += `  • ${j2.title} at ${j2.company_name ?? '—'} (${j2.listing_type || 'Internship'}, ${j2.location || 'remote-ok'}, ${j2.status})\n`
+      }
+    }
+
+    // Applications for university-posted jobs — candidates who applied
+    const uniJobIds = (uniJobs ?? []).map((j: any) => j.id)
+    if (uniJobIds.length) {
+      const { count: uniAppCount } = await sb.from('applications').select('*', { count: 'exact', head: true }).in('job_id', uniJobIds)
+      const { data: uniApps } = await sb.from('applications').select('id, job_id, student_id, full_name, status, match_score, created_at').in('job_id', uniJobIds).order('created_at', { ascending: false }).limit(20)
+      ctx += `\nCANDIDATES FOR UNIVERSITY-POSTED JOBS (${uniAppCount ?? 0} total applications):\n`
+      const uniJobMap = new Map((uniJobs ?? []).map((j: any) => [j.id, j.title]))
+      for (const a of uniApps as any[] ?? []) {
+        const score = a.match_score ? ` • score ${Math.round(a.match_score)}` : ''
+        ctx += `  • ${a.full_name || 'candidate'} → ${uniJobMap.get(a.job_id) || 'unknown role'} — ${a.status}${score}\n`
+      }
+    }
+
+    // Conversations messages context for the university user
+    const { count: msgCount } = await sb.from('assistant_messages').select('*', { count: 'exact', head: true }).not('session_id', 'is', null)
+    ctx += `\nYou have ${msgCount ?? 0} message(s) in your conversation history.\n`
+
+    console.log('[assistant:context] getUniversityContext complete:', { students: studentCount, uniJobs: uniJobs?.length ?? 0, partnerJobs: partnerJobs?.length ?? 0, ctx_len: ctx.length })
     return ctx
     } catch (e: any) {
       console.error('[assistant:context] ✗ error in getUniversityContext:', e?.message)

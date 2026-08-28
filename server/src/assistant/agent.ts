@@ -122,6 +122,10 @@ const TOOL_DESCRIPTIONS = `Available tools and their EXACT parameter names:
   13. count_applicants(job_id?: string) — Count total applicants across all employer jobs, or for a specific job_id if provided. Returns total count, per-job breakdown, and per-candidate score/evidence summary.
 
   14. delete_job(job_id: string, confirm?: boolean) — Delete a job listing (and its applications). Requires explicit confirmation via confirm=true. Only callable in employer mode.
+
+  15. count_jobs(user_id?: string) — Count total job listings. If user_id is provided, counts jobs for that specific employer/university. Returns job count and summary.
+
+  16. count_messages(session_id?: string) — Count total messages in conversation history. If session_id provided, counts for that session only.
 `
 
 type TurnMessage = { role: 'user' | 'assistant'; content: string }
@@ -459,6 +463,56 @@ const TOOL_EXECUTORS: Record<string, (input: ToolInput, userId: string, mode: As
       return JSON.stringify({ error: e?.message ?? 'tool_execution_failed' })
     }
   },
+  count_jobs: async (input, userId) => {
+    const targetUserId = getStr(input, 'user_id') || userId
+    const mode = getStr(input, 'mode') as 'employer' | 'university' | undefined
+    console.log('[assistant:agent:tool] count_jobs', { userId, targetUserId, mode })
+    try {
+      const { count, data: jobs, error } = await sb
+        .from('job_listings')
+        .select('id, title, status, company_name', { count: 'exact' })
+        .eq('company_id', targetUserId)
+        .order('created_at', { ascending: false })
+        .limit(50)
+      if (error) return JSON.stringify({ error: error.message })
+      const summary = (jobs ?? []).map((j: any) => `  • ${j.title} (${j.status ?? 'active'})`).join('\n')
+      return JSON.stringify({ total: count ?? 0, jobs: jobs ?? [], summary })
+    } catch (e: any) {
+      console.error('[assistant:agent:tool] ✗ count_jobs error:', e?.message)
+      return JSON.stringify({ error: e?.message ?? 'tool_execution_failed' })
+    }
+  },
+  count_messages: async (input, userId) => {
+    const sessionId = getStr(input, 'session_id')
+    console.log('[assistant:agent:tool] count_messages', { userId, sessionId: sessionId ?? 'all' })
+    try {
+      if (sessionId) {
+        const { count, error } = await sb
+          .from('assistant_messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('session_id', sessionId)
+        if (error) return JSON.stringify({ error: error.message })
+        return JSON.stringify({ session_id: sessionId, count: count ?? 0 })
+      }
+      const { count, error } = await sb
+        .from('assistant_sessions')
+        .select('*, assistant_messages(count)', { count: 'exact' })
+        .eq('user_id', userId)
+      if (error) return JSON.stringify({ error: error.message })
+
+      // Count total messages across all sessions
+      const { count: msgCount, error: msgErr } = await sb
+        .from('assistant_messages')
+        .select('*', { count: 'exact', head: true })
+      if (msgErr) return JSON.stringify({ error: msgErr.message })
+
+      const sessionCount = count ?? 0
+      return JSON.stringify({ total_sessions: sessionCount, total_messages: msgCount ?? 0 })
+    } catch (e: any) {
+      console.error('[assistant:agent:tool] ✗ count_messages error:', e?.message)
+      return JSON.stringify({ error: e?.message ?? 'tool_execution_failed' })
+    }
+  },
 }
 
 /* --------------------------- Helper --------------------------- */
@@ -497,7 +551,9 @@ function inferMode(user: { user_type: string }): AssistantMode {
 const SYSTEM_PROMPT =
   `You are the Optryva Assistant — a concise AI that executes exactly what the user asks. ` +
   `Keep text replies to 1-2 sentences. No markdown. The current user is in {MODE} mode ` +
-  `({MODE_DESC}). Only use tools appropriate for this role. ` +
+  `({MODE_DESC}). Always use tools to fetch real data from the database when the user ` +
+  `asks questions about counts, lists, jobs, candidates, applicants, messages, skills, ` +
+  `evidence, or any data — do not guess or say "I don't have that information". ` +
   `Call only the tools needed to complete the request. ` +
   `After calling tools, if the task is complete, return tool_calls: [].\n\n` +
   `${TOOL_DESCRIPTIONS}\n\n` +
@@ -594,7 +650,7 @@ export async function* runAgent(
             system: SYSTEM_PROMPT.replace('{MODE}', mode).replace('{MODE_DESC}', modeDesc[mode]),
             messages: turnMessages,
             schema: AGENT_SCHEMA,
-            maxTokens: 1000,
+            maxTokens: 3000,
           }),
           AI_TIMEOUT_MS,
           'generateTurn',
