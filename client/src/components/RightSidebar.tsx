@@ -93,6 +93,7 @@ export function RightSidebar({ mode }: RightSidebarProps) {
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
   const [pendingContext, setPendingContext] = useState<Record<string, unknown> | null>(null)
   const [chatOrigin, setChatOrigin] = useState<string | null>(null)
+  const [sessionKey, setSessionKey] = useState<string>('new')
   const { toast } = useToast()
   const navigate = useTransitionNavigate()
   const currentUser = useCurrentUser()
@@ -230,14 +231,12 @@ export function RightSidebar({ mode }: RightSidebarProps) {
             }
           }
           break
-        case 'navigate':
-          // When chat was opened from the evidence summary, stay on the current
-          // page so the user keeps their context. Only allow sidebar tab switches.
-          if (chatOrigin === 'evidence') {
-            // Allow candidate_id / job_id routes that are already in the URL —
-            // just ignore the navigate action entirely.
-            break
-          }
+          case 'navigate':
+            // When chat was opened from the evidence summary or shortlist, stay
+            // on the current page so the user keeps their context.
+            if (chatOrigin === 'evidence' || chatOrigin === 'shortlist') {
+              break
+            }
           // Prevent AI from sending users to pages meant for a different role.
           // /app/insights is a student page — employers should go to /app/listings.
           if (mode === 'employer' && action.target === '/app/insights') {
@@ -251,10 +250,9 @@ export function RightSidebar({ mode }: RightSidebarProps) {
           const jobId = (detail as any)?.job_id || action.target
           // When opened from evidence, suppress main-page navigation but still
           // switch the sidebar tab to candidates.
-          if (chatOrigin === 'evidence') {
-            setActiveTab(mode === 'employer' ? 'candidates' : 'activity')
+          if (chatOrigin === 'evidence' || chatOrigin === 'shortlist') {
             toast({
-              title: 'Shortlist started',
+              title: 'Shortlist analysis started',
               description: `Analyzing candidates for job ${(jobId as string)?.slice(0, 8) ?? 'this role'}…`,
               tone: 'info',
             })
@@ -315,12 +313,14 @@ export function RightSidebar({ mode }: RightSidebarProps) {
     setSessionId(undefined)
     localStorage.removeItem(SESSION_KEY)
     setMessages([])
+    setSessionKey('new')
     setAssistantView('chat')
   }
 
   const switchToSession = async (sid: string) => {
     await loadMessages(sid)
     setSessionId(sid)
+    setSessionKey(sid)
     setAssistantView('chat')
   }
 
@@ -336,6 +336,12 @@ export function RightSidebar({ mode }: RightSidebarProps) {
       toast({ title: 'Could not delete', tone: 'error' })
     }
   }
+
+  const consumePending = useCallback(() => {
+    setPendingMessage(null)
+    setPendingContext(null)
+    setChatOrigin(null)
+  }, [])
 
   const isAssistantTab = activeTab === 'assistant'
 
@@ -434,22 +440,18 @@ export function RightSidebar({ mode }: RightSidebarProps) {
                   />
                 ) : (
                    <AssistantChat
-                     key={sessionId ?? 'new'}
-                     mode={mode}
-                     sessionId={sessionId}
-                     pageContext={typeof window !== 'undefined' ? window.location.pathname : undefined}
-                     onAction={handleAction}
-                     onSessionId={setSessionId}
-                     onNew={startNewConversation}
-                     initialMessages={messages}
-                     pendingMessage={pendingMessage}
-                     pendingContext={pendingContext ?? urlContext}
-                     onPendingConsumed={() => {
-                       setPendingMessage(null)
-                       setPendingContext(null)
-                       setChatOrigin(null)
-                     }}
-                  />
+                      key={`chat-${sessionKey}`}
+                      mode={mode}
+                      sessionId={sessionId}
+                      pageContext={typeof window !== 'undefined' ? window.location.pathname : undefined}
+                      onAction={handleAction}
+                      onSessionId={setSessionId}
+                      onNew={startNewConversation}
+                      initialMessages={messages}
+                      pendingMessage={pendingMessage}
+                      pendingContext={pendingContext ?? urlContext}
+                      onPendingConsumed={consumePending}
+                   />
                 )}
               </TabPanel>
 
