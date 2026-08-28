@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Sparkles, ExternalLink, ImageIcon, Loader2, User } from 'lucide-react'
+import { Sparkles, ExternalLink, ImageIcon, Loader2 } from 'lucide-react'
 import { evidenceApi, profilesApi } from '@/lib/api'
 import type { JobListing, EvidenceItem, Profile } from '@/types'
 import { Card, CardBody, Badge } from '@/components/ui/primitives'
@@ -143,15 +143,21 @@ export function EmployerEvidenceSummary({ studentId, job }: { studentId: string;
           {job
             ? 'This summary is scoped to what matters for the role you\'re hiring for.'
             : 'This summary is generated from the candidate\'s submitted evidence.'}
-          <button
+           <button
             onClick={() => {
-              const ctx = items.map((i) => `${i.title}: ${i.ai_summary || i.description || ''}`).join('\n')
               const candidateName = profile?.full_name ?? 'this candidate'
               const candidateMeta = [profile?.school, profile?.major, profile?.year].filter(Boolean).join(', ')
-              const evidenceText = `\n${ctx}\n`
+              const evidenceLines = items.map((i) => {
+                const parts = [`**${i.title}**`]
+                if (i.ai_summary) parts.push(i.ai_summary)
+                else if (i.description) parts.push(i.description)
+                if (i.links?.length) parts.push('Links: ' + i.links.join(', '))
+                if (i.files?.length) parts.push('Files: ' + i.files.map((f) => f.name).join(', '))
+                return parts.join('\n')
+              }).join('\n\n')
               window.dispatchEvent(new CustomEvent('optryva:open_chat', {
                 detail: {
-                  message: `You are reviewing ${candidateName}${candidateMeta ? ` (${candidateMeta})` : ''} for the role "${job?.title ?? 'this role'}" at ${job?.company_name ?? 'your company'}. They applied with the following evidence:\n${evidenceText}\nUsing the get_candidate_evidence tool, critique ${candidateName}'s fit for this specific role. For each piece of evidence, quote or paraphrase the specific proof the candidate provides that supports or contradicts the requirements. Highlight gaps — what's missing that would make a stronger case. Be thorough and specific, not generic.`,
+                  message: `${candidateName}${candidateMeta ? ` (${candidateMeta})` : ''} applied for "${job?.title ?? 'this role'}" at ${job?.company_name ?? 'your company'}.\n\nEvidence:\n${evidenceLines}\n\nCritique ${candidateName}'s fit for the role. For each evidence item, cite specific proof. Highlight gaps. If you need more detail, ask to inspect any links provided.`,
                   candidate_id: studentId,
                   origin: 'evidence',
                 },
