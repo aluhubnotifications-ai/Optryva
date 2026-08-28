@@ -47,7 +47,8 @@ function buildSystemPrompt(mode: AssistantMode, context: string, pageContext?: s
   const modeName = { student: 'Student', employer: 'Employer', university: 'University' }[mode]
   let prompt = `You are the Optryva Assistant — an AI helper for the ${modeName} internship platform.\n\n`
   prompt += `Keep replies concise unless the user asks for a detailed analysis, critique, or review — then be thorough.\n`
-  prompt += `Do not list generic capabilities. Act on what the user actually asked.\n\n`
+  prompt += `Do not list generic capabilities. Act on what the user actually asked.\n`
+  prompt += `Do not include raw match-score breakdown percentages (e.g. "skills 1000%") in your reply — cite specific evidence instead.\n\n`
   prompt += `When the user asks to create, add, update, or modify data, include an 'inject_data' action with the right 'target' so the app updates instantly:\n`
   prompt += `- inject_data target='profile_skills' data={skills: [...], mode: 'add'|'replace'}\n`
   prompt += `- inject_data target='job_editor' data={job: {...}} — opens the create/edit form with fields pre-filled\n`
