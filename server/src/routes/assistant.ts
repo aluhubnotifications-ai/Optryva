@@ -2,7 +2,7 @@ import { Router } from '@/lib/http'
 import { requireAuth } from '@/lib/auth'
 import { sb, must, j } from '@/db'
 import { ChatRequest } from '@/assistant/types'
-import { processAssistantMessage, getFixed40Matches, employerShortlist } from '@/assistant/engine'
+import { getFixed40Matches, employerShortlist } from '@/assistant/engine'
 import { runAgent } from '@/assistant/agent'
 import type { AssistantMode } from '@/assistant/types'
 
@@ -30,59 +30,46 @@ assistant.post('/chat', async (req, res) => {
    })
 
    try {
-      console.log('[assistant:chat] deciding chat vs agent mode…')
+      console.log('[assistant:chat] running agent with tool support…')
 
-      // Detect data-related queries that need tool/database access.
-      // For these, run the full agent loop and collect results with tool events.
-      const lower = message.toLowerCase()
-      const dataQuery = /candit|cand|applic|shortlist|who should|who to adv|how many.*applic|how many.*cand|match.*score|score.*match|skills|evidence|applicant|profile|add.*skill/i.test(lower)
-      const isDataQuery = !pageContext && dataQuery && !lower.includes('hello') && !lower.includes('hi') && !lower.includes('hey')
+      // Always run the agent loop. This gives the AI access to all tools (database
+      // queries, profile updates, etc.) while still allowing natural conversation
+      // — the agent only calls tools when needed, and returns text-only for chit-chat.
+      const events: { type: string; text?: string; name?: string; input?: any; result?: string; action?: any }[] = []
+      let finalText = ''
+      let finalActions: any[] = []
+      let finalSessionId = sessionId ?? `${user.id}_${mode}_${Date.now()}`
+      let lastText = ''
 
-      if (isDataQuery) {
-        console.log('[assistant:chat] data query detected — running agent with tool support…')
-        const events: { type: string; text?: string; name?: string; input?: any; result?: string; action?: any }[] = []
-        let finalText = ''
-        let finalActions: any[] = []
-        let finalSessionId = sessionId ?? `${user.id}_${mode}_${Date.now()}`
+      for await (const ev of runAgent(user.id, mode, message, { sessionId, pageContext })) {
+        events.push(ev)
 
-        for await (const ev of runAgent(user.id, mode, message, { sessionId, pageContext })) {
-          events.push(ev)
-          if (ev.type === 'text') {
-            finalText = (finalText || '') + ev.text
-          } else if (ev.type === 'action') {
-            finalActions.push(ev.action)
-          } else if (ev.type === 'done') {
-            finalSessionId = ev.summary || finalSessionId
+        if (ev.type === 'text') {
+          // Accumulate text from multiple iterations — use the latest text
+          // (early iterations are often "thinking", final is the actual reply)
+          finalText = ev.text || finalText
+        } else if (ev.type === 'action') {
+          finalActions.push(ev.action)
+        } else if (ev.type === 'done') {
+          finalSessionId = ev.summary || finalSessionId
+          // The 'done' event's summary may contain the final reply
+          if (ev.summary && !finalText) {
+            finalText = ev.summary
           }
         }
-
-        console.log('[assistant:chat] ✓ agent completed:', { events: events.length, text_len: finalText.length, actions: finalActions.length })
-
-        // Return tool events so the client can show what the AI is doing
-        res.json({
-          text: finalText || "I couldn't find any data for that query.",
-          session_id: finalSessionId,
-          actions: finalActions,
-          tool_events: events.filter((e) => e.type === 'tool_use' || e.type === 'tool_result'),
-        })
-        return
       }
 
-      console.log('[assistant:chat] calling processAssistantMessage…')
-      const result = await processAssistantMessage(user.id, mode, message, {
-        sessionId,
-        pageContext,
+      console.log('[assistant:chat] ✓ agent completed:', { events: events.length, text_len: finalText.length, actions: finalActions.length })
+
+      // Return tool events so the client can show what the AI is doing
+      res.json({
+        text: finalText || "I couldn't find any data for that query.",
+        session_id: finalSessionId,
+        actions: finalActions,
+        tool_events: events.filter((e) => e.type === 'tool_use' || e.type === 'tool_result'),
       })
-      console.log('[assistant:chat] ✓ processAssistantMessage returned:', {
-        text_len: (result.text || '').length,
-        text_preview: (result.text || '').slice(0, 200),
-        actions_count: result.actions?.length ?? 0,
-        actions: result.actions?.map((a: any) => ({ type: a.type, target: a.target })),
-        session_id: result.session_id,
-      })
-      res.json(result)
     } catch (e: any) {
-      console.error('[assistant:chat] ✗ ERROR in processAssistantMessage:', {
+      console.error('[assistant:chat] ✗ ERROR in agent execution:', {
         message: e?.message,
         stack: e?.stack?.split('\n').slice(0, 5),
         error_name: e?.name,
