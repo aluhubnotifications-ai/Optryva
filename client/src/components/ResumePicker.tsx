@@ -69,12 +69,13 @@ export function ResumePicker({ userId, jobId, className }: ResumePickerProps) {
 
       <AnimatePresence>
         {open && (
-          <motion.div
+           <motion.div
             initial={{ opacity: 0, y: -6, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.96 }}
             transition={{ duration: 0.15 }}
-             className="absolute top-full left-0 z-30 mt-2 w-64 overflow-hidden rounded-xl border-2 border-primary/20 bg-popover shadow-2xl shadow-black/25"
+            className="absolute top-full left-0 z-30 mt-2 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border-2 border-primary/20 bg-popover shadow-2xl shadow-black/25"
+            style={{ transformOrigin: 'top left' }}
 >
              <div className="border-b border-border/50 bg-muted/30 px-3 py-2 text-xs font-semibold text-muted-foreground">Switch résumé — scores update everywhere</div>
              {resumes.map((r) => {
