@@ -49,12 +49,12 @@ export function ResumePicker({ userId, jobId, className }: ResumePickerProps) {
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
         onClick={() => setOpen(!open)}
-        className={cn(
-          'flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
-          isAggregate
-            ? 'border-primary/30 bg-primary/10 text-primary'
-            : 'border-border bg-card text-foreground hover:border-primary/30',
-        )}
+         className={cn(
+           'flex items-center gap-2 rounded-lg border-2 px-3 py-1.5 text-sm font-medium transition-colors',
+           isAggregate
+             ? 'border-primary/40 bg-primary/15 text-primary'
+             : 'border-border bg-card text-foreground hover:border-primary/40',
+         )}
       >
         <FileText className="h-4 w-4" />
         <span className="max-w-[180px] truncate">{label}</span>
@@ -74,10 +74,9 @@ export function ResumePicker({ userId, jobId, className }: ResumePickerProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.96 }}
             transition={{ duration: 0.15 }}
-            className="absolute top-full left-0 z-30 mt-2 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border-2 border-primary/20 bg-popover shadow-2xl shadow-black/25"
-            style={{ transformOrigin: 'top left' }}
->
-             <div className="border-b border-border/50 bg-muted/30 px-3 py-2 text-xs font-semibold text-muted-foreground">Switch résumé — scores update everywhere</div>
+            className="absolute top-full right-0 z-30 mt-2 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border-2 border-primary/30 bg-card shadow-2xl shadow-black/30"
+            style={{ transformOrigin: 'top right' }}>
+             <div className="border-b border-border/50 bg-muted/50 px-3 py-2 text-xs font-semibold text-muted-foreground">Switch résumé — scores update everywhere</div>
              {resumes.map((r) => {
                const s = resumeScores[r.id]
                const isActive = r.active
