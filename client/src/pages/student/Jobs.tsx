@@ -373,7 +373,7 @@ export default function Jobs() {
           {/* List */}
            <section ref={listRef} className="lg:sticky lg:top-[7.5rem] lg:h-[calc(100vh-9rem)] lg:overflow-y-auto lg:pr-1">
             <div className="mb-2 flex items-center justify-between">
-              <ResumePicker userId={user.id} />
+              <ResumePicker userId={user.id} placement="left" />
               <p className="text-sm text-muted-foreground">
                 Showing <span className="font-semibold text-foreground">{filtered.length}</span> AI-matched {filtered.length === 1 ? 'role' : 'roles'}
               </p>

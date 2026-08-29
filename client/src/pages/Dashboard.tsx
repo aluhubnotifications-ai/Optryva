@@ -245,7 +245,7 @@ function StudentDashboard({ user }: { user: Profile }) {
               title="AI Top Picks for you"
               action={
                 <div className="flex items-center gap-2 text-sm">
-                  <ResumePicker userId={user.id} />
+                  <ResumePicker userId={user.id} placement="left" />
                   <Link to="/app/insights" className="font-medium text-primary hover:underline">View all matches</Link>
                 </div>
               }

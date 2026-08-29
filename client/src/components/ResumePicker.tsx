@@ -9,9 +9,14 @@ import { useMatchProgress } from '@/lib/matchProgress'
 interface ResumePickerProps {
   userId: string
   className?: string
+  /** Dropdown placement relative to the button. 'right' = grows rightward
+   * (for pages where the picker is left-aligned). 'left' = grows leftward
+   * (for pages with a right sidebar, e.g. Jobs/Opportunities, so the
+   * dropdown doesn't get hidden behind it). */
+  placement?: 'left' | 'right'
 }
 
-export function ResumePicker({ userId, className }: ResumePickerProps) {
+export function ResumePicker({ userId, className, placement = 'right' }: ResumePickerProps) {
   const [resumes, setResumes] = useState<ResumeProfile[]>([])
   const [open, setOpen] = useState(false)
   const btnRef = useRef<HTMLButtonElement>(null)
@@ -80,7 +85,7 @@ export function ResumePicker({ userId, className }: ResumePickerProps) {
       </motion.button>
 
       <AnimatePresence>
-         {open && btnRef.current && (
+          {open && btnRef.current && (
            <motion.div
              initial={{ opacity: 0, y: -6, scale: 0.96 }}
              animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -89,8 +94,15 @@ export function ResumePicker({ userId, className }: ResumePickerProps) {
              className="fixed z-50 mt-2 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border-2 border-primary/30 bg-card shadow-2xl shadow-black/30"
              style={{
                top: btnRef.current.getBoundingClientRect().bottom + window.scrollY + 8,
-               right: window.innerWidth - btnRef.current.getBoundingClientRect().right - window.scrollX,
-               transformOrigin: 'top right',
+               ...(placement === 'right'
+                 ? {
+                     right: window.innerWidth - btnRef.current.getBoundingClientRect().right - window.scrollX,
+                     transformOrigin: 'top right',
+                   }
+                 : {
+                     left: btnRef.current.getBoundingClientRect().left + window.scrollX,
+                     transformOrigin: 'top left',
+                   }),
              }}
 >
              <div className="border-b border-border/50 bg-muted/50 px-3 py-2 text-xs font-semibold text-muted-foreground">Switch résumé — scores update everywhere</div>
