@@ -74,50 +74,54 @@ export function ResumePicker({ userId, jobId, className }: ResumePickerProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.96 }}
             transition={{ duration: 0.15 }}
-            className="absolute top-full left-0 z-30 mt-2 w-60 overflow-hidden rounded-xl border border-border bg-popover shadow-card"
-          >
-            <div className="p-1 text-xs font-semibold text-muted-foreground">Switch résumé to update match scores everywhere</div>
-            {resumes.map((r) => {
-              const s = resumeScores[r.id]
-              const isActive = r.active
-              const isSelected = selectedResumeId === r.id
-              return (
-                <motion.button
-                  key={r.id}
-                  layout
-                  onClick={() => {
-                    void useMatchProgress.getState().setActiveResume(userId, r.id)
-                    setOpen(false)
-                  }}
-                  className={cn(
-                    'flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors',
-                    isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted',
-                  )}
-                >
-                  <span className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 shrink-0" />
-                    <span>{r.name}</span>
-                    {isActive && <span className="text-xs text-muted-foreground">(active)</span>}
-                  </span>
-                  {s !== undefined && (
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Sparkles className="h-3 w-3" /> {s}/99
-                    </span>
-                  )}
-                </motion.button>
-              )
-            })}
-            <motion.button
-              layout
-              onClick={() => {
-                void useMatchProgress.getState().setActiveResume(userId, null)
-                setOpen(false)
-              }}
-              className={cn('flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-xs text-muted-foreground hover:bg-muted')}
-            >
-              <RefreshCw className="h-3 w-3" /> Show best across all résumés
-            </motion.button>
-          </motion.div>
+             className="absolute top-full left-0 z-30 mt-2 w-64 overflow-hidden rounded-xl border-2 border-primary/20 bg-popover shadow-2xl shadow-black/25"
+>
+             <div className="border-b border-border/50 bg-muted/30 px-3 py-2 text-xs font-semibold text-muted-foreground">Switch résumé — scores update everywhere</div>
+             {resumes.map((r) => {
+               const s = resumeScores[r.id]
+               const isActive = r.active
+               const isSelected = selectedResumeId === r.id
+               const isBest = s !== undefined && s === Math.max(...Object.values(resumeScores).filter((v) => typeof v === 'number'))
+               return (
+                 <motion.button
+                   key={r.id}
+                   layout
+                   onClick={() => {
+                     void useMatchProgress.getState().setActiveResume(userId, r.id)
+                     setOpen(false)
+                   }}
+                   className={cn(
+                     'flex w-full items-center justify-between px-3 py-2.5 text-left text-sm transition-all',
+                     isSelected
+                       ? 'bg-primary/15 text-primary ring-2 ring-primary/30'
+                       : 'hover:bg-muted',
+                   )}
+                 >
+                   <span className="flex items-center gap-2">
+                     <FileText className={cn('h-4 w-4 shrink-0', isSelected ? 'text-primary' : 'text-muted-foreground')} />
+                     <span>{r.name}</span>
+                     {isActive && <span className="text-xs text-muted-foreground">(active)</span>}
+                     {isBest && <Sparkles className="h-3 w-3 text-primary" />}
+                   </span>
+                   {s !== undefined && (
+                     <span className={cn('flex items-center gap-1 text-xs font-semibold', isSelected ? 'text-primary' : 'text-muted-foreground')}>
+                       <Sparkles className="h-3 w-3" /> {s}/99
+                     </span>
+                   )}
+                 </motion.button>
+               )
+             })}
+             <motion.button
+               layout
+               onClick={() => {
+                 void useMatchProgress.getState().setActiveResume(userId, null)
+                 setOpen(false)
+               }}
+               className={cn('flex w-full items-center justify-center gap-2 border-t border-border/30 px-3 py-2.5 text-center text-sm text-muted-foreground hover:bg-muted')}
+             >
+               <RefreshCw className="h-3 w-3" /> Show best across all résumés
+             </motion.button>
+           </motion.div>
         )}
       </AnimatePresence>
     </div>
