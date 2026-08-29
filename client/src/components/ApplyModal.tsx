@@ -16,9 +16,9 @@ import { Modal } from '@/components/ui/Modal'
 import { Input, Label, Textarea, Select, Badge } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/toast'
-import { aiApi, applicationsApi } from '@/lib/api'
+import { aiApi, applicationsApi, resumesApi } from '@/lib/api'
 import { cn, fileToDataUrl, formatBytes } from '@/lib/utils'
-import type { Application, AppDocument, JobListing, Profile } from '@/types'
+import type { Application, AppDocument, JobListing, Profile, ResumeProfile, AiMatch } from '@/types'
 
 const OPTIONAL_DOCS: { kind: AppDocument['kind']; label: string }[] = [
   { kind: 'cover', label: 'Cover Letter' },
@@ -78,6 +78,11 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
   const [submitting, setSubmitting] = useState(false)
   const [alreadyApplied, setAlreadyApplied] = useState<Application | null>(null)
   const [savingDraft, setSavingDraft] = useState(false)
+  // Resume profiles loaded from the server — lets the student pick which
+  // uploaded résumé to apply with (and see its match score for this role).
+  const [resumeProfiles, setResumeProfiles] = useState<ResumeProfile[]>([])
+  const [resumeScores, setResumeScores] = useState<Record<string, number>>({})
+  const [selectedResumeId, setSelectedResumeId] = useState<string | null>(null)
 
   // Resume a previously saved draft (and detect an already-submitted application)
   // so a candidate can come back later and pick up where they left off.
@@ -85,6 +90,9 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
     if (!job?.id) return
     let cancelled = false
     setAlreadyApplied(null)
+    setResumeProfiles([])
+    setResumeScores({})
+    setSelectedResumeId(null)
     applicationsApi
       .byStudent(user.id)
       .then((list) => {
@@ -119,8 +127,38 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
         const d: Record<string, AppDocument> = {}
         for (const doc of draft.documents ?? []) d[doc.kind] = doc
         setDocs(d)
+        if (draft.resume_id) setSelectedResumeId(draft.resume_id)
       })
       .catch(() => {})
+
+    void resumesApi.list().then((rs) => {
+      if (cancelled) return
+      setResumeProfiles(rs)
+      if (rs.length === 0) return
+      let bestScore = -1
+      let bestId: string | null = null
+      rs.forEach((r) => {
+        void aiApi
+          .cachedMatches(r.id)
+          .then((all) => {
+            const thisJob = (all as AiMatch[]).find((m) => m.job_id === job.id)
+            if (thisJob) {
+              setResumeScores((prev) => ({ ...prev, [r.id]: thisJob.score }))
+              if (thisJob.score > bestScore) {
+                bestScore = thisJob.score
+                bestId = r.id
+              }
+              if (!cancelled) {
+                setSelectedResumeId((prev) => {
+                  if (prev) return prev
+                  return bestId ?? r.id
+                })
+              }
+            }
+          })
+          .catch(() => {})
+      })
+    })
     return () => {
       cancelled = true
     }
@@ -137,8 +175,8 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
   const hasAssignment = !!job?.assignment && !externalApply && !crossPosted
 
   const valid = useMemo(
-    () => form.full_name && /\S+@\S+\.\S+/.test(form.email) && form.school && (form.year || form.graduated) && docs.cv,
-    [form, docs],
+    () => form.full_name && /\S+@\S+\.\S+/.test(form.email) && form.school && (form.year || form.graduated) && (docs.cv || selectedResumeId),
+    [form, docs, selectedResumeId],
   )
 
   async function setDoc(kind: AppDocument['kind'], file: File | null) {
@@ -182,6 +220,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
         job_id: job.id,
         cover_note: coverNote || undefined,
         documents,
+        resume_id: selectedResumeId ?? undefined,
         full_name: form.full_name,
         email: form.email,
         phone: form.phone || undefined,
@@ -242,7 +281,7 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
 
   const sections: { id: Step; label: string; done: boolean; optional?: boolean }[] = [
     { id: 'info', label: 'Your info', done: !!(form.full_name && form.email && form.school && (form.year || form.graduated)) },
-    { id: 'resume', label: 'Résumé', done: !!docs.cv },
+     { id: 'resume', label: 'Résumé', done: !!docs.cv || !!selectedResumeId },
     { id: 'submission', label: 'Submit', done: false },
   ]
 
@@ -340,7 +379,34 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
 
       {active === 'resume' && (
         <section className="space-y-3">
-          <p className="text-xs text-muted-foreground">Your résumé is pre-selected from your profile — the one used when matching you to this role. You can replace it if needed.</p>
+          {resumeProfiles.length > 0 ? (
+            <>
+              <div>
+                <Label>Choose résumé *</Label>
+                <p className="text-xs text-muted-foreground mb-1">Select the résumé you want the employer to receive. The one with the highest match score for this role is selected by default.</p>
+              </div>
+              <Select
+                value={selectedResumeId ?? ''}
+                onChange={(e) => setSelectedResumeId(e.target.value || null)}
+                className="text-sm"
+              >
+                {resumeProfiles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}{r.active ? ' (active)' : ''}
+                  </option>
+                ))}
+              </Select>
+              {selectedResumeId && resumeScores[selectedResumeId] !== undefined && (
+                <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-primary/5 px-3 py-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <span className="text-xs text-muted-foreground">Your match score for this role:</span>
+                  <span className="font-semibold text-primary">{resumeScores[selectedResumeId]}/99</span>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">No uploaded résumés found. You can upload one below.</p>
+          )}
           <FileDrop
             label="CV / Résumé *"
             doc={docs.cv}
@@ -363,8 +429,11 @@ export function ApplyForm({ job, user, onClose, onSubmitted }: { job: JobListing
             <ReviewRow label="Email" value={form.email} />
             <ReviewRow label="School" value={form.school} />
             <ReviewRow label="Year" value={form.graduated ? 'Graduate' : (form.year ? `Year ${form.year}` : '—')} />
-            <ReviewRow label="Résumé" value={docs.cv?.name ?? 'Not attached'} />
-            <ReviewRow label="Assessment" value={hasAssignment ? 'After you apply' : 'Not included'} />
+           <ReviewRow label="Résumé" value={selectedResumeId ? (resumeProfiles.find((r) => r.id === selectedResumeId)?.name ?? 'Selected') : (docs.cv?.name ?? 'Not attached')} />
+           {selectedResumeId && resumeScores[selectedResumeId] !== undefined && (
+             <ReviewRow label="Match score" value={`${resumeScores[selectedResumeId]}/99`} />
+           )}
+           <ReviewRow label="Assessment" value={hasAssignment ? 'After you apply' : 'Not included'} />
           </div>
 
           {hasAssignment && (

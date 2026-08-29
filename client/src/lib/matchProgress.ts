@@ -25,20 +25,24 @@ interface MatchProgressState {
   missing: string[] // what's blocking matching when phase==='notReady' (resume/preferences)
   activity: { step: string; label: string } | null // live pipeline stage from the server
   scoring: string[] // job ids being scored on demand right now
+  activeResumeId: string | null // which resume profile the current matches are for
   /** Start a run. Idempotent: no-op if a run is already in flight for this user,
    *  or already finished with results (so navigating between pages reuses the
-   *  same matches instead of re-scoring). Pass force=true to re-run. */
-  run: (userId: string, force?: boolean) => Promise<void>
-  /** Restore stored scores without starting matching. */
-  hydrate: (userId: string) => Promise<void>
+   *  same matches instead of re-scoring). Pass force=true to re-run.
+   *  Pass resumeId to score against a specific résumé profile. */
+  run: (userId: string, force?: boolean, resumeId?: string) => Promise<void>
+  /** Restore stored scores without starting matching. Pass resumeId for a
+   *  specific résumé profile's cached scores. */
+  hydrate: (userId: string, resumeId?: string) => Promise<void>
   /** Score ONE opportunity on demand (for roles the funnel didn't auto-score).
    *  The result is upserted into `matches`, so a scored role "joins matches"
    *  everywhere the store is read. Returns the match, or null on failure. */
   scoreOne: (job: JobListing) => Promise<AiMatch | null>
   /** Bounded re-score of the student's EXISTING matches only (after a CV edit),
    *  then reload the fresh cached scores into the store. Cheaper and safer than
-   *  a full Re-run — the server caps concurrency. */
-  refresh: (userId: string) => Promise<void>
+   *  a full Re-run — the server caps concurrency. Pass resumeId to refresh only
+   *  that résumé's matches. */
+  refresh: (userId: string, resumeId?: string) => Promise<void>
   /** Drop results (e.g. on logout) so a fresh user starts clean. */
   reset: () => void
 }
@@ -53,15 +57,20 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
   missing: [],
   activity: null,
   scoring: [],
+  activeResumeId: null,
 
-  hydrate: async (userId) => {
+  hydrate: async (userId, resumeId) => {
     const s = get()
-    if (s.userId === userId && s.matches.length > 0) return
-    const cached = await aiApi.cachedMatches()
+    if (resumeId && s.activeResumeId !== resumeId) {
+      // Different resume — clear and re-hydrate.
+      set({ userId, phase: 'idle', done: 0, total: 0, label: '', matches: [], missing: [], scoring: [], activeResumeId: resumeId })
+    }
+    if (s.userId === userId && resumeId === s.activeResumeId && s.matches.length > 0) return
+    const cached = await aiApi.cachedMatches(resumeId)
     if (cached.length) {
       const taskId = useAiActivity.getState().start('Restoring cached match scores')
       useAiActivity.getState().finish(taskId)
-      set({ userId, phase: 'done', matches: cached, done: cached.length, total: cached.length, label: '', missing: [], scoring: [] })
+      set({ userId, phase: 'done', matches: cached, done: cached.length, total: cached.length, label: '', missing: [], scoring: [], activeResumeId: resumeId ?? null })
     }
   },
 
@@ -83,19 +92,23 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
     }
   },
 
-  run: async (userId, force = false) => {
+  run: async (userId, force = false, resumeId) => {
     const s = get()
+    if (resumeId !== s.activeResumeId) {
+      // Resume changed — clear and start fresh for the new resume.
+      set({ userId, phase: 'idle', done: 0, total: 0, label: '', matches: [], missing: [], scoring: [], activeResumeId: resumeId ?? null })
+    }
     if (!force && !needsMatchRun(useMatchRun.getState().lastRun[userId])) {
-      if (s.userId === userId && s.matches.length > 0) return
-      const cached = await aiApi.cachedMatches()
+      if (s.userId === userId && resumeId === s.activeResumeId && s.matches.length > 0) return
+      const cached = await aiApi.cachedMatches(resumeId)
       if (cached.length) {
         const taskId = useAiActivity.getState().start('Restoring cached match scores')
         useAiActivity.getState().finish(taskId)
-        set({ userId, phase: 'done', matches: cached, done: cached.length, total: cached.length, label: '', missing: [], scoring: [] })
+        set({ userId, phase: 'done', matches: cached, done: cached.length, total: cached.length, label: '', missing: [], scoring: [], activeResumeId: resumeId ?? null })
         return
       }
     }
-    if (!force && s.userId === userId && (s.phase === 'running' || (s.phase === 'done' && s.matches.length > 0))) return
+    if (!force && s.userId === userId && resumeId === s.activeResumeId && (s.phase === 'running' || (s.phase === 'done' && s.matches.length > 0))) return
 
     // Don't start a run for a student without a résumé + preferences — the funnel
     // has nothing to rank a top-40 against. Surface what's missing so the UI can
@@ -103,14 +116,14 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
     const profile = useSession.getState().profile
     const readiness = matchReadiness(profile)
     if (!readiness.ready) {
-      set({ userId, phase: 'notReady', missing: readiness.missing, matches: [], done: 0, total: 0, label: '', scoring: [] })
+      set({ userId, phase: 'notReady', missing: readiness.missing, matches: [], done: 0, total: 0, label: '', scoring: [], activeResumeId: resumeId ?? null })
       return
     }
 
-    set({ userId, phase: 'running', done: 0, total: 0, label: 'Reading your profile…', matches: [], missing: [], scoring: [], activity: { step: 'reading', label: 'Reading your profile…' } })
+    set({ userId, phase: 'running', done: 0, total: 0, label: 'Reading your profile…', matches: [], missing: [], scoring: [], activity: { step: 'reading', label: 'Reading your profile…' }, activeResumeId: resumeId ?? null })
 
     const act = useAiActivity.getState()
-    const taskId = act.start('Matching you to open roles')
+    const taskId = act.start(resumeId ? `Matching you to open roles (${resumeId})` : 'Matching you to open roles')
     act.update(taskId, { done: 0, total: 0, label: 'Reading your profile…' })
 
     // Safety net: if the run is still going after 120s with no completion (e.g. the
@@ -129,7 +142,7 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
         onActivity: (step, label) => set({ activity: { step, label } }),
         onNotReady: (missing) => {
           notReady = true
-          set({ phase: 'notReady', missing, label: '', done: 0, total: 0, activity: null })
+          set({ phase: 'notReady', missing, label: '', done: 0, total: 0, activity: null, activeResumeId: resumeId ?? null })
           act.finish(taskId, 'complete your profile first')
         },
         onMeta: (total) => {
@@ -145,7 +158,7 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
           }))
           act.update(taskId, { done, total, label: title })
         },
-      })
+      }, resumeId)
       if (notReady) return // server refused — leave phase==='notReady' for the UI to prompt.
       act.finish(taskId)
       set({ phase: 'done', label: '', activity: null })
@@ -154,7 +167,7 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
       // Streaming unavailable → fall back to the one-shot endpoint so the user
       // still gets matches (just without per-role progress).
       try {
-        const matches = await aiApi.matchAll({ id: userId } as any, [])
+        const matches = await aiApi.matchAll({ id: userId } as any, [], resumeId)
         set({ matches, phase: matches.length ? 'done' : 'error', label: '', activity: null })
         act.finish(taskId, matches.length ? undefined : 'matching unavailable')
         if (matches.length) useMatchRun.getState().markRun(userId)
@@ -167,17 +180,17 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
     }
   },
 
-  reset: () => set({ userId: null, phase: 'idle', done: 0, total: 0, label: '', matches: [], missing: [], scoring: [] }),
+  reset: () => set({ userId: null, phase: 'idle', done: 0, total: 0, label: '', matches: [], missing: [], scoring: [], activeResumeId: null }),
 
-  refresh: async (userId) => {
-    set({ phase: 'running', label: 'Refreshing your scores…', total: 0, done: 0 })
+  refresh: async (userId, resumeId) => {
+    set({ phase: 'running', label: 'Refreshing your scores…', total: 0, done: 0, activeResumeId: resumeId ?? null })
     const act = useAiActivity.getState()
     const taskId = act.start('Refreshing your match scores')
     try {
-      await aiApi.refreshMatches()
-      const fresh = await aiApi.cachedMatches()
+      await aiApi.refreshMatches(resumeId)
+      const fresh = await aiApi.cachedMatches(resumeId)
       act.finish(taskId, fresh.length ? undefined : 'nothing to refresh')
-      set({ userId, phase: 'done', matches: fresh, done: fresh.length, total: fresh.length, label: '', missing: [], scoring: [] })
+      set({ userId, phase: 'done', matches: fresh, done: fresh.length, total: fresh.length, label: '', missing: [], scoring: [], activeResumeId: resumeId ?? null })
     } catch {
       set({ phase: 'done', label: '' })
       act.finish(taskId, 'refresh failed')

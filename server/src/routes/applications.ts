@@ -202,22 +202,31 @@ applications.post('/', async (req, res) => {
   // the application so the employer can see the same evidence during review. Also
   // snapshot the résumé that produced the match, so reviewers can compare it to the
   // candidate's CURRENT résumé (e.g. gaps filled after applying).
-  let matchScore: number | null = null
-  let matchRationale: string | null = null
-  let resumeId: string | null = null
-  let resumeSnapshot: any = null
-  try {
-    const c = (await sb.from('ai_match_cache').select('payload, resume_id').eq('student_id', req.user!.id).eq('job_id', b.job_id).maybeSingle()).data as any
-    if (c?.payload) {
-      const p = JSON.parse(c.payload)
-      matchScore = p.score ?? null
-      const skills: string[] = Array.isArray(p.matched_skills) ? p.matched_skills : []
-      const reasons: string[] = Array.isArray(p.reasons) ? p.reasons : []
-      const parts = [...(skills.length ? [`Strong in ${skills.slice(0, 4).join(', ')}`] : []), ...reasons].filter(Boolean)
-      matchRationale = parts.length ? parts.join(' ') : null
-    }
-    resumeId = c?.resume_id ?? null
-  } catch { /* no cached score — leave null */ }
+   let matchScore: number | null = null
+   let matchRationale: string | null = null
+   let resumeId: string | null = b.resume_id ?? null
+   let resumeSnapshot: any = null
+   try {
+     // Use the student's explicitly chosen résumé if provided; otherwise pick
+     // the cached match for the active resume (or any cached row as a fallback).
+     let c: any = null
+     if (resumeId) {
+       c = (await sb.from('ai_match_cache').select('payload').eq('student_id', req.user!.id).eq('job_id', b.job_id).eq('resume_id', resumeId).maybeSingle()).data as any
+     }
+     if (!c?.payload) {
+       c = (await sb.from('ai_match_cache').select('payload, resume_id').eq('student_id', req.user!.id).eq('job_id', b.job_id).eq('resume_id', resumeId ?? null).maybeSingle()).data as any
+       if (!c?.payload) c = (await sb.from('ai_match_cache').select('payload, resume_id').eq('student_id', req.user!.id).eq('job_id', b.job_id).is('resume_id', null).maybeSingle()).data as any
+     }
+     if (c?.payload) {
+       const p = JSON.parse(c.payload)
+       matchScore = p.score ?? null
+       const skills: string[] = Array.isArray(p.matched_skills) ? p.matched_skills : []
+       const reasons: string[] = Array.isArray(p.reasons) ? p.reasons : []
+       const parts = [...(skills.length ? [`Strong in ${skills.slice(0, 4).join(', ')}`] : []), ...reasons].filter(Boolean)
+       matchRationale = parts.length ? parts.join(' ') : null
+       resumeId = b.resume_id ?? c?.resume_id ?? null
+     }
+   } catch { /* no cached score — leave null */ }
   if (resumeId) {
     try {
       const rp = (await sb.from('resume_profiles').select('id, name, summary, skills, projects').eq('id', resumeId).maybeSingle()).data as any
