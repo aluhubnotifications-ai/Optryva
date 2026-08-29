@@ -1,24 +1,47 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Sparkles, RefreshCw, Lightbulb, ArrowRight } from 'lucide-react'
-import { Link } from 'react-router-dom'
-import { jobsApi } from '@/lib/api'
-import type { AiMatch, JobListing, Profile } from '@/types'
-import { Card, CardBody, Badge, Avatar, Progress } from '@/components/ui/primitives'
+import { Link, useSearchParams } from 'react-router-dom'
+import { jobsApi, resumesApi } from '@/lib/api'
+import type { AiMatch, JobListing, Profile, ResumeProfile } from '@/types'
+import { Card, CardBody, Badge, Avatar, Progress, Select } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { ScoreRing } from '@/components/ScoreRing'
 import { useMatchProgress } from '@/lib/matchProgress'
 
 export function MatchesTab({ user }: { user: Profile }) {
-  const { phase, done, total, label, matches } = useMatchProgress()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { phase, done, total, label, matches } = useMatchProgress((s) => ({
+    phase: s.phase,
+    done: s.done,
+    total: s.total,
+    label: s.label,
+    matches: s.matches,
+  }))
   const [jobs, setJobs] = useState<JobListing[]>([])
+  const [resumes, setResumes] = useState<ResumeProfile[]>([])
 
-  // Load jobs once for rendering. Jobs embed company_name/avatar, so no separate
+  // Load jobs + resumes once for rendering. Jobs embed company_name/avatar, so no separate
   // directory fetch is needed. Matching is driven by the global store (visible in
   // the AI activity panel) and keeps running even when you switch tabs.
   useEffect(() => {
     jobsApi.list(user).then(setJobs)
+    resumesApi.list().then(setResumes)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id])
+
+  // The active resume is the default view; the student can switch to see scores
+  // for a different résumé via the dropdown below.
+  const selectedResumeId = useMemo(() => {
+    const urlRid = searchParams.get('resume')
+    if (urlRid && resumes.some((r) => r.id === urlRid)) return urlRid
+    const active = resumes.find((r) => r.active)
+    return active ? active.id : (urlRid ?? undefined)
+  }, [searchParams, resumes])
+
+  // Re-hydrate (load cached scores) when the selected résumé changes.
+  useEffect(() => {
+    void useMatchProgress.getState().hydrate(user.id, selectedResumeId)
+  }, [user.id, selectedResumeId])
 
   const jobsById = new Map(jobs.map((j) => [j.id, j]))
   const rows = matches
@@ -26,8 +49,8 @@ export function MatchesTab({ user }: { user: Profile }) {
     .filter((r): r is { job: JobListing; match: AiMatch } => !!r.job)
     .sort((a, b) => b.match.score - a.match.score)
 
-  const run = () => useMatchProgress.getState().run(user.id, true)
-  const refresh = () => useMatchProgress.getState().refresh(user.id)
+  const run = () => useMatchProgress.getState().run(user.id, true, selectedResumeId)
+  const refresh = () => useMatchProgress.getState().refresh(user.id, selectedResumeId)
   const pct = total > 0 ? Math.round((done / total) * 100) : 0
 
   // Idle / first run (or an error with nothing scored yet) — the click target.
@@ -66,7 +89,23 @@ export function MatchesTab({ user }: { user: Profile }) {
         </Card>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="min-w-0 text-sm text-muted-foreground">{rows.length} role{rows.length === 1 ? '' : 's'} scored{phase === 'running' ? ' so far' : ' · sorted by fit'}</p>
+        <div className="flex items-center gap-2">
+          {resumes.length > 1 && selectedResumeId && (
+            <Select
+              value={selectedResumeId}
+              onChange={(e) => setSearchParams({ resume: e.target.value })}
+              className="text-xs"
+            >
+              {resumes.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                  {r.active ? ' (active)' : ''}
+                </option>
+              ))}
+            </Select>
+          )}
+          <p className="min-w-0 text-sm text-muted-foreground">{rows.length} role{rows.length === 1 ? '' : 's'} scored{phase === 'running' ? ' so far' : ' · sorted by fit'}</p>
+        </div>
         <Button variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={refresh} disabled={phase === 'running'}><RefreshCw className="h-4 w-4" /> Refresh scores</Button>
         <Button variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={run} disabled={phase === 'running'}><RefreshCw className="h-4 w-4" /> {phase === 'running' ? 'Running…' : 'Re-run'}</Button>
       </div>
