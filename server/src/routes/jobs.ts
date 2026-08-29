@@ -162,7 +162,8 @@ jobs.get('/', async (req, res) => {
 })
 
 jobs.get('/company/:companyId', async (req, res) => {
-  const rows = must(await sb.from('job_listings').select(LIST_COLUMNS).eq('company_id', req.params.companyId).order('created_at', { ascending: false })) as any[]
+  const cols = LIST_COLUMNS + ',description,responsibilities,benefits,qualifications'
+  const rows = must(await sb.from('job_listings').select(cols).eq('company_id', req.params.companyId).order('created_at', { ascending: false })) as any[]
   // The owner manages all of its listings (incl. drafts/closed); everyone else
   // only sees what the domain/privacy/year/school gates allow.
   if (req.user!.id === req.params.companyId) return res.json(rows.map(rowToJob))
@@ -182,7 +183,7 @@ jobs.get('/company/:companyId', async (req, res) => {
 // match scores/reasons; with no scorer at all the applicant is still listed.
 // ---------------------------------------------------------------------------
 const SHORTLIST_STATUS = ['pending', 'reviewed', 'shortlisted', 'hired', 'rejected']
-const SHORTLIST_VERSION = 1
+const SHORTLIST_VERSION = 2
 
 // Extract the public-facing job details for display alongside the shortlist.
 function jobDetails(job: any) {
@@ -276,7 +277,7 @@ async function buildShortlist(job: any, force: boolean): Promise<any> {
       applied: !!app,
       application_id: app?.id ?? null,
       application_status: app?.status ?? null,
-      score: x.m.score ?? 0,
+      score: (x.m.score ?? 0) / 100,
       score_unavailable: x.scoreUnavailable ?? false,
       matched_skills: x.m.matched_skills ?? [],
       reasons: x.m.reasons ?? [],
@@ -301,7 +302,11 @@ async function buildShortlist(job: any, force: boolean): Promise<any> {
     for (const c of candidates as any[]) {
       const e = byId.get(c.student_id)
       if (e) {
-        c.fit_score = typeof e.fit_score === 'number' ? e.fit_score : c.score
+        // Primary fit score is the MATCH model's score (0-1 fraction → 0-100).
+        // Mistral's fit_score may be on a different scale; only use it as an
+        // override when it's a sane 0-100 number (guards against LLM returning e.g. 0.15 or 1500).
+        const mistralScore = typeof e.fit_score === 'number' && e.fit_score >= 0 && e.fit_score <= 100 ? e.fit_score : null
+        c.fit_score = mistralScore ?? Math.round((c.score ?? 0) * 100)
         c.verdict = e.verdict ?? null
         c.category = e.category ?? null
         c.decision_note = e.decision_note ?? null
@@ -309,12 +314,31 @@ async function buildShortlist(job: any, force: boolean): Promise<any> {
         c.fit_gaps = e.gaps ?? []
       }
     }
-    candidates.sort((a: any, b: any) => (b.fit_score ?? b.score) - (a.fit_score ?? a.score))
+    candidates.sort((a: any, b: any) => (b.fit_score ?? Math.round((b.score ?? 0) * 100)) - (a.fit_score ?? Math.round((a.score ?? 0) * 100)))
+  }
+  // No Mistral: set fit_score from the match model (0-1 → 0-100) so the UI
+  // always shows a real percentage derived from actual scoring.
+  for (const c of candidates as any[]) {
+    if (typeof c.fit_score !== 'number') c.fit_score = Math.round((c.score ?? 0) * 100)
   }
   // A "fit_score" produced by Mistral for a candidate with NO real match score is
   // an unsupported guess (no evidence to rank on), so never present it as a number
   // or let it outrank genuinely-scored candidates. Keep only the qualitative note.
   for (const c of candidates as any[]) if (c.score_unavailable) c.fit_score = null
+
+  // Defense-in-depth: clamp breakdown values to 0-100 and fit_score to 0-100
+  // so stale cached data or LLM overruns never produce numbers like 500% or 7000%.
+  // `score` is stored as a 0-1 fraction; clamp it to that range too.
+  for (const c of candidates as any[]) {
+    if (c.breakdown) {
+      const bd = c.breakdown
+      for (const key of ['skills', 'experience', 'location', 'compensation'] as const) {
+        if (typeof bd[key] === 'number') bd[key] = Math.max(0, Math.min(100, bd[key]))
+      }
+    }
+    if (typeof c.fit_score === 'number') c.fit_score = Math.max(0, Math.min(100, c.fit_score))
+    if (typeof c.score === 'number') c.score = Math.max(0, Math.min(1, c.score))
+  }
 
   const scored = candidates.filter((c: any) => !c.score_unavailable).length
   return { job_id: jobId, mistral: hasMistral(), summary, candidates, scored, total: candidates.length, note: null, job: jobDetails(job) }
@@ -343,7 +367,34 @@ jobs.get('/:jobId/shortlist', async (req, res) => {
 
   if (!needsCompute && cached) {
     const stored = JSON.parse(cached.payload)
-    return res.json({ ...stored, cached: true, computed_at: cached.computed_at })
+    // Defense-in-depth: clamp cached data too, in case it was stored before the
+    // clamping fix was deployed (stale shortlist_cache rows).
+    // Old cache rows may have score on a 0-99 scale (not 0-1 fraction) and/or
+    // missing fit_score — normalize both so the client always gets correct numbers.
+    if (stored.candidates) {
+      for (const c of stored.candidates) {
+        if (c.breakdown) {
+          const bd = c.breakdown
+          for (const key of ['skills', 'experience', 'location', 'compensation']) {
+            if (typeof bd[key] === 'number') bd[key] = Math.max(0, Math.min(100, bd[key]))
+          }
+        }
+        // Normalize score: old rows stored 0-99 (match model scale). New rows store
+        // 0-1 fraction. If score > 1, divide by 100 to convert.
+        if (typeof c.score === 'number') {
+          if (c.score > 1) c.score = c.score / 100
+          c.score = Math.max(0, Math.min(1, c.score))
+        }
+        // Backfill fit_score for old rows that lack it (0-1 → 0-100).
+        if (typeof c.fit_score !== 'number') {
+          c.fit_score = Math.round((c.score ?? 0) * 100)
+        }
+        if (typeof c.fit_score === 'number') c.fit_score = Math.max(0, Math.min(100, c.fit_score))
+        // Don't show fit_score for scored-unavailable candidates (no real evidence).
+        if (c.score_unavailable) c.fit_score = null
+      }
+    }
+    return res.json({ ...stored, cached: true, computed_at: cached.computed_at, engine_version: cached.engine_version })
   }
 
   const result = await buildShortlist(job, force)
