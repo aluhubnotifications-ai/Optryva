@@ -28,18 +28,20 @@ export function MatchRunner({
   title = 'Run your AI matches',
   subtitle,
   resumePresent,
+  resumeId,
 }: {
   userId: string
   onComplete: () => void
   /** Called when the AI is unavailable/failed — lets the parent return the student
-   *  to the opportunities board (with a basic fallback) instead of stranding them
-   *  on the match screen. */
+   *  to the board (with a basic fallback) instead of stranding them on the match screen. */
   onError?: () => void
   title?: string
   subtitle?: string
   /** True when the user has an active structured résumé (resume_profiles). Lets the
    *  gate recognise résumés that live in the new résumé system, not just legacy cv_text. */
   resumePresent?: boolean
+  /** Pass a specific résumé profile ID to score against instead of the active one. */
+  resumeId?: string
 }) {
   const { phase, done, total, label, missing, activity } = useMatchProgress()
   const user = useCurrentUser()
@@ -54,7 +56,7 @@ export function MatchRunner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase])
 
-  const go = () => useMatchProgress.getState().run(userId, true)
+  const go = () => useMatchProgress.getState().run(userId, true, resumeId)
 
   // Profile completeness gate — checked client-side up front, and again via the
   // server's `notReady` signal (phase === 'notReady') as the source of truth.

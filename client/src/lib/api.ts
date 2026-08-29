@@ -358,6 +358,9 @@ export const resumesApi = {
   async remove(id: string): Promise<void> {
     await apiFetch(`/resumes/${id}`, { method: 'DELETE' })
   },
+  async setActive(id: string): Promise<ResumeProfile> {
+    return (await apiFetch(`/resumes/${id}`, { method: 'PATCH', body: JSON.stringify({ active: true }) })) as ResumeProfile
+  },
 }
 
 /* ----------------------------- Jobs ----------------------------- */
@@ -1230,25 +1233,34 @@ export const aiApi = {
   },
 
   /** All matches in ONE request (server scores every visible job). Empty when
-   *  the server is unreachable — there is no local engine. */
-  async matchAll(_student: Profile, _jobs: JobListing[]): Promise<AiMatch[]> {
+   *  the server is unreachable — there is no local engine. Pass resumeId to
+   *  score against a specific résumé profile instead of the active one. */
+  async matchAll(_student: Profile, _jobs: JobListing[], resumeId?: string): Promise<AiMatch[]> {
     try {
-      return (await trackAi('Matching you to open roles', () => apiFetch('/ai/matches'))) as AiMatch[]
+      const params = resumeId ? `?resume_id=${encodeURIComponent(resumeId)}` : ''
+      return (await trackAi('Matching you to open roles', () => apiFetch(`/ai/matches${params}`))) as AiMatch[]
     } catch {
       return []
     }
   },
 
-  /** Read today's stored scores without starting or refreshing matching. */
-  async cachedMatches(): Promise<AiMatch[]> {
-    try { return (await apiFetch('/ai/matches/cached')) as AiMatch[] } catch { return [] }
+  /** Read today's stored scores without starting or refreshing matching.
+   *  Pass resumeId to get only matches for a specific résumé profile. */
+  async cachedMatches(resumeId?: string): Promise<AiMatch[]> {
+    try {
+      const params = resumeId ? `?resume_id=${encodeURIComponent(resumeId)}` : ''
+      return (await apiFetch(`/ai/matches/cached${params}`)) as AiMatch[]
+    } catch {
+      return []
+    }
   },
 
   /** Stream matches with live progress. Calls onMeta(total) once, then
    *  onProgress(done,total,title,match) per scored role. Throws if streaming is
-   *  unavailable so the caller can fall back to matchAll(). */
+   *  unavailable so the caller can fall back to matchAll().
+   *  Pass resumeId to stream scores against a specific résumé profile. */
   async matchAllStream(handlers: {
-    onMeta?: (total: number) => void
+    onMeta?: (total: number, resumeId?: string | null) => void
     onProgress?: (done: number, total: number, title: string, match: AiMatch | null) => void
     /** Live pipeline stage (reading → résumé → scoring → ranking) so the UI can
      *  animate "what the AI is doing" instead of a frozen spinner. */
@@ -1256,11 +1268,12 @@ export const aiApi = {
     /** The server refused to run because the profile is incomplete (no résumé /
      *  no preferences). The funnel can't rank without something to match on. */
     onNotReady?: (missing: string[]) => void
-  }): Promise<void> {
-    await consumeSse('/ai/matches/stream', {}, (obj) => {
+  }, resumeId?: string): Promise<void> {
+    const body = resumeId ? { resume_id: resumeId } : {}
+    await consumeSse('/ai/matches/stream', body, (obj) => {
       if (obj.activity) handlers.onActivity?.(obj.activity.step, obj.activity.label)
       if (obj.notReady) handlers.onNotReady?.(obj.notReady.missing ?? [])
-      if (obj.meta) handlers.onMeta?.(obj.meta.total ?? 0)
+      if (obj.meta) handlers.onMeta?.(obj.meta.total ?? 0, obj.meta.resumeId ?? null)
       if (obj.progress) handlers.onProgress?.(obj.progress.done, obj.progress.total, obj.progress.title, obj.match ?? null)
       if (obj.error) throw new Error('match_stream_error')
     })
@@ -1278,10 +1291,12 @@ export const aiApi = {
 
   /** Bounded re-score of the student's EXISTING matches only (their already-
    *  matched roles) — cheap and concurrency-capped on the server, so fixing a CV
-   *  and refreshing never re-runs the full discovery funnel. */
-  async refreshMatches(): Promise<{ refreshed: number; total: number }> {
+   *  and refreshing never re-runs the full discovery funnel. Pass resumeId to
+   *  refresh only that résumé's scores. */
+  async refreshMatches(resumeId?: string): Promise<{ refreshed: number; total: number }> {
     try {
-      return (await apiFetch('/ai/matches/refresh', { method: 'POST' })) as { refreshed: number; total: number }
+      const body = resumeId ? JSON.stringify({ resume_id: resumeId }) : undefined
+      return (await apiFetch('/ai/matches/refresh', { method: 'POST', body })) as { refreshed: number; total: number }
     } catch {
       return { refreshed: 0, total: 0 }
     }

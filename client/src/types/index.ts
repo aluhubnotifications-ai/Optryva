@@ -222,6 +222,7 @@ export interface AiMatch {
   tip: string
   stale?: boolean
   created_at: string
+  resume_id?: string | null
 }
 
 export type MessageKind = 'text' | 'image' | 'file'

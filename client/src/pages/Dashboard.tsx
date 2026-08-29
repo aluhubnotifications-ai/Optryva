@@ -14,12 +14,12 @@ import {
    Target,
 } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
-import { applicationsApi, followsApi, jobsApi, resumesApi, evidenceApi } from '@/lib/api'
+import { applicationsApi, followsApi, jobsApi, resumesApi, evidenceApi, aiApi } from '@/lib/api'
 import { useMatchProgress } from '@/lib/matchProgress'
 import { profileCompletion } from '@/lib/onboarding'
 import { NudgeModal, type NudgeItem } from '@/components/NudgeModal'
-import type { AiMatch, Application, JobListing, Profile } from '@/types'
-import { Card, CardBody, Badge, Avatar, Progress, Skeleton } from '@/components/ui/primitives'
+import type { AiMatch, Application, JobListing, Profile, ResumeProfile } from '@/types'
+import { Card, CardBody, Badge, Avatar, Progress, Skeleton, Select } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { Spinner, PageSpinner } from '@/components/ui/Spinner'
 import { LoadingMascot, DancingMascot } from '@/components/DancingMascot'
@@ -68,6 +68,8 @@ function StudentDashboard({ user }: { user: Profile }) {
   const [following, setFollowing] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [resumeCount, setResumeCount] = useState(0)
+  const [resumes, setResumes] = useState<ResumeProfile[]>([])
+  const [selectedResumeId, setSelectedResumeId] = useState<string | null>(null)
   const [evidenceCount, setEvidenceCount] = useState(0)
 
   // Post-onboarding nudge: the router sends users who HAVEN'T finished onboarding
@@ -115,17 +117,25 @@ function StudentDashboard({ user }: { user: Profile }) {
       setApps(a)
       setFollowing(new Set(myFollows.map((f) => f.company_id)))
       setResumeCount(rs.length)
+      setResumes(rs)
+      // Default to the active resume.
+      const activeResume = rs.find((r) => r.active)
+      setSelectedResumeId(activeResume ? activeResume.id : (rs[0]?.id ?? null))
       setEvidenceCount(evs.length)
       setLoading(false)
       const ms = Math.round((performance.now() - dataStart) * 10) / 10
       perf('dashboard DATA READY', { jobs: j.length, apps: a.length, ms })
     })()
 
-    // Show any already-computed (cached) matches instantly — NO AI work runs on
-    // the login path, so the dashboard paints in well under a second. Live scoring
-    // is triggered where the student actually looks at matches (Insights / Jobs /
-    // Research), not here, keeping first login fast.
-    void useMatchProgress.getState().hydrate(user.id)
+     // Show any already-computed (cached) matches instantly — NO AI work runs on
+     // the login path, so the dashboard paints in well under a second. Live scoring
+     // is triggered where the student actually looks at matches (Insights / Jobs /
+     // Research), not here, keeping first login fast. Re-hydrates when the resume
+     // selection changes so the Top Picks reflect the right résumé.
+     useEffect(() => {
+       if (!selectedResumeId) return
+        void useMatchProgress.getState().hydrate(user.id, selectedResumeId ?? undefined)
+     }, [user.id, selectedResumeId])
 
     return () => {
       active = false
@@ -244,7 +254,29 @@ function StudentDashboard({ user }: { user: Profile }) {
             <SectionHeader
               icon={Sparkles}
               title="AI Top Picks for you"
-              action={<Link to="/app/insights" className="text-sm font-medium text-primary hover:underline">View all matches</Link>}
+              action={
+                <div className="flex items-center gap-2">
+                  {resumes.length > 1 && (
+                    <Select
+                      value={selectedResumeId ?? ''}
+                      onChange={(e) => {
+                        const rid = e.target.value
+                        setSelectedResumeId(rid)
+                        void useMatchProgress.getState().hydrate(user.id, rid || undefined)
+                      }}
+                      className="text-xs"
+                    >
+                      {resumes.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                          {r.active ? ' (active)' : ''}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                  <Link to="/app/insights" className="text-sm font-medium text-primary hover:underline">View all matches</Link>
+                </div>
+              }
             />
             {loading ? (
               <div className="-mx-1 flex gap-3 overflow-hidden pb-2">
