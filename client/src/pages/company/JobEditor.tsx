@@ -13,6 +13,7 @@ import { Avatar, Input, Label, Textarea, Select, Skeleton } from '@/components/u
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/toast'
+import { DancingMascot } from '@/components/DancingMascot'
 
 const CATEGORIES = ['Software Engineering', 'Data', 'Design', 'Marketing', 'Operations', 'Finance', 'Product']
 const LISTING_TYPES: ListingType[] = ['Internship', 'Full-time', 'Part-time', 'Fellowship']
@@ -501,7 +502,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
                 {jobGenerated && (<Button type="button" size="sm" variant="outline" onClick={() => runJobGeneration(true)} loading={jobGenerating}>Refine with instruction</Button>)}
               </div>
               {jobGenError && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{jobGenError}</p>}
-              {jobGenerating && !jobGenerated && (<p className="flex items-center gap-2 text-xs text-muted-foreground"><span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" /> Drafting your job posting…</p>)}
+              {jobGenerating && !jobGenerated && (<p className="flex items-center gap-2 text-xs text-muted-foreground"><DancingMascot size={12} /> Drafting your job posting…</p>)}
               {jobGenerated && (
                 <div className="space-y-3 rounded-lg border border-border p-3">
                   <div>
@@ -681,7 +682,7 @@ function JobEditorForm({ editing, onSaved, onCancel }: { editing: JobListing | n
               {genError && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{genError}</p>}
               {generating && !generated && (
                 <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+                  <DancingMascot size={12} />
                   Generating assessment with AI…
                 </p>
               )}

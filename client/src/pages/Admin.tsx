@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ShieldCheck, Users, GraduationCap, Building2, Coins, Loader2, Trash2, Search, FileText, ExternalLink } from 'lucide-react'
+import { ShieldCheck, Users, GraduationCap, Building2, Coins, Trash2, Search, FileText, ExternalLink } from 'lucide-react'
 import { adminApi, type AdminData, type AdminUserRow, type AdminApplication } from '@/lib/api'
 import type { Plan } from '@/types'
 import { Card, CardBody, Badge, Avatar, Skeleton, Input } from '@/components/ui/primitives'
+import { DancingMascot } from '@/components/DancingMascot'
 import { formatDate } from '@/lib/utils'
 
 const MODEL_LABEL: Record<string, string> = {
@@ -199,7 +200,7 @@ export default function Admin() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
-                          {busy === u.id && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                          {busy === u.id && <DancingMascot size={16} />}
                           <button
                             onClick={() => clearUsage(u)}
                             disabled={busy === u.id || u.calls === 0}

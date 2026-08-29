@@ -1,5 +1,6 @@
 import { forwardRef } from 'react'
 import { cn } from '@/lib/utils'
+import { DancingMascot } from '@/components/DancingMascot'
 
 type Variant = 'default' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'success' | 'subtle'
 type Size = 'sm' | 'md' | 'lg' | 'icon'
@@ -42,7 +43,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       {...props}
     >
       {loading && (
-        <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+        <DancingMascot size={16} />
       )}
       {children}
     </button>

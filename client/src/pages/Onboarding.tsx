@@ -9,10 +9,9 @@ import {
   Briefcase,
   Building2,
   Check,
-  FileText,
-  GraduationCap,
-  Loader2,
-  MapPin,
+   FileText,
+   GraduationCap,
+   MapPin,
   Plus,
   Sparkles,
   Upload,
@@ -28,7 +27,7 @@ import { CountryCombobox } from '@/components/ui/CountryCombobox'
 import { COUNTRIES } from '@/lib/geo'
 import { useToast } from '@/components/ui/toast'
 import { useCurrentUser, useSession } from '@/lib/store'
-import { Spinner } from '@/components/ui/Spinner'
+import { DancingMascot, LoadingMascot } from '@/components/DancingMascot'
 import { profilesApi, onboardingApi, authApi } from '@/lib/api'
 import { invalidateCache } from '@/lib/dataCache'
 import { fileToDataUrlWithProgress } from '@/lib/utils'
@@ -1043,7 +1042,7 @@ function OnboardingContent() {
             </Button>
           ) : (
             <Button onClick={finish} disabled={saving} className="active:scale-95 transition-transform">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Award className="h-4 w-4" />}
+              {saving ? <DancingMascot size={16} /> : <Award className="h-4 w-4" />}
               {userType === 'company' ? 'Finish & post opportunities' : userType === 'school' ? 'Finish & invite students' : 'Finish & go to profile'}
             </Button>
           )}
@@ -1073,7 +1072,7 @@ function OnboardingContent() {
                 : 'Your profile is ready — taking you there…'}
           </p>
           <div className="mt-1">
-            <Spinner label="Loading your profile…" />
+            <LoadingMascot label="Loading your profile…" />
           </div>
           <Confetti count={70} />
           <Confetti count={70} />
@@ -1087,7 +1086,7 @@ export default function Onboarding() {
   return (
     <Suspense fallback={
       <div className="mesh-bg flex min-h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <DancingMascot size={80} />
       </div>
     }>
       <OnboardingContent />

@@ -126,6 +126,10 @@ const TOOL_DESCRIPTIONS = `Available tools and their EXACT parameter names:
   15. count_jobs(user_id?: string) — Count total job listings. If user_id is provided, counts jobs for that specific employer/university. Returns job count and summary.
 
   16. count_messages(session_id?: string) — Count total messages in conversation history. If session_id provided, counts for that session only.
+
+  17. count_matches() — Count and list the student's job matches (fit scores). Returns total and per-match details.
+
+  18. list_applications() — List the student's job applications with statuses and match scores.
 `
 
 type TurnMessage = { role: 'user' | 'assistant'; content: string }
@@ -507,10 +511,62 @@ const TOOL_EXECUTORS: Record<string, (input: ToolInput, userId: string, mode: As
       if (msgErr) return JSON.stringify({ error: msgErr.message })
 
       const sessionCount = count ?? 0
-      return JSON.stringify({ total_sessions: sessionCount, total_messages: msgCount ?? 0 })
+       return JSON.stringify({ total_sessions: sessionCount, total_messages: msgCount ?? 0 })
     } catch (e: any) {
       console.error('[assistant:agent:tool] ✗ count_messages error:', e?.message)
       return JSON.stringify({ error: e?.message ?? 'tool_execution_failed' })
+    }
+  },
+  count_matches: async (input, userId) => {
+    console.log('[assistant:agent:tool] count_matches', { userId })
+    try {
+      const { data, error } = await sb
+        .from('ai_match_cache')
+        .select('job_id, payload', { count: 'exact' })
+        .eq('student_id', userId)
+      if (error) return JSON.stringify({ error: error.message, matches: [], total: 0 })
+      const matches = (data as any[])?.map((m: any) => {
+        let payload: any = {}
+        try { payload = m.payload ? JSON.parse(m.payload) : {} } catch { /* skip */ }
+        return {
+          job_id: m.job_id,
+          score: Math.round(payload.score ?? 0),
+          verdict: payload.verdict ?? '—',
+        }
+      }) ?? []
+      return JSON.stringify({
+        total: data?.length ?? 0,
+        matches,
+      })
+    } catch (e: any) {
+      console.error('[assistant:agent:tool] ✗ count_matches error:', e?.message)
+      return JSON.stringify({ error: e?.message ?? 'tool_execution_failed', matches: [], total: 0 })
+    }
+  },
+  list_applications: async (input, userId) => {
+    console.log('[assistant:agent:tool] list_applications', { userId })
+    try {
+      const { data, error } = await sb
+        .from('applications')
+        .select('id, job_id, status, match_score, created_at, jobs!inner(title, company_name)')
+        .eq('student_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(20)
+      if (error) return JSON.stringify({ error: error.message, applications: [] })
+      return JSON.stringify({
+        total: data?.length ?? 0,
+        applications: (data as any[] | null)?.map((a: any) => ({
+          id: a.id,
+          job_title: a.jobs?.title ?? 'Unknown',
+          company: a.jobs?.company_name ?? '—',
+          status: a.status,
+          match_score: a.match_score,
+          applied_at: a.created_at,
+        })) ?? [],
+      })
+    } catch (e: any) {
+      console.error('[assistant:agent:tool] ✗ list_applications error:', e?.message)
+      return JSON.stringify({ error: e?.message ?? 'tool_execution_failed', applications: [] })
     }
   },
 }
@@ -635,12 +691,13 @@ export async function* runAgent(
    } catch { /* non-critical */ }
 
   // 3. Agent loop
-   const modeDesc: Record<AssistantMode, string> = {
-     student: 'a student looking for internships',
-     employer: 'an employer posting jobs and reviewing candidates',
-     university: 'a university career office',
-   }
+    const modeDesc: Record<AssistantMode, string> = {
+      student: 'a student looking for internships',
+      employer: 'an employer posting jobs and reviewing candidates',
+      university: 'a university career office',
+    }
 
+    let lastText = ''
     for (let iter = 0; iter < maxIters; iter++) {
       console.log(`[assistant:agent] ── loop iter ${iter + 1}/${maxIters} ──`)
       let parsed: { text: string; tool_calls: { name: string; input: ToolInput }[] } | null = null
@@ -658,14 +715,14 @@ export async function* runAgent(
       } catch (e: any) {
         console.error('[assistant:agent] ✗ generateTurn error or timeout on iter %d:', iter, { message: e?.message, stack: e?.stack?.split('\n').slice(0, 3) })
         yield { type: 'error', message: e?.message ?? 'AI call failed or timed out' }
-        yield { type: 'done', summary: 'Error: AI call failed.' }
+         yield { type: 'done', summary: 'Error: AI call failed.', session_id: sessionId }
         return
       }
 
       if (!parsed) {
         console.warn('[assistant:agent] ⚠ AI returned null/empty on iter %d', iter)
         yield { type: 'error', message: 'The AI provider returned an empty response.' }
-        yield { type: 'done', summary: 'Error: no response from AI provider.' }
+         yield { type: 'done', summary: 'Error: no response from AI provider.', session_id: sessionId }
         return
       }
 
@@ -675,10 +732,11 @@ export async function* runAgent(
         tool_names: parsed.tool_calls?.map(tc => tc.name),
       })
 
-      // Emit text
-      if (parsed.text) {
-        yield { type: 'text', text: parsed.text }
-      }
+       // Emit text
+       if (parsed.text) {
+         lastText = parsed.text
+         yield { type: 'text', text: parsed.text }
+       }
 
       // Process tool calls — limit to MAX_TOOL_CALLS
       const toolCalls = (parsed.tool_calls ?? []).slice(0, MAX_TOOL_CALLS)
@@ -701,7 +759,7 @@ export async function* runAgent(
             console.error('[assistant:agent] ✗ error persisting assistant message:', e?.message)
           }
         }
-        yield { type: 'done', summary: parsed.text || 'Done!' }
+        yield { type: 'done', summary: parsed.text || 'Done!', session_id: sessionId }
         break
       }
 
@@ -759,8 +817,8 @@ export async function* runAgent(
       console.log('[assistant:agent] ── iter %d complete, continuing loop ──', iter)
     }
 
-    console.warn('[assistant:agent] ⚠ max iterations (%d) reached — stopping agent loop', maxIters)
-   yield { type: 'end' }
+    console.warn('[assistant:agent] ⚠ max iterations reached — stopping agent loop')
+   yield { type: 'done', summary: lastText || 'Maximum iterations reached.', session_id: sessionId }
 }
 
 // Re-export for the route

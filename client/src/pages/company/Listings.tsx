@@ -45,10 +45,27 @@ export default function Listings() {
 
   const selection: Selection = routeListingId ?? 'all'
 
-  const { jobs, apps, opens, loading, load, invalidate } = useCompanyData()
+   const { jobs, apps, opens, loading, load, invalidate } = useCompanyData()
 
-  const inAppJobs = useMemo(() => jobs.filter((j) => !j.apply_url), [jobs])
-  const externalJobs = useMemo(() => jobs.filter((j) => j.apply_url), [jobs])
+   // Sort: jobs with applicants first (by candidate count descending), then by
+   // deadline urgency (soonest first), with closed/listing-type as tiebreakers.
+   const sortedJobs = useMemo(() => {
+     return [...jobs].sort((a, b) => {
+       const aApps = apps.filter((x) => x.job_id === a.id).length
+       const bApps = apps.filter((x) => x.job_id === b.id).length
+       if (aApps !== bApps) return bApps - aApps // more applicants first
+       // Among equal applicant counts, sooner deadline first
+       const da = daysUntil(a.deadline)
+       const db = daysUntil(b.deadline)
+       if (da === null && db === null) return 0
+       if (da === null) return 1
+       if (db === null) return -1
+       return da - db
+     })
+   }, [jobs, apps])
+
+   const inAppJobs = useMemo(() => sortedJobs.filter((j) => !j.apply_url), [sortedJobs])
+   const externalJobs = useMemo(() => sortedJobs.filter((j) => j.apply_url), [sortedJobs])
   const selectedJob = useMemo(
     () => (selection === 'all' ? null : jobs.find((j) => j.id === selection) ?? null),
     [jobs, selection],

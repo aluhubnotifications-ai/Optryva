@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom'
-import { Gauge, Loader2, Sparkles } from 'lucide-react'
+import { Gauge, Sparkles } from 'lucide-react'
 import { Card, CardBody, Badge, Avatar } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { ScoreRing } from '@/components/ScoreRing'
+import { DancingMascot } from '@/components/DancingMascot'
 import { ResearchBody } from '@/components/AIResearchPanel'
 import type { AiMatch, JobListing, Profile } from '@/types'
 
@@ -80,7 +81,7 @@ export function OpportunityRow({
         <div className="flex shrink-0 items-center gap-2">
           {canScore && !match && (
             <Button size="sm" className="gap-1.5" disabled={scoring || autoRunning} onClick={onScore}>
-              {scoring ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gauge className="h-4 w-4" />}
+              {scoring ? <DancingMascot size={16} /> : <Gauge className="h-4 w-4" />}
               {scoring ? 'Scoring…' : 'Score it'}
             </Button>
           )}

@@ -56,6 +56,10 @@ export async function deepInspect(url: string): Promise<InspectResult> {
       signal: controller.signal,
     })
     console.log('[assistant:tools:deepInspect] fetch complete:', res.status)
+    if (!res.ok) {
+      console.warn('[assistant:tools:deepInspect] ✗ HTTP error:', res.status, url)
+      return { url, title, status: `http_${res.status}`, skills: [], achievements: [], summary: `URL returned HTTP ${res.status}: ${url}` }
+    }
   } catch (e: any) {
     if (e?.name === 'AbortError') {
       console.warn('[assistant:tools:deepInspect] ✗ fetch timed out after 8s:', url)
@@ -71,6 +75,30 @@ export async function deepInspect(url: string): Promise<InspectResult> {
   const text = htmlToText(html)
   const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
   const title = titleMatch ? titleMatch[1].trim() : url
+
+  let commitsText = ''
+  const ghMatch = url.match(/github\.com\/([^/]+)\/([^/]+)/)
+  if (ghMatch && res.ok) {
+    const [, owner, repo] = ghMatch
+    const cleanRepo = repo.replace(/#.*$/, '')
+    try {
+      const commitsRes = await fetch(`https://api.github.com/repos/${owner}/${cleanRepo}/commits?per_page=5`, {
+        headers: {
+          'User-Agent': 'Optryva-Assistant/1.0',
+          'Accept': 'application/vnd.github.v3+json',
+        },
+      })
+      if (commitsRes.ok) {
+        const commits = await commitsRes.json() as any[]
+        commitsText = commits.map((c) => c.commit?.message ?? '').join('\n').slice(0, 2000)
+        console.log('[assistant:tools:deepInspect] ✓ fetched GitHub commits:', commits.length)
+      } else {
+        console.warn('[assistant:tools:deepInspect] GitHub API returned:', commitsRes.status)
+      }
+    } catch (e: any) {
+      console.warn('[assistant:tools:deepInspect] GitHub API error:', e?.message)
+    }
+  }
   console.log('[assistant:tools:deepInspect] extracted title:', title, { text_len: text.length })
 
   let skills: string[] = []
@@ -87,7 +115,7 @@ export async function deepInspect(url: string): Promise<InspectResult> {
         '2. Measurable achievements (quantified outcomes, project results).\n' +
         '3. A one-sentence summary of what this person/project/company does.\n\n' +
         'Return ONLY a JSON object: {"skills":["..."],"achievements":["..."],"summary":"..."}',
-      user: `URL: ${url}\nTitle: ${title}\n\nContent:\n${text.slice(0, 6000)}`,
+      user: `URL: ${url}\nTitle: ${title}\n\nContent:\n${text.slice(0, 6000)}${commitsText ? `\n\nRecent commits:\n${commitsText}` : ''}`,
     })
     console.log('[assistant:tools:deepInspect] generateText raw result:', ai?.slice(0, 200) ?? 'null')
     const parsed = extractJson<{ skills?: string[]; achievements?: string[]; summary?: string }>(ai)

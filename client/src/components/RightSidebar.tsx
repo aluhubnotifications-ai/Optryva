@@ -85,9 +85,17 @@ export function RightSidebar({ mode }: RightSidebarProps) {
     return 'assistant'
   })
   const [assistantView, setAssistantView] = useState<AssistantView>('chat')
-  const [sessionId, setSessionId] = useState<string | undefined>(() => {
-    return typeof localStorage !== 'undefined' ? localStorage.getItem(SESSION_KEY) ?? undefined : undefined
-  })
+   const [sessionId, setSessionId] = useState<string | undefined>(() => {
+     if (typeof localStorage === 'undefined') return undefined
+     const stored = localStorage.getItem(SESSION_KEY)
+     if (!stored) return undefined
+     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+     if (!uuidRegex.test(stored)) {
+       localStorage.removeItem(SESSION_KEY)
+       return undefined
+     }
+     return stored
+   })
   const [sessions, setSessions] = useState<HistorySession[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)

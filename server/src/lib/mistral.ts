@@ -265,3 +265,68 @@ export async function extractPdfText(b64: string): Promise<string | null> {
     return null
   }
 }
+
+/**
+ * Streaming text response from Mistral. Yields text deltas via the `onToken`
+ * callback (same contract as streamClaude). Returns true if any tokens were
+ * received, false on failure. Used for company research / AI research where
+ * live progress matters more than a single blocking response.
+ */
+export async function mistralTextStream(
+  opts: { system: string; user: string; maxTokens?: number },
+  onToken: (t: string) => void,
+): Promise<boolean> {
+  if (!hasMistral()) return false
+  try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 25000)
+    const res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.MISTRAL_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: MISTRAL_MODEL,
+        messages: [
+          { role: 'system', content: opts.system },
+          { role: 'user', content: opts.user },
+        ],
+        max_tokens: opts.maxTokens ?? 1000,
+        stream: true,
+      }),
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeoutId))
+    if (!res.ok) {
+      console.error('[mistral] ✗ stream HTTP error:', { status: res.status, statusText: res.statusText })
+      return false
+    }
+    const reader = res.body?.getReader()
+    if (!reader) return false
+    const dec = new TextDecoder()
+    let buf = ''
+    let got = false
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += dec.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() ?? ''
+      for (const line of lines) {
+        const t = line.trim()
+        if (!t.startsWith('data:')) continue
+        const payload = t.slice(5).trim()
+        if (payload === '[DONE]') continue
+        try {
+          const obj = JSON.parse(payload)
+          const delta: string | undefined = obj?.choices?.[0]?.delta?.content
+          if (delta) { got = true; onToken(delta) }
+        } catch { /* ignore partial/malformed frames */ }
+      }
+    }
+    return got
+  } catch (e: any) {
+    console.error('[mistral] ✗ stream error:', { message: e?.message, name: e?.name })
+    return false
+  }
+}

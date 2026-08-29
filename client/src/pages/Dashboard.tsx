@@ -11,20 +11,19 @@ import {
    Users,
    Clock,
   GraduationCap,
-  Target,
-  Loader2,
+   Target,
 } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
-import { applicationsApi, followsApi, jobsApi } from '@/lib/api'
+import { applicationsApi, followsApi, jobsApi, resumesApi, evidenceApi } from '@/lib/api'
 import { useMatchProgress } from '@/lib/matchProgress'
 import { profileCompletion } from '@/lib/onboarding'
 import { NudgeModal, type NudgeItem } from '@/components/NudgeModal'
 import type { AiMatch, Application, JobListing, Profile } from '@/types'
 import { Card, CardBody, Badge, Avatar, Progress, Skeleton } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
-import { Spinner } from '@/components/ui/Spinner'
+import { Spinner, PageSpinner } from '@/components/ui/Spinner'
+import { LoadingMascot, DancingMascot } from '@/components/DancingMascot'
 import { ScoreRing } from '@/components/ScoreRing'
-import { LoadingMascot } from '@/components/DancingMascot'
 import { formatDate, daysUntil } from '@/lib/utils'
 import { perf } from '@/lib/perf'
 
@@ -68,6 +67,8 @@ function StudentDashboard({ user }: { user: Profile }) {
   const [apps, setApps] = useState<Application[]>([])
   const [following, setFollowing] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
+  const [resumeCount, setResumeCount] = useState(0)
+  const [evidenceCount, setEvidenceCount] = useState(0)
 
   // Post-onboarding nudge: the router sends users who HAVEN'T finished onboarding
   // back into the wizard, so by the time we're here the required steps are done.
@@ -85,14 +86,14 @@ function StudentDashboard({ user }: { user: Profile }) {
       evidence: { label: 'Build your portfolio & evidence', cta: 'Add', to: '/app/profile?tab=gallery' },
       bio: { label: 'Write a short bio', cta: 'Add', to: '/app/profile?focus=about' },
     }
-    const c = profileCompletion(user)
+    const c = profileCompletion(user, resumeCount, evidenceCount)
     return Object.entries(map)
       .filter(([k]) => {
         const step = [...c.required, ...c.optional].find((s) => s.key === k)
         return step ? !step.done : false
       })
       .map(([k, v]) => ({ key: k, ...v }))
-  }, [user])
+  }, [user, resumeCount, evidenceCount])
   const showNudge = !nudgeHidden && nudgeItems.length > 0
 
   useEffect(() => {
@@ -102,15 +103,19 @@ function StudentDashboard({ user }: { user: Profile }) {
     ;(async () => {
       // Jobs now carry company_name + company_avatar_url, so the dashboard no
       // longer needs a separate directory fetch — just jobs + apps + follows.
-      const [j, a, myFollows] = await Promise.all([
+      const [j, a, myFollows, rs, evs] = await Promise.all([
         jobsApi.list(user),
         applicationsApi.byStudent(user.id),
         followsApi.forStudent(user.id),
+        resumesApi.list(),
+        evidenceApi.listForStudent(user.id),
       ])
       if (!active) return
       setJobs(j)
       setApps(a)
       setFollowing(new Set(myFollows.map((f) => f.company_id)))
+      setResumeCount(rs.length)
+      setEvidenceCount(evs.length)
       setLoading(false)
       const ms = Math.round((performance.now() - dataStart) * 10) / 10
       perf('dashboard DATA READY', { jobs: j.length, apps: a.length, ms })
@@ -480,8 +485,8 @@ function MatchSkeleton() {
 function TopPicksLoading({ done, total }: { done: number; total: number }) {
   return (
     <Card>
-      <CardBody className="flex flex-col items-center gap-3 py-10 text-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <CardBody className="flex flex-col items-center justify-center gap-2 py-14 text-center">
+        <DancingMascot size={80} />
         <p className="font-medium">Finding your top picks…</p>
         <p className="text-sm text-muted-foreground">
           {total > 0 ? `Scoring ${done} of ${total} roles` : 'Reading your profile…'}

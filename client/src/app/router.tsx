@@ -6,6 +6,7 @@ import { authApi } from '@/lib/api'
 import { requiresProfileCompletion, isNewAccount } from '@/lib/onboarding'
 import { useLocation } from 'react-router-dom'
 import { Spinner } from '@/components/ui/Spinner'
+import { DancingMascot } from '@/components/DancingMascot'
 
 import { type ComponentType } from 'react'
 import Landing from '@/pages/Landing'
@@ -60,7 +61,7 @@ function ProfileRoute() {
 function RouteFallback() {
   return (
     <div className="mesh-bg flex min-h-[60vh] items-center justify-center">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <DancingMascot size={80} />
     </div>
   )
 }
@@ -308,7 +309,7 @@ export const router = createBrowserRouter([
       <Suspense
         fallback={
           <div className="mesh-bg flex min-h-screen items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <DancingMascot size={80} />
           </div>
         }
       >

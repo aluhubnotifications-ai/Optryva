@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Sparkles, Search, Loader2, X } from 'lucide-react'
+import { Sparkles, Search, X } from 'lucide-react'
+import { DancingMascot } from '@/components/DancingMascot'
 import { useCurrentUser } from '@/lib/store'
 import { aiApi, jobsApi, profilesApi } from '@/lib/api'
 import { useMatchProgress } from '@/lib/matchProgress'
@@ -161,7 +162,7 @@ export default function Research() {
             )}
           </div>
           <Button type="submit" className="shrink-0 gap-1.5 rounded-xl" disabled={sourcing}>
-            {sourcing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+            {sourcing ? <DancingMascot size={16} /> : <Search className="h-4 w-4" />}
             <span className="hidden sm:inline">{sourcing ? 'Searching…' : 'Search with AI'}</span>
           </Button>
         </div>

@@ -93,9 +93,14 @@ export function documentUrl(path: string): string {
 }
 
 export async function storeDocument(ownerId: string, kind: string, name: string, dataUrl: string) {
-  // Already-stored URLs are passed through untouched (path stays null so callers
-  // know the bytes live in Supabase Storage already, not re-uploaded).
+  // Already-stored URLs are passed through untouched — but we still need the
+  // storage_path so downstream authorization (canReadDocument) can match them.
   if (/^https?:\/\//.test(dataUrl) || dataUrl.startsWith('/')) {
+    if (dataUrl.startsWith('/api/documents/')) {
+      const token = dataUrl.slice('/api/documents/'.length)
+      const path = pathFromToken(token)
+      if (path) return { path, url: dataUrl, mime: '', size: 0 }
+    }
     return { path: null, url: dataUrl, mime: '', size: 0 }
   }
   const { mime, bytes } = decodeDataUrl(dataUrl)
@@ -117,10 +122,10 @@ async function audit(path: string, viewerId: string) {
 
 export async function canReadDocument(path: string, viewer: { id: string; email: string }): Promise<boolean> {
   if (isAdminEmail(viewer.email)) return true
-  // Evidence files (`<ownerId>/evidence/…`) are shareable proof-of-work that a
-  // candidate surfaces to reviewers, so any authenticated user may read them.
+  // Evidence files (`<ownerId>/<uid>-evidence-…`) are shareable proof-of-work that
+  // a candidate surfaces to reviewers, so any authenticated user may read them.
   const segments = path.split('/')
-  if (segments[1] === 'evidence') return true
+  if (segments[1]?.includes('evidence')) return true
   // A student can read any document stored under their own upload prefix
   // (résumés, evidence files, etc.).
   if (path.startsWith(`${viewer.id}/`)) return true

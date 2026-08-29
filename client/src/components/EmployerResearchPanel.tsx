@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Sparkles, Send, Loader2 } from 'lucide-react'
+import { Sparkles, Send } from 'lucide-react'
+import { DancingMascot } from '@/components/DancingMascot'
 import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/primitives'
 import { Markdown } from '@/components/Markdown'
@@ -83,7 +84,7 @@ export function EmployerResearchPanel({
         ))}
         {busy && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Thinking…
+            <DancingMascot size={14} /> Thinking…
           </div>
         )}
       </div>

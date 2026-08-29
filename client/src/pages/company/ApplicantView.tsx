@@ -532,6 +532,14 @@ export default function ApplicantView() {
                   </Badge>
                 )}
               </div>
+              {job.tags.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {job.tags.slice(0, 6).map((t) => <Badge key={t} tone="outline" className="text-[10px]">{t}</Badge>)}
+                </div>
+              )}
+              {job.description && (
+                <p className="mt-2 max-w-xl text-sm text-muted-foreground line-clamp-2">{job.description}</p>
+              )}
               <p className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary">
                 View full role details <ChevronRight className="h-3.5 w-3.5" />
               </p>
@@ -682,17 +690,17 @@ export default function ApplicantView() {
           </SectionCard>
         </TabsContent>
 
-         {/* Documents */}
-         <TabsContent value="documents" className="space-y-5">
-           <SectionCard n={1} title="Documents" desc="Everything the candidate attached">
-             <DocumentList documents={app.documents} />
-           </SectionCard>
-         </TabsContent>
+        {/* Documents */}
+        <TabsContent value="documents" className="space-y-5">
+          <SectionCard n={1} title="Documents" desc="Everything the candidate attached">
+            <DocumentList documents={app.documents} />
+          </SectionCard>
+        </TabsContent>
 
-           {/* Evidence — employers see an AI summary, with a path to the full gallery */}
-           <TabsContent value="evidence" className="space-y-5">
-              <EmployerEvidenceSummary studentId={app.student_id} job={job} />
-           </TabsContent>
+            {/* Evidence — employers see an AI summary, with a path to the full gallery */}
+            <TabsContent value="evidence" className="space-y-5">
+               <EmployerEvidenceSummary studentId={app.student_id} job={job} />
+            </TabsContent>
 
         {/* Assessment */}
         {hasAssignment && (
@@ -1034,9 +1042,9 @@ export default function ApplicantView() {
       </div>
       </div>
 
-				<aside className="space-y-4 lg:sticky lg:top-[7.5rem] lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto">
-					<Card>
-						<CardBody className="space-y-3">
+				<aside className="space-y-4 lg:sticky lg:top-[7.5rem] lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto z-30">
+				<Card>
+					<CardBody className="space-y-3">
 							<div className="flex flex-col items-center gap-2 text-center">
 								<Avatar name={app.full_name} src={app.student_avatar_url || monogramAvatar(app.full_name)} size={64} className="rounded-2xl" style={avatarRingStyle(app.tags)} />
 								<div className="min-w-0">
@@ -1185,7 +1193,7 @@ export default function ApplicantView() {
     </div>
 
       {/* Full role details, opened from the "Applied for" card. */}
-      <Modal open={showJob} onClose={() => setShowJob(false)} title={job ? `Role details — ${job.title}` : 'Role details'} size="lg">
+      <Modal open={showJob} onClose={() => setShowJob(false)} title={job ? `Role details — ${job.title}` : 'Role details'} size="xl">
         {job && <JobPostingView job={job} brand={job.company_name} logo={job.company_avatar_url} />}
       </Modal>
     </div>

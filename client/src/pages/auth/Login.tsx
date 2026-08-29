@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
-import { Loader2, Mail, Lock, AlertCircle } from 'lucide-react'
+import { Mail, Lock, AlertCircle } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/Button'
 import { Input, Label } from '@/components/ui/primitives'
@@ -12,8 +12,10 @@ import { cn } from '@/lib/utils'
 
 const ERRORS: Record<string, string> = {
   bad_credentials: 'Incorrect email or password.',
-  account_google: 'This account uses Google. Please sign in with Google above.',
+  account_google: 'This account was created with Google. Please sign in with Google above.',
   invalid: 'Please enter your email and password.',
+  login_failed: 'Could not sign in. Please try again.',
+  unauthorized: 'You are not authorized to access this resource.',
 }
 
 export default function Login() {

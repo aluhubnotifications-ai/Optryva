@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Sparkles, ExternalLink, ImageIcon, Loader2 } from 'lucide-react'
+import { Sparkles, ExternalLink, ImageIcon } from 'lucide-react'
 import { evidenceApi, profilesApi } from '@/lib/api'
 import type { JobListing, EvidenceItem, Profile } from '@/types'
 import { Card, CardBody, Badge } from '@/components/ui/primitives'
 import { ShortlistAssistantSidebar } from '@/components/ShortlistAssistantSidebar'
+import { DancingMascot } from '@/components/DancingMascot'
 
 // Minimal Markdown renderer for the AI summary: handles **bold**, "- " bullets,
 // and short **Heading** lines. Avoids pulling in a full Markdown dependency for
@@ -131,9 +132,9 @@ export function EmployerEvidenceSummary({ studentId, job }: { studentId: string;
         </div>
 
         {loading ? (
-          <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Building the candidate summary…
-          </div>
+           <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+             <DancingMascot size={20} /> Building the candidate summary…
+           </div>
         ) : summary ? (
           <div className="text-sm">
             <SummaryMarkdown text={summary} />

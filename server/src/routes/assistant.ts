@@ -51,11 +51,8 @@ assistant.post('/chat', async (req, res) => {
         } else if (ev.type === 'action') {
           finalActions.push(ev.action)
         } else if (ev.type === 'done') {
-          finalSessionId = ev.summary || finalSessionId
-          // The 'done' event's summary may contain the final reply
-          if (ev.summary && !finalText) {
-            finalText = ev.summary
-          }
+          finalSessionId = (ev as any).session_id || finalSessionId
+          finalText = ev.summary || finalText
         }
       }
 

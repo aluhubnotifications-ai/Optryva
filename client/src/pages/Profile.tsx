@@ -17,10 +17,9 @@ import {
   Plus,
   Camera,
   Eye,
-  Compass,
-  CheckCircle2,
-  Circle,
-  Loader2,
+   Compass,
+   CheckCircle2,
+   Circle,
 } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
@@ -40,6 +39,7 @@ import { formatDate, cn, fileToDataUrl } from '@/lib/utils'
 import { ResumeWorkspace } from '@/components/ResumeWorkspace'
 import { EvidenceGallery } from '@/components/EvidenceGallery'
 import { CountryMultiSelect } from '@/components/ui/CountryMultiSelect'
+import { DancingMascot } from '@/components/DancingMascot'
 
 const ROLES = ['Software Engineering', 'Data Science', 'Product Management', 'Marketing', 'Operations', 'Finance', 'Design', 'Consulting']
 const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Agriculture', 'Education', 'E-commerce', 'Consulting', 'Nonprofit']
@@ -578,7 +578,7 @@ function ProfileSaveStatus({ saved }: { saved: 'idle' | 'saving' | 'saved' }) {
     <div className="inline-flex items-center gap-2 rounded-full bg-muted/60 px-3 py-1.5 text-sm">
       {saved === 'saving' ? (
         <>
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+          <DancingMascot size={14} />
           <span className="text-muted-foreground">Saving…</span>
         </>
       ) : (

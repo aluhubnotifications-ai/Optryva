@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
-import { GraduationCap, Building2, School, ArrowRight, Loader2 } from 'lucide-react'
+import { GraduationCap, Building2, School, ArrowRight } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/Button'
 import { useSession } from '@/lib/store'

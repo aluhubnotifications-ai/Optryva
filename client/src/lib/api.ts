@@ -1172,7 +1172,7 @@ async function consumeSse(path: string, body: unknown, onFrame: (obj: any) => vo
   }
 }
 
-async function streamAi(label: string, path: string, body: unknown, onToken: (t: string) => void, onMeta?: (m: any) => void): Promise<boolean> {
+async function streamAi(label: string, path: string, body: unknown, onToken: (t: string) => void, onMeta?: (m: any) => void, onDone?: (info: { cached: boolean }) => void): Promise<boolean> {
   return trackAi(label, async () => {
     const res = await rawFetchAuthed(path, { method: 'POST', body: JSON.stringify(body) })
     if (!res.ok || !res.body) throw new Error(`stream_failed_${res.status}`)
@@ -1193,7 +1193,14 @@ async function streamAi(label: string, path: string, body: unknown, onToken: (t:
         try {
           const obj = JSON.parse(line.slice(5).trim())
           if (obj.meta !== undefined) onMeta?.(obj.meta)
-          if (obj.t) { got = true; onToken(obj.t as string) }
+          if (obj.t) {
+            if (obj.t === 'done') {
+              onDone?.({ cached: !!obj.cached })
+              continue
+            }
+            got = true
+            onToken(obj.t as string)
+          }
           if (obj.error) errored = true
         } catch { /* ignore partial frames */ }
       }
@@ -1298,9 +1305,9 @@ export const aiApi = {
     }
   },
 
-  async companyResearch(companyName: string, role?: string): Promise<CompanyResearch> {
+  async companyResearch(companyName: string, role?: string, force?: boolean): Promise<CompanyResearch> {
     try {
-      return (await trackAi(`Researching ${companyName}`, () => aiPost('/ai/company', { company: companyName, role }))) as CompanyResearch
+      return (await trackAi(`Researching ${companyName}`, () => aiPost('/ai/company', { company: companyName, role, force }))) as CompanyResearch
     } catch {
       return { overview: AI_ERR, culture: '', opportunity: '', red_flags: '', questions: [], verdict: '' }
     }
@@ -1330,9 +1337,16 @@ export const aiApi = {
 
   /** Streamed company research (live web-grounded Markdown). Renders progressively
    *  instead of blocking ~1min on a single call. Returns true if anything streamed;
-   *  throws on a hard failure so the store can surface an error. */
-  async companyResearchStream(companyName: string, role: string | undefined, onToken: (t: string) => void): Promise<boolean> {
-    return await streamAi(`Researching ${companyName}`, '/ai/company/stream', { company: companyName, role }, onToken)
+   *  throws on a hard failure so the store can surface an error.
+   *  `onDone` receives `{ cached: boolean }` when the server signals completion. */
+  async companyResearchStream(
+    companyName: string,
+    role: string | undefined,
+    onToken: (t: string) => void,
+    force?: boolean,
+    onDone?: (info: { cached: boolean }) => void,
+  ): Promise<boolean> {
+    return await streamAi(`Researching ${companyName}`, '/ai/company/stream', { company: companyName, role, force }, onToken, onDone)
   },
 
   /** Streamed research answer (live web-grounded). Returns true if anything

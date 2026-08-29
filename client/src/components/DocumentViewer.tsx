@@ -18,9 +18,9 @@ async function resolveViewUrl(d: AppDocument): Promise<string> {
 }
 
 const isImage = (d: AppDocument) =>
-	/^data:image\//.test(d.url) || /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(d.url)
+	/^data:image\//.test(d.url) || /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(d.url) || /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(d.name)
 const isPdf = (d: AppDocument) =>
-	/^data:application\/pdf/i.test(d.url) || /\.pdf$/i.test(d.url)
+	/^data:application\/pdf/i.test(d.url) || /\.pdf$/i.test(d.url) || /\.pdf$/i.test(d.name)
 
 export function DocumentViewer({
 	document: doc,
@@ -81,7 +81,7 @@ export function DocumentViewer({
 				</button>
 				{doc && (
 					<a
-						href={url ?? undefined}
+						href={url ?? doc.url}
 						download={doc.name}
 						target="_blank"
 						rel="noopener"

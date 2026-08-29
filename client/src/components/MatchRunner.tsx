@@ -1,13 +1,14 @@
 import { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTransitionNavigate } from '@/lib/useTransitionNavigate'
-import { Sparkles, AlertTriangle, FileText, SlidersHorizontal, Check, Loader2, User, FileSearch, BarChart3, ListOrdered } from 'lucide-react'
+import { Sparkles, AlertTriangle, FileText, SlidersHorizontal, Check, User, FileSearch, BarChart3, ListOrdered } from 'lucide-react'
 import { Card, CardBody, Progress } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { useMatchProgress } from '@/lib/matchProgress'
 import { useCurrentUser } from '@/lib/store'
 import { matchReadiness, type MatchMissing } from '@/lib/matchReady'
 import { cn } from '@/lib/utils'
+import { DancingMascot } from '@/components/DancingMascot'
 
 /**
  * The "Run AI matching" gate + REAL progress. Driven by the global match-progress
@@ -188,7 +189,7 @@ export function MatchRunner({
                     {status === 'done' ? (
                       <Check className="h-4 w-4" />
                     ) : status === 'active' ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <DancingMascot size={16} />
                     ) : (
                       <Icon className="h-4 w-4" />
                     )}

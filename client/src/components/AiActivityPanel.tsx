@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Activity, Loader2, CheckCircle2, AlertTriangle, X, Sparkles } from 'lucide-react'
+import { Activity, CheckCircle2, AlertTriangle, X, Sparkles } from 'lucide-react'
 import { useAiActivity, type AiTask, type TaskProgress } from '@/lib/aiActivity'
 import { cn } from '@/lib/utils'
+import { DancingMascot } from '@/components/DancingMascot'
 
 /**
  * Always-on window into what Optryva's AI is doing — matching, research, the
@@ -89,9 +90,9 @@ export function AiActivityPanel() {
         className="glass flex items-center gap-2 rounded-full border border-border px-3.5 py-2 text-sm font-medium shadow-card transition-colors hover:bg-muted"
         title="What the AI is doing"
       >
-        {status === 'busy' ? (
-          <Loader2 className="h-4 w-4 animate-spin text-accent" />
-        ) : (
+          {status === 'busy' ? (
+            <DancingMascot size={16} />
+          ) : (
           <span className={cn('h-2.5 w-2.5 rounded-full', dot, status === 'error' && 'animate-pulse')} />
         )}
         <span className="max-w-[10rem] truncate">{pillLabel}</span>
@@ -107,9 +108,9 @@ function TaskRow({ task }: { task: AiTask }) {
   return (
     <li className="flex items-start gap-2.5 rounded-lg px-2 py-2 hover:bg-muted/60">
       <span className="mt-0.5">
-        {task.state === 'running' ? (
-          <Loader2 className="h-4 w-4 animate-spin text-accent" />
-        ) : task.state === 'error' ? (
+          {task.state === 'running' ? (
+            <DancingMascot size={16} />
+          ) : task.state === 'error' ? (
           <AlertTriangle className="h-4 w-4 text-danger" />
         ) : (
           <CheckCircle2 className="h-4 w-4 text-success" />

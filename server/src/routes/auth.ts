@@ -82,7 +82,9 @@ auth.post('/login', async (req, res) => {
   if (!u) return res.status(401).json({ error: 'bad_credentials' })
   // Google-only accounts have no password — send them to Google sign-in rather
   // than letting bcrypt.compare(password, null) throw an unhandled 500.
-  if (!u.password_hash) return res.status(401).json({ error: 'account_google' })
+  if (!u.password_hash || u.auth_provider === 'google') {
+    return res.status(401).json({ error: 'account_google' })
+  }
   if (!(await bcrypt.compare(password, u.password_hash))) return res.status(401).json({ error: 'bad_credentials' })
   const profile = u.profiles as any
   const user = await authUserFromRow(profile)

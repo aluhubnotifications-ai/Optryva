@@ -190,14 +190,26 @@ evidence.get('/', async (req, res) => {
   const rows = must(
     await sb.from('evidence_items').select('*').eq('student_id', req.user!.id).order('created_at', { ascending: false }),
   ) as EvidenceRow[]
-  res.json(rows.map((r) => ({ ...r, status: normalizeStatus(r.status) })))
+  res.json(
+    rows.map((r) => ({
+      ...r,
+      status: normalizeStatus(r.status),
+      files: (r.file_path && r.file_name) ? [{ path: r.file_path, name: r.file_name }] : (r.files as { path: string; name: string }[] | undefined) ?? [],
+    })),
+  )
 })
 
 evidence.get('/student/:studentId', async (req, res) => {
   const rows = must(
     await sb.from('evidence_items').select('*').eq('student_id', req.params.studentId).order('created_at', { ascending: false }),
   ) as EvidenceRow[]
-  res.json(rows.map((r) => ({ ...r, status: normalizeStatus(r.status) })))
+  res.json(
+    rows.map((r) => ({
+      ...r,
+      status: normalizeStatus(r.status),
+      files: (r.file_path && r.file_name) ? [{ path: r.file_path, name: r.file_name }] : (r.files as { path: string; name: string }[] | undefined) ?? [],
+    })),
+  )
 })
 
 // Candidate-level AI summary for employers. When a `jobDescription` is supplied
@@ -323,7 +335,16 @@ evidence.post('/:id/extract', async (req, res) => {
   ].filter(Boolean).join('\n\n')
 
   const analyzed = await extractionClient.analyze(text || (row.links ?? []).join('\n'))
-  const skills = analyzed?.skills ?? []
+  let skills = analyzed?.skills ?? []
+
+  // Normalize: split any skill that looks like two skills concatenated without a
+  // separator (e.g. "Event productionTeamwork" → ["Event production", "Teamwork"]).
+  skills = skills.flatMap((s) => {
+    if (s.length < 3) return [s]
+    const parts = s.split(/(?=[A-Z])/g).map((p) => p.trim()).filter(Boolean)
+    return parts.length > 1 ? parts : [s]
+  })
+
   const summary = analyzed?.summary ?? null
   // Mark the item as AI-analyzed so the gallery can show that step in the flow.
   const status = row.status === 'self_reported' ? 'ai_analyzed' : row.status
@@ -337,7 +358,16 @@ evidence.post('/:id/extract', async (req, res) => {
 
 evidence.post('/:id/confirm', async (req, res) => {
   const b = req.body ?? {}
-  const confirmed: string[] = Array.isArray(b.confirmed) ? b.confirmed.map((x: unknown) => String(x)).filter(Boolean) : []
+  let confirmed: string[] = Array.isArray(b.confirmed) ? b.confirmed.map((x: unknown) => String(x).trim()).filter(Boolean) : []
+
+  // Normalize: if a skill looks like two skills concatenated without a separator
+  // (e.g. "Event productionTeamwork"), split on camelCase boundaries.
+  confirmed = confirmed.flatMap((s) => {
+    if (s.length < 3) return [s]
+    const parts = s.split(/(?=[A-Z])/g).map((p) => p.trim()).filter(Boolean)
+    return parts.length > 1 ? parts : [s]
+  })
+
   const row = (await sb.from('evidence_items').select('*').eq('id', req.params.id).eq('student_id', req.user!.id).maybeSingle()).data as
     | EvidenceRow
     | null

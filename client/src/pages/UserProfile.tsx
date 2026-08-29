@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, MapPin, GraduationCap, Building2, Mail, Linkedin, Github, Globe, FileText, Briefcase } from 'lucide-react'
-import { profilesApi } from '@/lib/api'
+import { ArrowLeft, MapPin, GraduationCap, Building2, Mail, Linkedin, Github, Globe, FileText, Briefcase, Sparkles } from 'lucide-react'
+import { profilesApi, evidenceApi } from '@/lib/api'
 import type { Profile } from '@/types'
 import { Card, CardBody, Badge, Avatar, Skeleton } from '@/components/ui/primitives'
 import { EvidenceGallery } from '@/components/EvidenceGallery'
+import { DancingMascot } from '@/components/DancingMascot'
 import { formatDate } from '@/lib/utils'
 
 /** Read-only profile view for ANY user by id (student / company / school).
@@ -13,6 +14,49 @@ export default function UserProfile() {
   const { id } = useParams()
   const [p, setP] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [evidenceSummary, setEvidenceSummary] = useState<EvidenceSummary | null>(null)
+  const [evidenceLoading, setEvidenceLoading] = useState(false)
+
+  type EvidenceSummary = {
+  overview: string
+  bullets: string[]
+}
+
+function parseSummary(raw: string): EvidenceSummary {
+  // Strip emojis and markdown bold markers
+  let cleaned = raw
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/[^\S]?\*[^\S]?/g, ' ')
+    .replace(/[\u2605\u2606\u2B50\ud83c\udf89\ud83c\ud83c\udd8c\ufe0f]/g, '')
+    .trim()
+
+  // Split into overview + bullets. Bullets are separated by " – " (en-dash)
+  // or start with "- " after "Evidence highlights".
+  const highlightsIdx = cleaned.search(/evidence highlights/i)
+  let overview = cleaned
+  let bullets: string[] = []
+
+  if (highlightsIdx !== -1) {
+    overview = cleaned.slice(0, highlightsIdx).trim()
+    const rest = cleaned.slice(highlightsIdx)
+    // Split on "– " (en-dash space) or newlines with dashes
+    const rawBullets = rest
+      .replace(/^evidence highlights\s*/i, '')
+      .split(/(?:\n\s*–\s*|\n\s*-\s*|--\s)/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+    bullets = rawBullets
+  } else {
+    // Try splitting on en-dash separated list
+    const dashSplit = cleaned.split(/(?:\n\s*–\s*|\n\s*-\s*)/).map((s) => s.trim()).filter(Boolean)
+    if (dashSplit.length > 1) {
+      overview = dashSplit[0]
+      bullets = dashSplit.slice(1)
+    }
+  }
+
+  return { overview, bullets }
+}
 
   useEffect(() => {
     let active = true
@@ -21,9 +65,18 @@ export default function UserProfile() {
     return () => { active = false }
   }, [id])
 
+  useEffect(() => {
+    if (!p || p.user_type !== 'student') return
+    let active = true
+    setEvidenceLoading(true)
+    evidenceApi.summary(p.id).then((s) => { if (active && s) setEvidenceSummary(parseSummary(s.summary)) }).catch(() => {})
+      .finally(() => active && setEvidenceLoading(false))
+    return () => { active = false }
+  }, [p])
+
   if (loading) {
     return (
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto max-w-7xl">
         <Card><CardBody className="space-y-3"><Skeleton className="h-16 w-16 rounded-full" /><Skeleton className="h-5 w-1/3" /><Skeleton className="h-3 w-1/2" /></CardBody></Card>
       </div>
     )
@@ -39,7 +92,7 @@ export default function UserProfile() {
   ].filter(Boolean) as { icon: typeof Globe; label: string; href: string }[]
 
   return (
-    <div className="mx-auto max-w-3xl">
+     <div className="mx-auto max-w-7xl">
       {p.cover_url && (
         <div className="h-44 w-full overflow-hidden rounded-xl bg-gradient-to-r from-primary/30 to-accent/20">
           <img src={p.cover_url} alt="Cover" className="h-full w-full object-cover" />
@@ -118,12 +171,44 @@ export default function UserProfile() {
         </CardBody>
       </Card>
 
-      {/* Evidence gallery — reviewers land here from the employer AI summary */}
-      {!isOrg && (
-        <div className="mt-5">
-          <EvidenceGallery studentId={p.id} mode="viewer" />
-        </div>
-      )}
+       {/* Evidence section — reviewers land here from employer AI summary */}
+        {!isOrg && (
+          <div className="mt-6">
+            <h2 className="mb-4 text-xl font-bold tracking-tight">Portfolio & evidence</h2>
+            {evidenceLoading ? (
+              <Card>
+                <CardBody>
+               <div className="flex items-center gap-2">
+                     <DancingMascot size={20} />
+                     <span className="text-sm text-muted-foreground">Building AI summary…</span>
+                  </div>
+                </CardBody>
+              </Card>
+            ) : evidenceSummary ? (
+              <Card className="bg-gradient-to-br from-primary/5 via-card to-accent/5">
+                <CardBody>
+                  <div className="mb-3 flex items-center gap-2">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                    </div>
+                    <h3 className="text-lg font-semibold">AI evidence summary</h3>
+                  </div>
+                  {evidenceSummary.overview && (
+                    <p className="text-xs leading-normal text-foreground/80">{evidenceSummary.overview}</p>
+                  )}
+                  {evidenceSummary.bullets.length > 0 && (
+                    <ul className="mt-2 space-y-1.5 pl-4 text-xs text-foreground/80 marker:text-primary">
+                      {evidenceSummary.bullets.map((b, i) => (
+                        <li key={i} className="leading-normal">{b}</li>
+                      ))}
+                    </ul>
+                  )}
+                </CardBody>
+              </Card>
+            ) : null}
+            <EvidenceGallery studentId={p.id} mode="viewer" />
+          </div>
+        )}
     </div>
   )
 }

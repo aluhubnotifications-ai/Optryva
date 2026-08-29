@@ -44,6 +44,16 @@ function iconForTags(tags: string[]) {
   return FolderOpen
 }
 
+// Split skills that look like two or more skills concatenated without a separator
+// (e.g. "Event productionTeamwork" → ["Event production", "Teamwork"]).
+function normalizeSkills(skills: string[]): string[] {
+  return skills.flatMap((s) => {
+    if (s.length < 3) return [s]
+    const parts = s.split(/(?=[A-Z])/g).map((p) => p.trim()).filter(Boolean)
+    return parts.length > 1 ? parts : [s]
+  })
+}
+
 function StatusPill({ status }: { status: EvidenceStatus }) {
   const m = STATUS_META[status] ?? STATUS_META.self_reported
   return (
@@ -64,10 +74,10 @@ function PreviewThumb({ item }: { item: EvidenceItem }) {
     fetchProtectedDocument(img.path).then((x) => { u = x; setThumb(x) }).catch(() => {})
     return () => { if (u) URL.revokeObjectURL(u) }
   }, [img?.path])
-  if (img && thumb) return <img src={thumb} alt={item.title} className="h-36 w-full object-cover" />
-  const Icon = iconForTags(item.confirmed_skills)
+  if (img && thumb) return <img src={thumb} alt={item.title} className="h-52 w-full object-cover" />
+  const Icon = iconForTags(normalizeSkills(item.confirmed_skills))
   return (
-    <div className="flex h-36 w-full items-center justify-center" style={{ background: gradientFor(item.id) }}>
+    <div className="flex h-52 w-full items-center justify-center" style={{ background: gradientFor(item.id) }}>
       <Icon className="h-10 w-10 text-white/90" />
     </div>
   )
@@ -84,6 +94,7 @@ export function EvidenceGallery({ studentId, mode }: { studentId: string; mode: 
   const [items, setItems] = useState<EvidenceItem[] | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [view, setView] = useState<EvidenceItem | null>(null)
+  const [showAll, setShowAll] = useState(false)
 
   const owner = mode === 'owner'
 
@@ -103,7 +114,7 @@ export function EvidenceGallery({ studentId, mode }: { studentId: string; mode: 
   const stats = useMemo(() => {
     const list = items ?? []
     const skills = new Set<string>()
-    for (const it of list) it.confirmed_skills.forEach((s) => skills.add(s))
+    for (const it of list) normalizeSkills(it.confirmed_skills).forEach((s) => skills.add(s))
     return { skills: skills.size, count: list.length }
   }, [items])
 
@@ -121,58 +132,56 @@ export function EvidenceGallery({ studentId, mode }: { studentId: string; mode: 
         )}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        {/* Card grid */}
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {items.map((ev) => (
-            <Card key={ev.id} className="overflow-hidden">
-              <PreviewThumb item={ev} />
-              <CardBody className="space-y-2.5">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="font-semibold leading-tight">{ev.title}</p>
-                  <StatusPill status={ev.status} />
-                </div>
-                {ev.confirmed_skills.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {ev.confirmed_skills.slice(0, 4).map((s) => (
-                      <Badge key={s} tone="accent" className="text-[11px]">{s}</Badge>
-                    ))}
+      {owner ? (
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+          {/* Card grid */}
+          <div className="grid w-full gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {items.map((ev) => (
+              <Card key={ev.id} className="overflow-hidden">
+                <PreviewThumb item={ev} />
+                <CardBody className="space-y-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-semibold leading-tight">{ev.title}</p>
+                    <StatusPill status={ev.status} />
                   </div>
-                )}
-                <Button variant="outline" size="sm" className="w-full gap-1.5" onClick={() => setView(ev)}>
-                  <Eye className="h-4 w-4" /> View evidence
-                </Button>
-              </CardBody>
-            </Card>
-          ))}
+                  {normalizeSkills(ev.confirmed_skills).length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {normalizeSkills(ev.confirmed_skills).slice(0, 4).map((s) => (
+                        <Badge key={s} tone="accent" className="text-[11px]">{s}</Badge>
+                      ))}
+                    </div>
+                  )}
+                  <Button variant="outline" size="sm" className="w-full gap-1.5" onClick={() => setView(ev)}>
+                    <Eye className="h-4 w-4" /> View evidence
+                  </Button>
+                </CardBody>
+              </Card>
+            ))}
 
-          {owner && (
             <button
               onClick={() => setShowAdd(true)}
-              className="flex min-h-[220px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-input p-4 text-center text-muted-foreground transition-colors hover:border-primary/50 hover:bg-primary/5"
+              className="flex min-h-[240px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-input p-4 text-center text-muted-foreground transition-colors hover:border-primary/50 hover:bg-primary/5"
             >
               <Plus className="h-6 w-6" />
               <span className="text-sm font-medium">Add evidence</span>
               <span className="text-xs">Link or upload your work</span>
             </button>
-          )}
 
-          {items.length === 0 && !owner && (
-            <p className="text-sm text-muted-foreground">This candidate has not added evidence yet.</p>
-          )}
-        </div>
+            {items.length === 0 && (
+              <p className="text-sm text-muted-foreground col-span-full">You haven't added any evidence yet.</p>
+            )}
+          </div>
 
-        {/* Summary sidebar */}
-        <aside className="space-y-4 lg:sticky lg:top-6 self-start">
-          <Card>
-            <CardBody className="space-y-3">
-              <h3 className="font-semibold">AI evidence summary</h3>
-              <SummaryRow Icon={Sparkles} value={stats.skills} label="skills demonstrated" />
-              <SummaryRow Icon={CheckCircle2} value={stats.count} label="evidence items" />
-            </CardBody>
-          </Card>
+          {/* Summary sidebar */}
+          <aside className="space-y-4 lg:sticky lg:top-6 self-start">
+            <Card>
+              <CardBody className="space-y-3">
+                <h3 className="font-semibold">AI evidence summary</h3>
+                <SummaryRow Icon={Sparkles} value={stats.skills} label="skills demonstrated" />
+                <SummaryRow Icon={CheckCircle2} value={stats.count} label="evidence items" />
+              </CardBody>
+            </Card>
 
-          {owner && (
             <button
               onClick={() => setShowAdd(true)}
               className="flex w-full items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-left transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/10"
@@ -183,11 +192,58 @@ export function EvidenceGallery({ studentId, mode }: { studentId: string; mode: 
               </div>
               <ArrowRight className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-300" />
             </button>
-          )}
-        </aside>
-      </div>
+          </aside>
+        </div>
+      ) : (
+        /* Viewer mode — full-width grid, no sidebar (summary shown above by caller) */
+        <div className="grid w-full gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+          {(showAll ? items : items.slice(0, 9)).map((ev) => (
+            <Card key={ev.id} className="overflow-hidden">
+              <PreviewThumb item={ev} />
+              <CardBody className="space-y-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-medium text-sm leading-tight">{ev.title}</p>
+                  <StatusPill status={ev.status} />
+                </div>
+                {normalizeSkills(ev.confirmed_skills).length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {normalizeSkills(ev.confirmed_skills).slice(0, 4).map((s) => (
+                      <Badge key={s} tone="accent" className="text-[10px]">{s}</Badge>
+                    ))}
+                  </div>
+                )}
+                <Button variant="outline" size="sm" className="w-full gap-1.5" onClick={() => setView(ev)}>
+                  <Eye className="h-4 w-4" /> View evidence
+                </Button>
+              </CardBody>
+            </Card>
+          ))}
 
-      {/* How it works */}
+          {items.length === 0 && (
+            <p className="text-sm text-muted-foreground col-span-full">This candidate has not added evidence yet.</p>
+          )}
+
+          {!showAll && items.length > 9 && (
+            <button
+              onClick={() => setShowAll(true)}
+              className="col-span-full rounded-xl border border-border bg-muted/30 py-3 text-center text-sm font-medium text-foreground hover:bg-muted"
+            >
+              Show more evidence ({items.length - 9} more)
+            </button>
+          )}
+          {showAll && items.length > 9 && (
+            <button
+              onClick={() => setShowAll(false)}
+              className="col-span-full rounded-xl border border-border bg-muted/30 py-3 text-center text-sm font-medium text-foreground hover:bg-muted"
+            >
+              Show less
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* How it works — only shown to the student owner */}
+      {owner && (
       <Card>
         <CardBody className="space-y-4">
           <h3 className="font-semibold">How it works</h3>
@@ -201,8 +257,10 @@ export function EvidenceGallery({ studentId, mode }: { studentId: string; mode: 
           </p>
         </CardBody>
       </Card>
+      )}
 
-      {/* What you can add */}
+      {/* What you can add — only shown to the student owner */}
+      {owner && (
       <Card>
         <CardBody className="space-y-3">
           <h3 className="font-semibold">What can you add as evidence?</h3>
@@ -214,6 +272,7 @@ export function EvidenceGallery({ studentId, mode }: { studentId: string; mode: 
           </div>
         </CardBody>
       </Card>
+      )}
 
       {/* Add modal */}
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add evidence" size="lg">
@@ -309,7 +368,7 @@ function EvidenceDetail({
           <div>
             <p className="mb-1 text-xs font-semibold text-muted-foreground">SKILLS DEMONSTRATED</p>
             <div className="flex flex-wrap gap-1.5">
-              {item.confirmed_skills.map((s) => <Badge key={s} tone="accent">{s}</Badge>)}
+              {normalizeSkills(item.confirmed_skills).map((s) => <Badge key={s} tone="accent" className="text-xs">{s}</Badge>)}
             </div>
           </div>
         )}

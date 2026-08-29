@@ -110,9 +110,18 @@ export async function analyzeEvidence(text: string): Promise<{ skills: string[];
     })
   }
   if (!out) return { skills: [], summary: null }
-  const skills = Array.isArray(out.skills)
+  let skills = Array.isArray(out.skills)
     ? out.skills.filter((x) => typeof x === 'string').map((x) => x.trim()).filter(Boolean).slice(0, 30)
     : []
+
+  // Normalize: split skills that look like two skills concatenated without a
+  // separator (e.g. "Event productionTeamwork" → ["Event production", "Teamwork"]).
+  skills = skills.flatMap((s) => {
+    if (s.length < 3) return [s]
+    const parts = s.split(/(?=[A-Z])/g).map((p) => p.trim()).filter(Boolean)
+    return parts.length > 1 ? parts : [s]
+  })
+
   const summary = typeof out.summary === 'string' ? out.summary.trim() || null : null
   return { skills, summary }
 }

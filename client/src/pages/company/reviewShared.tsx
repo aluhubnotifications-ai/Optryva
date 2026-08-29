@@ -10,6 +10,7 @@ import { Modal } from '@/components/ui/Modal'
 import { avatarRingStyle } from '@/pages/company/ApplicantView'
 import { cn, formatDate } from '@/lib/utils'
 import { ShortlistAssistantSidebar } from '@/components/ShortlistAssistantSidebar'
+import { DancingMascot } from '@/components/DancingMascot'
 
 export const statusTone = { draft: 'outline', pending: 'default', reviewed: 'primary', shortlisted: 'accent', hired: 'success', rejected: 'danger', cancelled: 'danger', withdrawn: 'outline' } as const
 export const FILTERS: (ApplicationStatus | 'all')[] = ['all', 'pending', 'reviewed', 'shortlisted', 'hired', 'rejected']
@@ -382,7 +383,7 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
       <div className="space-y-3">
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span className="flex items-center gap-2">
-            <RefreshCw className="h-4 w-4 animate-spin" /> Scoring candidates against this role…
+            <DancingMascot size={16} /> Scoring candidates against this role…
           </span>
           <span className="font-medium tabular-nums text-foreground">{Math.round(progress)}%</span>
         </div>
@@ -503,7 +504,7 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
       )}
        <div className="space-y-3">
         {data.candidates.map((c) => {
-          const displayScore = Math.round(c.fit_score ?? c.score * 100)
+          const displayScore = Math.max(0, Math.min(100, c.fit_score ?? Math.round((c.score ?? 0) * 100)))
           const categoryTone = c.category === 'not_qualified' ? 'danger' : c.category === 'potential_fit' ? 'success' : 'accent'
           const categoryLabel =
             c.category === 'not_qualified' ? 'Not qualified on evidence' : c.category === 'insufficient_evidence' ? 'Insufficient evidence' : c.category === 'potential_fit' ? 'Potential fit' : null
@@ -574,12 +575,18 @@ export function SmartShortlist({ jobId }: { jobId: string }) {
                   {/* Score breakdown (when available) */}
                   {c.breakdown && (
                     <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-4">
-                      {Object.entries(c.breakdown).map(([k, v]) => (
-                        <div key={k} className="flex items-center justify-between gap-1">
-                          <span className="capitalize">{k}</span>
-                          <span className="font-medium text-foreground">{Math.round((v as number) * 100)}%</span>
-                        </div>
-                      ))}
+                       {Object.entries(c.breakdown).map(([k, v]) => {
+                         const raw = v as number
+                         // Clamp: if raw is 0-1 treat as fraction (×100), else treat as 0-100
+                         const pct = raw <= 1 ? Math.round(raw * 100) : Math.round(raw)
+                         const clamped = Math.max(0, Math.min(100, pct))
+                         return (
+                           <div key={k} className="flex items-center justify-between gap-1">
+                             <span className="capitalize">{k}</span>
+                             <span className="font-medium text-foreground">{clamped}%</span>
+                           </div>
+                         )
+                       })}
                     </div>
                   )}
 

@@ -8,6 +8,7 @@ import { ThemeProvider } from '@/lib/theme'
 import { ToastProvider } from '@/components/ui/toast'
 import { bootstrapSession } from '@/lib/api'
 import { Spinner } from '@/components/ui/Spinner'
+import { DancingMascot } from '@/components/DancingMascot'
 import './styles/globals.css'
 
 // Gate the app on a one-time session bootstrap. After OAuth (or a session whose
@@ -34,7 +35,7 @@ function Bootstrap({ children }: { children: React.ReactNode }) {
   if (!ready) {
     return (
       <div className="mesh-bg flex min-h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <DancingMascot size={80} />
       </div>
     )
   }

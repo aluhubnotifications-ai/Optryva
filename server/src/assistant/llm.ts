@@ -16,7 +16,7 @@
  *  - generateTurn        — multi-turn agentic loop, returns typed JSON
  *  - generateText        — single-turn plain text (used by tools)
  */
-import { groqChatJson, groqText, hasGroq, groqModel } from '@/lib/groq'
+import { groqChatJson, groqText, hasGroq, groqChatModel } from '@/lib/groq'
 import { mistralChat, mistralText, hasMistral, MISTRAL_MODEL } from '@/lib/mistral'
 import { claudeJson, claudeText, hasClaude, MODELS } from '@/lib/claude'
 
@@ -45,7 +45,7 @@ export function hasAI(): boolean {
 
 /** Human-readable model name for the active provider. */
 export function model(): string {
-  if (groqAvailable) return groqModel()
+  if (groqAvailable) return groqChatModel()
   if (mistralAvailable) return process.env.MISTRAL_MODEL || MISTRAL_MODEL
   return MODELS.chat
 }
@@ -176,23 +176,22 @@ export async function generateTurn<T>(opts: {
     msg_preview: opts.messages[0]?.content?.slice(0, 100),
   })
 
-  // --- Groq (primary) ---
-  if (groqAvailable) {
-    console.log('[assistant:llm] → using Groq (primary, multi-turn)')
-    try {
-      const result = await groqChatJson<T>({
-        system: opts.system,
-        messages: opts.messages,
-        schema: opts.schema,
-        maxTokens: opts.maxTokens,
-      })
-      if (result) {
-        console.log('[assistant:llm] ✓ Groq generateTurn returned:', JSON.stringify(result).slice(0, 300))
-      } else {
-        console.warn('[assistant:llm] ⚠ Groq generateTurn returned null')
-      }
-      return result
-    } catch (e: any) {
+   // --- Groq (primary) ---
+   if (groqAvailable) {
+     console.log('[assistant:llm] → using Groq (primary, multi-turn)')
+     try {
+       const result = await groqChatJson<T>({
+         system: opts.system,
+         messages: opts.messages,
+         schema: opts.schema,
+         maxTokens: opts.maxTokens,
+       })
+       if (result) {
+         console.log('[assistant:llm] ✓ Groq generateTurn returned:', JSON.stringify(result).slice(0, 300))
+         return result
+       }
+       console.warn('[assistant:llm] ⚠ Groq returned null — falling through to Mistral/Claude fallback')
+     } catch (e: any) {
       console.error('[assistant:llm] ✗ Groq error in generateTurn:', { message: e?.message, stack: e?.stack?.split('\n').slice(0, 3) })
     }
   }

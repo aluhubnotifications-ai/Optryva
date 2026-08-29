@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/primitives'
 import { useToast } from '@/components/ui/toast'
 import { trackAi } from '@/lib/aiActivity'
+import { DancingMascot } from '@/components/DancingMascot'
 import type { AssistantAction } from '@/lib/api'
 
 export interface ChatMessage {
@@ -353,7 +354,7 @@ function MessageBubble({ message, showActions = true }: { message: ChatMessage; 
 function ToolEventBubble({ event }: { event: ToolEvent }) {
   const icon =
     event.status === 'calling' ? (
-      <Wrench className="h-3 w-3 animate-spin text-accent" />
+      <DancingMascot size={12} />
     ) : event.status === 'error' ? (
       <AlertCircle className="h-3 w-3 text-danger" />
     ) : (

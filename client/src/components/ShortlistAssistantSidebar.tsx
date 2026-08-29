@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Sparkles } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
@@ -116,17 +117,18 @@ export function ShortlistAssistantSidebar({
     onClose()
   }, [onClose])
 
-  return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          key="shortlist-sidebar"
-          initial={{ x: '100%' }}
-          animate={{ x: 0 }}
-          exit={{ x: '100%' }}
-          transition={{ type: 'tween', duration: 0.2 }}
-          className="fixed inset-y-0 right-0 z-50 flex w-[420px] flex-shrink-0 flex-col border-l border-border bg-card/95 shadow-2xl"
-        >
+  return typeof document !== 'undefined'
+    ? createPortal(
+        <AnimatePresence>
+          {open && (
+            <motion.div
+              key="shortlist-sidebar"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'tween', duration: 0.2 }}
+              className="fixed inset-y-0 right-0 z-[9999] flex w-[420px] flex-shrink-0 flex-col border-l border-border bg-card/95 shadow-2xl"
+            >
           {/* Header */}
           <div className="flex items-center justify-between border-b border-border bg-gradient-to-r from-primary/10 via-accent/5 to-primary/10 px-4 py-3">
             <div className="flex items-center gap-2">
@@ -180,12 +182,14 @@ export function ShortlistAssistantSidebar({
           exit={{ x: '100%' }}
           transition={{ type: 'tween', duration: 0.2 }}
           onClick={onOpen || (() => {})}
-          className="fixed inset-y-0 right-0 z-40 flex w-8 items-center justify-center border-l border-border bg-card/80 hover:bg-muted"
+          className="fixed inset-y-0 right-0 z-[9998] flex w-8 items-center justify-center border-l border-border bg-card/80 hover:bg-muted"
           aria-label="Open AI assistant"
         >
           <Sparkles className="h-4 w-4 text-muted-foreground" />
         </motion.button>
       )}
-    </AnimatePresence>
-  )
+    </AnimatePresence>,
+        document.body,
+      )
+    : null
 }
