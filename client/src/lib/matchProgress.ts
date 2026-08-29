@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import type { AiMatch, JobListing } from '@/types'
-import { aiApi } from '@/lib/api'
+import type { AiMatch, JobListing, ResumeProfile } from '@/types'
+import { aiApi, resumesApi } from '@/lib/api'
 import { useAiActivity } from '@/lib/aiActivity'
 import { useMatchRun, needsMatchRun } from '@/lib/matchRun'
 import { useSession } from '@/lib/store'
@@ -27,6 +27,7 @@ interface MatchProgressState {
    scoring: string[] // job ids being scored on demand right now
    activeResumeId: string | null // which resume profile the current matches are for
    selectedResumeId: string | null // student's chosen resume (null = aggregate across all)
+   resumeScores: Record<string, number> // cached match score per resume (for display in picker)
   /** Start a run. Idempotent: no-op if a run is already in flight for this user,
    *  or already finished with results (so navigating between pages reuses the
    *  same matches instead of re-scoring). Pass force=true to re-run.
@@ -64,6 +65,7 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
   scoring: [],
    activeResumeId: null,
    selectedResumeId: null,
+   resumeScores: {},
 
   hydrate: async (userId, resumeId) => {
     const s = get()
@@ -192,6 +194,21 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
     const s = get()
     if (resumeId === s.selectedResumeId) return
     set({ selectedResumeId: resumeId ?? null })
+    // Pre-fetch match scores for ALL resumes so the picker can show them.
+    try {
+      const rs = await resumesApi.list()
+      const scores: Record<string, number> = {}
+      await Promise.all(
+        rs.map(async (r: ResumeProfile) => {
+          const cached = await aiApi.cachedMatches(r.id)
+          if (cached.length) {
+            const top = cached.reduce((a: any, b: any) => (a.score > b.score ? a : b))
+            scores[r.id] = top.score
+          }
+        }),
+      )
+      set({ resumeScores: scores })
+    } catch { /* best-effort */ }
     // Let hydrate handle the clearing + re-fetch for the new resume.
     await get().hydrate(userId, resumeId ?? undefined)
   },

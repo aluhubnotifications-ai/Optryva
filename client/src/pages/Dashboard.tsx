@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/Button'
 import { Spinner, PageSpinner } from '@/components/ui/Spinner'
 import { LoadingMascot, DancingMascot } from '@/components/DancingMascot'
 import { ScoreRing } from '@/components/ScoreRing'
+import { ResumePicker } from '@/components/ResumePicker'
 import { formatDate, daysUntil } from '@/lib/utils'
 import { perf } from '@/lib/perf'
 
@@ -128,14 +129,9 @@ function StudentDashboard({ user }: { user: Profile }) {
     }
   }, [user.id])
 
-  // Match scores come from the global store (hydrated in Topbar when the resume
-  // selector changes). The dashboard shows best matches across all résumés when
-  // no specific resume is selected, or the selected résumé's scores when one is.
-  const selectedResumeId = useMatchProgress((s) => s.selectedResumeId)
-  const activeResumeName = useMemo(
-    () => (selectedResumeId ? resumes.find((r) => r.id === selectedResumeId)?.name : null) ?? resumes.find((r) => r.active)?.name ?? (resumes[0]?.name ?? null),
-    [resumes, selectedResumeId],
-  )
+  // Match scores come from the global store (hydrated when the resume selector
+  // in the topbar/changed). The dashboard shows best matches across all résumés
+  // when no specific resume is selected, or the selected résumé's scores.
   const storeMatches = useMatchProgress((s) => s.matches)
   const matchPhase = useMatchProgress((s) => s.phase)
   const matchDone = useMatchProgress((s) => s.done)
@@ -249,11 +245,7 @@ function StudentDashboard({ user }: { user: Profile }) {
               title="AI Top Picks for you"
               action={
                 <div className="flex items-center gap-2 text-sm">
-                  {resumes.length > 0 && activeResumeName && (
-                    <Badge tone="outline" className="text-xs">
-                      <FileText className="mr-1 h-3 w-3" /> {activeResumeName}
-                    </Badge>
-                  )}
+                  <ResumePicker userId={user.id} />
                   <Link to="/app/insights" className="font-medium text-primary hover:underline">View all matches</Link>
                 </div>
               }

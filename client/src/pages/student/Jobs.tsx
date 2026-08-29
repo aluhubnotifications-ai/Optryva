@@ -32,6 +32,7 @@ import { AIResearchPanel } from '@/components/AIResearchPanel'
 import { TrajectorySimulator } from '@/components/TrajectorySimulator'
 import { ShowYourWork } from '@/components/ShowYourWork'
 import { MatchRunner } from '@/components/MatchRunner'
+import { ResumePicker } from '@/components/ResumePicker'
 import { useMatchRun, needsMatchRun } from '@/lib/matchRun'
 import { useMatchProgress } from '@/lib/matchProgress'
 import { matchReadiness } from '@/lib/matchReady'
@@ -370,10 +371,13 @@ export default function Jobs() {
         {/* Two-pane: list (sticky/scroll) + detail (sticky/scroll) */}
         <div className="grid gap-6 lg:grid-cols-[minmax(320px,400px)_1fr]">
           {/* List */}
-          <section ref={listRef} className="lg:sticky lg:top-[7.5rem] lg:h-[calc(100vh-9rem)] lg:overflow-y-auto lg:pr-1">
-            <p className="mb-2 text-sm text-muted-foreground">
-              Showing <span className="font-semibold text-foreground">{filtered.length}</span> AI-matched {filtered.length === 1 ? 'role' : 'roles'}
-            </p>
+           <section ref={listRef} className="lg:sticky lg:top-[7.5rem] lg:h-[calc(100vh-9rem)] lg:overflow-y-auto lg:pr-1">
+            <div className="mb-2 flex items-center justify-between">
+              <ResumePicker userId={user.id} />
+              <p className="text-sm text-muted-foreground">
+                Showing <span className="font-semibold text-foreground">{filtered.length}</span> AI-matched {filtered.length === 1 ? 'role' : 'roles'}
+              </p>
+            </div>
             <div className="sticky top-0 z-10 mb-3 bg-background pb-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

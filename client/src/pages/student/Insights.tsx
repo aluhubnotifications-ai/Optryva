@@ -1,6 +1,7 @@
 import { Sparkles, Gauge, MessageSquare, ListChecks, Lightbulb } from 'lucide-react'
 import { useCurrentUser } from '@/lib/store'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs'
+import { ResumePicker } from '@/components/ResumePicker'
 import { SnapshotTab } from './insights/SnapshotTab'
 import { ChatTab } from './insights/ChatTab'
 import { MatchesTab } from './insights/MatchesTab'
@@ -10,11 +11,14 @@ export default function Insights() {
   const user = useCurrentUser()!
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
-          <Sparkles className="h-6 w-6 text-primary" /> AI Insights
-        </h1>
-        <p className="text-sm text-muted-foreground">Your personal AI career assistant.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
+            <Sparkles className="h-6 w-6 text-primary" /> AI Insights
+          </h1>
+          <p className="text-sm text-muted-foreground">Your personal AI career assistant.</p>
+        </div>
+        <ResumePicker userId={user.id} />
       </div>
 
       <Tabs defaultValue="snapshot">

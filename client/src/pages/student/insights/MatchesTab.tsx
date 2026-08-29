@@ -1,15 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Sparkles, RefreshCw, Lightbulb, ArrowRight } from 'lucide-react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { jobsApi, resumesApi } from '@/lib/api'
 import type { AiMatch, JobListing, Profile, ResumeProfile } from '@/types'
-import { Card, CardBody, Badge, Avatar, Progress, Select } from '@/components/ui/primitives'
+import { Card, CardBody, Badge, Avatar, Progress } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { ScoreRing } from '@/components/ScoreRing'
 import { useMatchProgress } from '@/lib/matchProgress'
 
 export function MatchesTab({ user }: { user: Profile }) {
-  const [searchParams, setSearchParams] = useSearchParams()
   const { phase, done, total, label, matches } = useMatchProgress((s) => ({
     phase: s.phase,
     done: s.done,
@@ -19,10 +18,9 @@ export function MatchesTab({ user }: { user: Profile }) {
   }))
   const [jobs, setJobs] = useState<JobListing[]>([])
   const [resumes, setResumes] = useState<ResumeProfile[]>([])
-  // Listen to the global resume selection (set by the Topbar selector).
-  // The URL param can override on initial load; otherwise we follow the
-  // global selection so the Insights page is always in sync with the rest of the app.
-  const globalSelectedResume = useMatchProgress((s) => s.selectedResumeId)
+  // Listen to the global resume selection (set by the ResumePicker in the topbar
+  // / Insights header). The URL ?resume= param syncs on first load too.
+  const selectedResumeId = useMatchProgress((s) => s.selectedResumeId)
   const setGlobalResume = useMatchProgress((s) => s.setActiveResume)
 
   // Load jobs + resumes once for rendering. Jobs embed company_name/avatar, so no separate
@@ -32,21 +30,14 @@ export function MatchesTab({ user }: { user: Profile }) {
     jobsApi.list(user).then(setJobs)
     resumesApi.list().then((rs) => {
       setResumes(rs)
-      // On first load, if the URL has a ?resume= param, sync it to the global store.
-      const urlRid = searchParams.get('resume')
-      if (urlRid && rs.some((r) => r.id === urlRid) && urlRid !== globalSelectedResume) {
-        void setGlobalResume(user.id, urlRid)
-      } else if (!globalSelectedResume && rs.length > 0) {
-        // Default to active resume if nothing is selected globally.
+      // Default to the active resume if nothing is selected globally yet.
+      if (!selectedResumeId && rs.length > 0) {
         const active = rs.find((r) => r.active)
         if (active) void setGlobalResume(user.id, active.id)
       }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id])
-
-  // Use the global selectedResumeId as the source of truth.
-  const selectedResumeId = globalSelectedResume
 
   const jobsById = new Map(jobs.map((j) => [j.id, j]))
   const rows = matches
@@ -94,27 +85,7 @@ export function MatchesTab({ user }: { user: Profile }) {
         </Card>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          {resumes.length > 1 && selectedResumeId && (
-            <Select
-              value={selectedResumeId}
-              onChange={(e) => {
-                const rid = e.target.value
-                setSearchParams({ resume: rid })
-                void setGlobalResume(user.id, rid || null)
-              }}
-              className="text-xs"
-            >
-              {resumes.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                  {r.active ? ' (active)' : ''}
-                </option>
-              ))}
-            </Select>
-          )}
-          <p className="min-w-0 text-sm text-muted-foreground">{rows.length} role{rows.length === 1 ? '' : 's'} scored{phase === 'running' ? ' so far' : ' · sorted by fit'}</p>
-        </div>
+        <p className="min-w-0 text-sm text-muted-foreground">{rows.length} role{rows.length === 1 ? '' : 's'} scored{phase === 'running' ? ' so far' : ' · sorted by fit'}</p>
         <Button variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={refresh} disabled={phase === 'running'}><RefreshCw className="h-4 w-4" /> Refresh scores</Button>
         <Button variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={run} disabled={phase === 'running'}><RefreshCw className="h-4 w-4" /> {phase === 'running' ? 'Running…' : 'Re-run'}</Button>
       </div>
