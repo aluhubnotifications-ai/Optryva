@@ -123,16 +123,16 @@ function StudentDashboard({ user }: { user: Profile }) {
       perf('dashboard DATA READY', { jobs: j.length, apps: a.length, ms })
     })()
 
-      // Show any already-computed (cached) matches instantly across all resumes.
-      // The dashboard always shows the student's best matches, regardless of
-      // which résumé is currently selected for detailed Insights views.
-      useEffect(() => {
-        void useMatchProgress.getState().hydrate(user.id)
-      }, [user.id])
-
     return () => {
       active = false
     }
+  }, [user.id])
+
+  // Show any already-computed (cached) matches instantly across all resumes.
+  // The dashboard always shows the student's best matches, regardless of
+  // which résumé is currently selected for detailed Insights views.
+  useEffect(() => {
+    void useMatchProgress.getState().hydrate(user.id)
   }, [user.id])
 
   // Match scores from the shared store (same source as Jobs & Insights).
