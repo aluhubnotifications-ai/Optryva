@@ -86,6 +86,7 @@ export default function Jobs() {
   // Match scores come from the global live-progress store (single shared run,
   // same numbers as the Dashboard & Insights, real percentage in the activity panel).
   const storeMatches = useMatchProgress((s) => s.matches)
+  const selectedResumeId = useMatchProgress((s) => s.selectedResumeId)
   const matches = useMemo(() => {
     const m: Record<string, AiMatch> = {}
     storeMatches.forEach((x) => (m[x.job_id] = x))
@@ -170,7 +171,7 @@ export default function Jobs() {
   // Auto-run when the gate is already closed (e.g. returning user with cached scores
 // or a new day). The runner is idempotent and streams live progress.
   useEffect(() => {
-    if (!gateOpen && matchReady) void useMatchProgress.getState().run(user.id)
+    if (!gateOpen && matchReady) void useMatchProgress.getState().run(user.id, false, selectedResumeId ?? undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gateOpen, matchReady, user.id])
 
@@ -332,6 +333,7 @@ export default function Jobs() {
           <MatchRunner
             userId={user.id}
             resumePresent={hasResume}
+            resumeId={selectedResumeId ?? undefined}
             onComplete={() => { markRun(user.id); setGateOpen(false) }}
             onError={() => { setAutoOpen(false); setGateOpen(false) }}
             title="Today's AI matches"

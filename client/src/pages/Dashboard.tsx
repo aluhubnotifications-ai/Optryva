@@ -128,14 +128,14 @@ function StudentDashboard({ user }: { user: Profile }) {
     }
   }, [user.id])
 
-  // Show any already-computed (cached) matches instantly across all resumes.
-  // The dashboard always shows the student's best matches, regardless of
-  // which résumé is currently selected for detailed Insights views.
-  useEffect(() => {
-    void useMatchProgress.getState().hydrate(user.id)
-  }, [user.id])
-
-  // Match scores from the shared store (same source as Jobs & Insights).
+  // Match scores come from the global store (hydrated in Topbar when the resume
+  // selector changes). The dashboard shows best matches across all résumés when
+  // no specific resume is selected, or the selected résumé's scores when one is.
+  const selectedResumeId = useMatchProgress((s) => s.selectedResumeId)
+  const activeResumeName = useMemo(
+    () => (selectedResumeId ? resumes.find((r) => r.id === selectedResumeId)?.name : null) ?? resumes.find((r) => r.active)?.name ?? (resumes[0]?.name ?? null),
+    [resumes, selectedResumeId],
+  )
   const storeMatches = useMatchProgress((s) => s.matches)
   const matchPhase = useMatchProgress((s) => s.phase)
   const matchDone = useMatchProgress((s) => s.done)
@@ -247,9 +247,16 @@ function StudentDashboard({ user }: { user: Profile }) {
             <SectionHeader
               icon={Sparkles}
               title="AI Top Picks for you"
-             action={
-                <Link to="/app/insights" className="text-sm font-medium text-primary hover:underline">View all matches</Link>
-               }
+              action={
+                <div className="flex items-center gap-2 text-sm">
+                  {resumes.length > 0 && activeResumeName && (
+                    <Badge tone="outline" className="text-xs">
+                      <FileText className="mr-1 h-3 w-3" /> {activeResumeName}
+                    </Badge>
+                  )}
+                  <Link to="/app/insights" className="font-medium text-primary hover:underline">View all matches</Link>
+                </div>
+              }
             />
             {loading ? (
               <div className="-mx-1 flex gap-3 overflow-hidden pb-2">

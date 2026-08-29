@@ -24,8 +24,9 @@ interface MatchProgressState {
   matches: AiMatch[] // accumulated, by arrival
   missing: string[] // what's blocking matching when phase==='notReady' (resume/preferences)
   activity: { step: string; label: string } | null // live pipeline stage from the server
-  scoring: string[] // job ids being scored on demand right now
-  activeResumeId: string | null // which resume profile the current matches are for
+   scoring: string[] // job ids being scored on demand right now
+   activeResumeId: string | null // which resume profile the current matches are for
+   selectedResumeId: string | null // student's chosen resume (null = aggregate across all)
   /** Start a run. Idempotent: no-op if a run is already in flight for this user,
    *  or already finished with results (so navigating between pages reuses the
    *  same matches instead of re-scoring). Pass force=true to re-run.
@@ -42,8 +43,12 @@ interface MatchProgressState {
    *  then reload the fresh cached scores into the store. Cheaper and safer than
    *  a full Re-run — the server caps concurrency. Pass resumeId to refresh only
    *  that résumé's matches. */
-  refresh: (userId: string, resumeId?: string) => Promise<void>
-  /** Drop results (e.g. on logout) so a fresh user starts clean. */
+   refresh: (userId: string, resumeId?: string) => Promise<void>
+   /** Switch the active resume for matching views. Re-hydrates scores for that
+   *  résumé, or restores the aggregate view (best scores across all résumés) when
+   *  called with null. */
+   setActiveResume: (userId: string, resumeId?: string | null) => Promise<void>
+   /** Drop results (e.g. on logout) so a fresh user starts clean. */
   reset: () => void
 }
 
@@ -57,7 +62,8 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
   missing: [],
   activity: null,
   scoring: [],
-  activeResumeId: null,
+   activeResumeId: null,
+   selectedResumeId: null,
 
   hydrate: async (userId, resumeId) => {
     const s = get()
@@ -180,7 +186,15 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
     }
   },
 
-  reset: () => set({ userId: null, phase: 'idle', done: 0, total: 0, label: '', matches: [], missing: [], scoring: [], activeResumeId: null }),
+  reset: () => set({ userId: null, phase: 'idle', done: 0, total: 0, label: '', matches: [], missing: [], scoring: [], activeResumeId: null, selectedResumeId: null }),
+
+  setActiveResume: async (userId, resumeId) => {
+    const s = get()
+    if (resumeId === s.selectedResumeId) return
+    set({ selectedResumeId: resumeId ?? null })
+    // Let hydrate handle the clearing + re-fetch for the new resume.
+    await get().hydrate(userId, resumeId ?? undefined)
+  },
 
   refresh: async (userId, resumeId) => {
     set({ phase: 'running', label: 'Refreshing your scores…', total: 0, done: 0, activeResumeId: resumeId ?? null })

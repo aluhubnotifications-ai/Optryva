@@ -11,6 +11,7 @@ import { readinessLabel, DistCell } from './shared'
 
 export function SnapshotTab({ user }: { user: Profile }) {
   const { phase, done, total, label, matches } = useMatchProgress()
+  const selectedResumeId = useMatchProgress((s) => s.selectedResumeId)
   const [jobs, setJobs] = useState<JobListing[]>([])
   const [nudges, setNudges] = useState<{ title: string; message: string; status: string }[]>([])
 
@@ -31,7 +32,7 @@ export function SnapshotTab({ user }: { user: Profile }) {
   // task) instead of scoring every role again. Kick it off if it hasn't started —
   // but run() is idempotent, so we never double-score.
   useEffect(() => {
-    if (phase === 'idle' && matches.length === 0) useMatchProgress.getState().run(user.id)
+    if (phase === 'idle' && matches.length === 0) useMatchProgress.getState().run(user.id, false, selectedResumeId ?? undefined)
   }, [phase, matches.length, user.id])
 
   const jobsById = new Map(jobs.map((j) => [j.id, j]))
@@ -298,7 +299,7 @@ export function SnapshotTab({ user }: { user: Profile }) {
           <CardBody>
             <div className="flex items-center justify-between">
               <h2 className="flex items-center gap-2 font-semibold"><Trophy className="h-5 w-5 text-primary" /> Top matches</h2>
-              <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => useMatchProgress.getState().run(user.id, true)}><RefreshCw className="h-3.5 w-3.5" /> Refresh</Button>
+              <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => useMatchProgress.getState().run(user.id, true, selectedResumeId ?? undefined)}><RefreshCw className="h-3.5 w-3.5" /> Refresh</Button>
             </div>
             <div className="mt-3 space-y-2">
               {topMatches.map((t) => {

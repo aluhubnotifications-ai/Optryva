@@ -27,10 +27,13 @@ import { ChevronDown, Globe, Wifi } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/lib/theme'
 import { useSession, useCurrentUser, useRightSidebarOpen, useHideGlobalSidebar } from '@/lib/store'
+import { useMatchProgress } from '@/lib/matchProgress'
+import { resumesApi } from '@/lib/api'
+import type { ResumeProfile } from '@/types'
 import { useGeo, COUNTRIES, useCountryStats, type Country } from '@/lib/geo'
 import { messagesApi, jobsApi, applicationsApi } from '@/lib/api'
 import { perf } from '@/lib/perf'
-import { Avatar, Input } from '@/components/ui/primitives'
+import { Avatar, Input, Select } from '@/components/ui/primitives'
 import { Button } from '@/components/ui/Button'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { LoadingMascot } from '@/components/DancingMascot'
@@ -430,6 +433,7 @@ function Topbar() {
           icons left so the profile picture peeks out from behind the sidebar
           instead of being fully covered. */}
       <div className={cn('ml-auto flex items-center gap-1.5', !sidebarOpen && 'translate-x-[-24px]', sidebarOpen && 'mr-[3px]')}>
+        {user?.user_type === 'student' && <ResumeSelector userId={user?.id ?? null} />}
         <CountrySelect />
 
         <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
@@ -492,6 +496,51 @@ function Topbar() {
         </AnimatePresence>
         </div>
       </div>
-    </header>
-  )
-}
+     </header>
+   )
+ }
+
+ /** Persistent résumé selector in the topbar. Switching the resume re-hydrates
+  *  the global match store so Dashboard / Jobs / Insights all update to show
+  *  scores for the chosen résumé. Passing null restores the aggregate view. */
+ function ResumeSelector({ userId }: { userId: string | null }) {
+   const [resumes, setResumes] = useState<ResumeProfile[]>([])
+   const selected = useMatchProgress((s) => s.selectedResumeId)
+   const activeResume = resumes.find((r) => r.active)
+
+   useEffect(() => {
+     if (!userId) return
+     let cancelled = false
+     resumesApi
+       .list()
+       .then((rs) => {
+         if (cancelled) return
+         setResumes(rs)
+         // Auto-select the active resume if none is chosen yet.
+         if (!selected && rs.length > 0) {
+           const active = rs.find((r) => r.active) ?? rs[0]
+           void useMatchProgress.getState().setActiveResume(userId, active.id)
+         }
+       })
+       .catch(() => {})
+     return () => {
+       cancelled = true
+     }
+   }, [userId])
+
+   if (!resumes.length) return null
+   return (
+     <Select
+       value={selected ?? ''}
+       onChange={(e) => useMatchProgress.getState().setActiveResume(userId ?? '', e.target.value || null)}
+       className="text-xs"
+       title="Switch résumé to update match scores across the app"
+     >
+       {resumes.map((r) => (
+         <option key={r.id} value={r.id}>
+           {r.name}{r.active ? ' (active)' : ''}
+         </option>
+       ))}
+     </Select>
+   )
+ }

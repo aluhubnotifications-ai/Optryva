@@ -19,29 +19,34 @@ export function MatchesTab({ user }: { user: Profile }) {
   }))
   const [jobs, setJobs] = useState<JobListing[]>([])
   const [resumes, setResumes] = useState<ResumeProfile[]>([])
+  // Listen to the global resume selection (set by the Topbar selector).
+  // The URL param can override on initial load; otherwise we follow the
+  // global selection so the Insights page is always in sync with the rest of the app.
+  const globalSelectedResume = useMatchProgress((s) => s.selectedResumeId)
+  const setGlobalResume = useMatchProgress((s) => s.setActiveResume)
 
   // Load jobs + resumes once for rendering. Jobs embed company_name/avatar, so no separate
   // directory fetch is needed. Matching is driven by the global store (visible in
   // the AI activity panel) and keeps running even when you switch tabs.
   useEffect(() => {
     jobsApi.list(user).then(setJobs)
-    resumesApi.list().then(setResumes)
+    resumesApi.list().then((rs) => {
+      setResumes(rs)
+      // On first load, if the URL has a ?resume= param, sync it to the global store.
+      const urlRid = searchParams.get('resume')
+      if (urlRid && rs.some((r) => r.id === urlRid) && urlRid !== globalSelectedResume) {
+        void setGlobalResume(user.id, urlRid)
+      } else if (!globalSelectedResume && rs.length > 0) {
+        // Default to active resume if nothing is selected globally.
+        const active = rs.find((r) => r.active)
+        if (active) void setGlobalResume(user.id, active.id)
+      }
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id])
 
-  // The active resume is the default view; the student can switch to see scores
-  // for a different résumé via the dropdown below.
-  const selectedResumeId = useMemo(() => {
-    const urlRid = searchParams.get('resume')
-    if (urlRid && resumes.some((r) => r.id === urlRid)) return urlRid
-    const active = resumes.find((r) => r.active)
-    return active ? active.id : (urlRid ?? undefined)
-  }, [searchParams, resumes])
-
-  // Re-hydrate (load cached scores) when the selected résumé changes.
-  useEffect(() => {
-    void useMatchProgress.getState().hydrate(user.id, selectedResumeId)
-  }, [user.id, selectedResumeId])
+  // Use the global selectedResumeId as the source of truth.
+  const selectedResumeId = globalSelectedResume
 
   const jobsById = new Map(jobs.map((j) => [j.id, j]))
   const rows = matches
@@ -49,8 +54,8 @@ export function MatchesTab({ user }: { user: Profile }) {
     .filter((r): r is { job: JobListing; match: AiMatch } => !!r.job)
     .sort((a, b) => b.match.score - a.match.score)
 
-  const run = () => useMatchProgress.getState().run(user.id, true, selectedResumeId)
-  const refresh = () => useMatchProgress.getState().refresh(user.id, selectedResumeId)
+  const run = () => useMatchProgress.getState().run(user.id, true, selectedResumeId ?? undefined)
+  const refresh = () => useMatchProgress.getState().refresh(user.id, selectedResumeId ?? undefined)
   const pct = total > 0 ? Math.round((done / total) * 100) : 0
 
   // Idle / first run (or an error with nothing scored yet) — the click target.
@@ -93,7 +98,11 @@ export function MatchesTab({ user }: { user: Profile }) {
           {resumes.length > 1 && selectedResumeId && (
             <Select
               value={selectedResumeId}
-              onChange={(e) => setSearchParams({ resume: e.target.value })}
+              onChange={(e) => {
+                const rid = e.target.value
+                setSearchParams({ resume: rid })
+                void setGlobalResume(user.id, rid || null)
+              }}
               className="text-xs"
             >
               {resumes.map((r) => (
