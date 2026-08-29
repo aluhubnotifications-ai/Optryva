@@ -356,11 +356,11 @@ interface MatchOpts { cache?: boolean }
 // Per-request preloaded context so loops over many jobs don't re-fetch the same
 // student row / résumé / cache row N times. `cached` of `null` means "known
 // miss, don't query"; `undefined` means "look it up yourself".
-interface MatchCtx { row?: any; rp?: ResumeProfile | null; cached?: any | null }
+interface MatchCtx { row?: any; rp?: ResumeProfile | null; cached?: any | null; resumeId?: string | null }
 
 /** Apply the honest caps to a raw LLM score → final AiMatch. Claude is the only
  *  source of the number; no deterministic component. */
-function finalize(cs: LlmScore, student: MatchStudent, job: MatchJob, rp: ResumeProfile | null): AiMatch {
+function finalize(cs: LlmScore, student: MatchStudent, job: MatchJob, rp: ResumeProfile | null, resumeId?: string | null): AiMatch {
   // Competence ceiling, ramped smoothly (no hard cliffs): we can only score as
   // high as the evidence lets us trust. No CV → unverifiable (cap 50). Raw CV
   // text → ramp 55→92 as it gets more substantial. A parsed, evidence-linked
@@ -385,13 +385,14 @@ function finalize(cs: LlmScore, student: MatchStudent, job: MatchJob, rp: Resume
     mismatch_flags: cs.flags.slice(0, 3),
     tip: cs.tip,
     created_at: new Date().toISOString(),
+    resume_id: resumeId ?? null,
   }
 }
 
 /** When Claude can't score (no key / transient error) but a distilled model exists,
  *  return a clearly-labelled ESTIMATE instead of nothing — so a hiccup doesn't empty
  *  a student's matches. Never cached (the real score should replace it next time). */
-async function distilledFallback(student: MatchStudent, job: MatchJob, rp: ResumeProfile | null): Promise<AiMatch | null> {
+async function distilledFallback(student: MatchStudent, job: MatchJob, rp: ResumeProfile | null, resumeId?: string | null): Promise<AiMatch | null> {
   const model = await loadDistill()
   if (!model) return null
   const feats = extractFeatures({
@@ -407,6 +408,7 @@ async function distilledFallback(student: MatchStudent, job: MatchJob, rp: Resum
     reasons: ['Estimated match — the AI scorer was briefly unavailable, so this is a fast approximation.'],
     mismatch_flags: [], tip: 'This is an estimate; reopen later for the full, evidence-backed score.',
     created_at: new Date().toISOString(),
+    resume_id: resumeId ?? null,
   }
 }
 
@@ -414,10 +416,23 @@ async function distilledFallback(student: MatchStudent, job: MatchJob, rp: Resum
  *  fallback when Claude is unavailable. Returns null only when neither is available. */
 export async function getMatch(studentId: string, job: MatchJob, opts: MatchOpts = {}, ctx: MatchCtx = {}): Promise<AiMatch | null> {
   const useCache = opts.cache !== false
+  const resumeId = ctx.resumeId ?? null
   if (useCache) {
     let cached = ctx.cached
     if (cached === undefined) {
-      cached = (await sb.from('ai_match_cache').select('payload, stale').eq('student_id', studentId).eq('job_id', job.id).maybeSingle()).data as any
+      if (resumeId) {
+        cached = (await sb.from('ai_match_cache').select('payload, stale').eq('student_id', studentId).eq('job_id', job.id).eq('resume_id', resumeId).maybeSingle()).data as any
+      } else {
+        // No specific resume: fall back to the active resume, then to legacy null rows.
+        const activeResume = await sb.from('resume_profiles').select('id').eq('student_id', studentId).eq('active', 1).maybeSingle() as any
+        const rid = activeResume?.data?.id ?? null
+        if (rid) {
+          cached = (await sb.from('ai_match_cache').select('payload, stale').eq('student_id', studentId).eq('job_id', job.id).eq('resume_id', rid).maybeSingle()).data as any
+        }
+        if (!cached) {
+          cached = (await sb.from('ai_match_cache').select('payload, stale').eq('student_id', studentId).eq('job_id', job.id).is('resume_id', null).maybeSingle()).data as any
+        }
+      }
     }
     if (cached && cached.stale === 0) {
       const p = JSON.parse(cached.payload)
@@ -428,18 +443,24 @@ export async function getMatch(studentId: string, job: MatchJob, opts: MatchOpts
   }
 
   const row = ctx.row ?? (await studentRow(studentId))
-  const rp = ctx.row ? (ctx.rp ?? null) : await ensureResumeProfile(row)
+  let rp: ResumeProfile | null = null
+  if (resumeId) {
+    const { data: rr } = (await sb.from('resume_profiles').select('*').eq('id', resumeId).eq('student_id', studentId).maybeSingle()) as any
+    rp = rr ? asResumeProfile(rr) : null
+  } else {
+    rp = ctx.row ? (ctx.rp ?? null) : await ensureResumeProfile(row)
+  }
   const student = toMatchStudent(row, rp)
   const cs = await claudeScore(student, job, rp)
-  const result = cs ? finalize(cs, student, job, rp) : await distilledFallback(student, job, rp)
+  const result = cs ? finalize(cs, student, job, rp, resumeId) : await distilledFallback(student, job, rp, resumeId)
   if (!result) return null
 
   // Cache only REAL Claude scores — never the distilled estimate, so the genuine
   // score replaces it as soon as Claude is back.
   if (useCache && cs) {
     must(await sb.from('ai_match_cache').upsert(
-      { student_id: studentId, job_id: job.id, payload: JSON.stringify({ ...result, v: ENGINE_VERSION }), stale: 0, created_at: now() },
-      { onConflict: 'student_id,job_id' },
+      { student_id: studentId, job_id: job.id, resume_id: resumeId ?? null, payload: JSON.stringify({ ...result, v: ENGINE_VERSION }), stale: 0, created_at: now() },
+      { onConflict: 'student_id,job_id,resume_id' },
     ))
   }
   return result
@@ -462,10 +483,30 @@ export function rowToMatchJob(r: any): MatchJob & { company_id: string; descript
   return { id: r.id, title: r.title, description: r.description, type: r.type, listing_type: r.listing_type, tags: j.parse(r.tags, []), country: r.country, remote: r.remote === 1, pay: r.pay, company_id: r.company_id, location: r.location, duration: r.duration, responsibilities: j.parse(r.responsibilities, []), qualifications: j.parse(r.qualifications, []), benefits: j.parse(r.benefits, []) }
 }
 
-/** All cached match rows for a student in ONE query → job_id -> {payload,stale}. */
-export async function cacheMap(studentId: string): Promise<Map<string, any>> {
+/** All cached match rows for a student in ONE query → job_id -> {payload,stale,resume_id}.
+ *  When multiple resumes exist per job, returns the row for the specified resume.
+ *  When resumeId is undefined, auto-detects the student's active resume and
+ *  prefers that; falls back to legacy null-resume rows. */
+export async function cacheMap(studentId: string, resumeId?: string | null): Promise<Map<string, any>> {
   const rows = (must(await sb.from('ai_match_cache').select('job_id, payload, stale, resume_id').eq('student_id', studentId)) as any[]) ?? []
-  return new Map(rows.map((r) => [r.job_id, r]))
+  // Resolve the target resumeId when not explicitly given: use active, else null (legacy).
+  let targetRid: string | null = null
+  if (resumeId === undefined) {
+    const active = (await sb.from('resume_profiles').select('id').eq('student_id', studentId).eq('active', 1).maybeSingle()).data as any
+    targetRid = active?.id ?? null
+  } else {
+    targetRid = resumeId
+  }
+  const out = new Map<string, any>()
+  for (const r of rows) {
+    const key = r.job_id
+    // Prefer exact resume match; otherwise keep the first row we see.
+    const existing = out.get(key)
+    if (!existing || (r.resume_id === targetRid && existing?.resume_id !== targetRid)) {
+      out.set(key, r)
+    }
+  }
+  return out
 }
 
 /** Turn what the outcome-tracking worker learned (migration 0014) into concrete,

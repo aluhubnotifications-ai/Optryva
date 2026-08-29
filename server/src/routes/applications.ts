@@ -23,7 +23,11 @@ function isDuplicateApplication(e: any): boolean {
 // missing, then returns the prior the review AI reasons from.
 async function resolveMatchContext(studentId: string, job: any): Promise<{ score: number; rationale: string | null; matchedSkills: string[] } | null> {
   try {
-    const cached = (await sb.from('ai_match_cache').select('payload').eq('student_id', studentId).eq('job_id', job.id).maybeSingle()).data as any
+    // Prefer the active resume's cached match; fall back to legacy null-resume rows.
+    const activeResume = (await sb.from('resume_profiles').select('id').eq('student_id', studentId).eq('active', 1).maybeSingle()).data as any
+    const resumeId = activeResume?.id ?? null
+    let cached = (await sb.from('ai_match_cache').select('payload').eq('student_id', studentId).eq('job_id', job.id).eq('resume_id', resumeId).maybeSingle()).data as any
+    if (!cached) cached = (await sb.from('ai_match_cache').select('payload').eq('student_id', studentId).eq('job_id', job.id).is('resume_id', null).maybeSingle()).data as any
     let p: any = cached?.payload ? j.parse(cached.payload, null) : null
     if (!p) p = await getMatch(studentId, rowToMatchJob(job), { cache: true })
     if (!p) return null

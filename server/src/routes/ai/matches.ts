@@ -13,6 +13,7 @@ import {
   candidateJobs,
   visibleJobs,
   ensureResumeProfile,
+  asResumeProfile,
   outcomeNudges,
   hasClaude,
 } from './helpers'
@@ -25,7 +26,8 @@ export function registerMatches(r: Router) {
     const viewer = await studentRow(req.user!.id)
     const gates = await schoolGates([row.company_id])
     if (!jobVisibleTo(row, viewer, gates)) return res.status(404).json({ error: 'not_found' })
-    const m = await getMatch(req.user!.id, rowToMatchJob(row))
+    const resumeId = req.query.resume_id as string | undefined
+    const m = await getMatch(req.user!.id, rowToMatchJob(row), {}, { resumeId: resumeId ?? null })
     if (!m) return res.status(503).json({ error: 'ai_unavailable' })
     res.json(m)
   })
@@ -35,14 +37,23 @@ export function registerMatches(r: Router) {
     const viewer = await studentRow(uid)
     const ready = matchReadiness(viewer)
     if (!ready.ready) return res.status(409).json({ error: 'profile_incomplete', missing: ready.missing })
-    const rp = await ensureResumeProfile(viewer)
-    const [visible, cm] = await Promise.all([candidateJobs(viewer, rp), cacheMap(uid)])
-    // Parallel: cached jobs return instantly; uncached ones score concurrently.
-    // Jobs Claude couldn't score (no key / error) are simply omitted.
-    const out = await Promise.all(
-      visible.map((rr) => getMatch(uid, rowToMatchJob(rr), {}, { row: viewer, rp, cached: cm.get(rr.id) ?? null })),
-    )
-    res.json(out.filter(Boolean))
+    const resumeId = req.query.resume_id as string | undefined
+    // Load the specific resume profile to score against (or the active one).
+    let resumeRow: any = null
+    if (resumeId) {
+      resumeRow = (await sb.from('resume_profiles').select('*').eq('id', resumeId).eq('student_id', uid).maybeSingle()).data as any
+      if (!resumeRow) return res.status(404).json({ error: 'resume_not_found' })
+    } else {
+      resumeRow = (await sb.from('resume_profiles').select('*').eq('student_id', uid).eq('active', 1).maybeSingle()).data as any
+    }
+     const rp = resumeRow ? asResumeProfile(resumeRow) : await ensureResumeProfile(viewer)
+     const [visible, cm] = await Promise.all([candidateJobs(viewer, rp), cacheMap(uid, resumeId ?? null)])
+     // Parallel: cached jobs return instantly; uncached ones score concurrently.
+     // Jobs Claude couldn't score (no key / error) are simply omitted.
+     const out = await Promise.all(
+       visible.map((rr) => getMatch(uid, rowToMatchJob(rr), {}, { row: viewer, rp, resumeId: resumeId ?? null, cached: cm.get(rr.id) ?? null })),
+     )
+     res.json(out.filter(Boolean))
   })
 
   // Rehydrate scores completed earlier today without invoking the scorer.
@@ -53,9 +64,14 @@ export function registerMatches(r: Router) {
     const viewer = await studentRow(uid)
     const visible = await visibleJobs(viewer)
     const visibleIds = new Set(visible.map((job) => job.id))
-    const cm = await cacheMap(uid)
+    const resumeId = req.query.resume_id as string | undefined
+    const cm = await cacheMap(uid, resumeId ?? null)
     const out = [...cm.values()]
-      .filter((row) => row.stale === 0 && visibleIds.has(row.job_id))
+      .filter((row) => {
+        if (row.stale !== 0) return false
+        if (!visibleIds.has(row.job_id)) return false
+        return true
+      })
       .map((row) => {
         try { return JSON.parse(row.payload) as AiMatch } catch { return null }
       })
@@ -74,9 +90,10 @@ export function registerMatches(r: Router) {
   r.post('/matches/stream', async (req, res) => {
     if (!hasClaude()) return res.status(503).json({ error: 'ai_unavailable' })
     const uid = req.user!.id
+    const resumeId = req.body?.resume_id as string | undefined
     const enc = new TextEncoder()
     const stream = new ReadableStream<Uint8Array>({
-      async start(controller) {
+     async start(controller) {
         const send = (o: unknown) => controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`))
         try {
           send({ activity: { step: 'reading', label: 'Reading your profile…' } })
@@ -84,11 +101,18 @@ export function registerMatches(r: Router) {
           send({ activity: { step: 'resume', label: 'Extracting & understanding your résumé…' } })
           const ready = matchReadiness(viewer)
           if (!ready.ready) { send({ notReady: { missing: ready.missing } }); send({ done: true }); return }
-          const rp = await ensureResumeProfile(viewer)
+          let rp: any = null
+          if (resumeId) {
+            const rr = (await sb.from('resume_profiles').select('*').eq('id', resumeId).eq('student_id', uid).maybeSingle()).data as any
+            if (!rr) { send({ error: true, reason: 'resume_not_found' }); send({ done: true }); return }
+            rp = asResumeProfile(rr)
+          } else {
+            rp = await ensureResumeProfile(viewer)
+          }
           send({ activity: { step: 'scoring', label: 'Scoring open roles against your profile…' } })
-          const [visible, cm] = await Promise.all([candidateJobs(viewer, rp), cacheMap(uid)])
+          const [visible, cm] = await Promise.all([candidateJobs(viewer, rp), cacheMap(uid, resumeId ?? null)])
           const total = visible.length
-          send({ meta: { total } })
+          send({ meta: { total, resumeId: resumeId ?? null } })
           // Score concurrently in a bounded pool: progress stays per-role granular, but
           // we no longer spend 30 sequential round-trips. Cached roles still return
           // instantly; the pool size keeps us under the Haiku rate limit.
@@ -102,7 +126,7 @@ export function registerMatches(r: Router) {
               const rr = visible[i]
               const job = rowToMatchJob(rr)
               let m: AiMatch | null = null
-              try { m = await getMatch(uid, job, {}, { row: viewer, rp, cached: cm.get(rr.id) ?? null }) } catch { m = null }
+              try { m = await getMatch(uid, job, {}, { row: viewer, rp, resumeId: resumeId ?? null, cached: cm.get(rr.id) ?? null }) } catch { m = null }
               done++
               send({ progress: { done, total, title: job.title }, match: m })
             }
@@ -136,25 +160,32 @@ export function registerMatches(r: Router) {
   r.post('/matches/refresh', async (req, res) => {
     if (!hasClaude()) return res.status(503).json({ error: 'ai_unavailable' })
     const uid = req.user!.id
+    const resumeId = req.body?.resume_id as string | undefined
     const viewer = await studentRow(uid)
-    const rp = await ensureResumeProfile(viewer)
-    const cm = await cacheMap(uid)
-    const ids = [...cm.keys()]
-    if (!ids.length) return res.json({ refreshed: 0, total: 0 })
+    const cm = await cacheMap(uid, resumeId ?? null)
+    const jobIds = [...new Set([...cm.keys()])].filter(Boolean)
+    if (!jobIds.length) return res.json({ refreshed: 0, total: 0 })
+    let rp: any = null
+    if (resumeId) {
+      const rr = (await sb.from('resume_profiles').select('*').eq('id', resumeId).eq('student_id', uid).maybeSingle()).data as any
+      if (rr) rp = asResumeProfile(rr)
+    } else {
+      rp = await ensureResumeProfile(viewer)
+    }
     const CONCURRENCY = 3
     let cursor = 0
     let refreshed = 0
-    const pool = Array.from({ length: Math.min(CONCURRENCY, ids.length) }, async () => {
+    const pool = Array.from({ length: Math.min(CONCURRENCY, jobIds.length) }, async () => {
       while (true) {
         const i = cursor++
-        if (i >= ids.length) break
-        const jobId = ids[i]
+        if (i >= jobIds.length) break
+        const jobId = jobIds[i]
         try {
           const row = await loadJob(jobId)
           if (!row) continue
           // cache:false forces a fresh score; the existing cache row is passed as
           // ctx so we don't re-query it, and the new score is upserted with stale=0.
-          const m = await getMatch(uid, rowToMatchJob(row), { cache: false }, { row: viewer, rp, cached: cm.get(jobId) })
+          const m = await getMatch(uid, rowToMatchJob(row), { cache: false }, { row: viewer, rp, resumeId: resumeId ?? null, cached: cm.get(jobId) })
           if (m) refreshed++
         } catch {
           /* a single failure must not abort the whole refresh */
@@ -162,6 +193,6 @@ export function registerMatches(r: Router) {
       }
     })
     await Promise.all(pool)
-    res.json({ refreshed, total: ids.length })
+    res.json({ refreshed, total: jobIds.length })
   })
 }

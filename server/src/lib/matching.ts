@@ -56,4 +56,5 @@ export interface AiMatch {
   mismatch_flags: string[]
   tip: string
   created_at: string
+  resume_id?: string | null
 }
