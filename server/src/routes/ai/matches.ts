@@ -17,6 +17,8 @@ import {
   outcomeNudges,
   hasClaude,
 } from './helpers'
+import { requestManualMatch, loadOrRecalculatePair } from '@/lib/matchEngine'
+import { getQueueStatus } from '@/lib/matchQueue'
 
 export function registerMatches(r: Router) {
   r.get('/match/:jobId', async (req, res) => {
@@ -194,5 +196,94 @@ export function registerMatches(r: Router) {
     })
     await Promise.all(pool)
     res.json({ refreshed, total: jobIds.length })
+  })
+
+  // --- Manual match: student clicks "Match this job" ---
+  // Always uses saved filter points as context. Bypasses auto threshold.
+  // Respects hard eligibility and privacy. Triggers AI review if no current result.
+  r.post('/matches/manual', async (req, res) => {
+    const uid = req.user!.id
+    const { job_id, resume_id, refresh = false } = req.body ?? {}
+
+    if (!job_id) return res.status(400).json({ error: 'job_id_required' })
+
+    const viewer = await studentRow(uid)
+    const ready = matchReadiness(viewer)
+    if (!ready.ready) return res.status(409).json({ error: 'profile_incomplete', missing: ready.missing })
+
+    // Verify the résumé belongs to the student (if specified)
+    let resumeRow: any = null
+    if (resume_id) {
+      resumeRow = (await sb.from('resume_profiles').select('*').eq('id', resume_id).eq('student_id', uid).maybeSingle()).data as any
+      if (!resumeRow) return res.status(404).json({ error: 'resume_not_found' })
+    } else {
+      resumeRow = (await sb.from('resume_profiles').select('*').eq('student_id', uid).eq('active', 1).maybeSingle()).data as any
+      if (!resumeRow) return res.status(404).json({ error: 'no_active_resume' })
+    }
+
+    // Load the job and verify visibility
+    const job = await loadJob(job_id)
+    if (!job) return res.status(404).json({ error: 'not_found' })
+    const gates = await schoolGates([job.company_id ?? uid])
+    if (!jobVisibleTo(job, viewer, gates)) return res.status(404).json({ error: 'not_found' })
+
+    // Request manual match — respects hard eligibility
+    const result = await requestManualMatch(uid, job_id, resumeRow.id, { refresh })
+
+    if (result.state === 'excluded') {
+      return res.json({ state: 'excluded', reason: result.reason })
+    }
+    if (result.state === 'ai_reviewed') {
+      return res.json({ state: 'ai_reviewed', match: result.pair })
+    }
+    // queued
+    return res.status(202).json({ state: 'queued', pair: result.pair })
+  })
+
+  // --- Status endpoint: queue + pair status for the authenticated user ---
+  r.get('/matches/status', async (req, res) => {
+    const uid = req.user!.id
+    const queueStatus = await getQueueStatus(uid)
+
+    // Get pair statuses
+    const { data: candidates } = await sb
+      .from('match_candidates')
+      .select('job_id, resume_id, ai_status, filter_points, rank_position, updated_at')
+      .eq('student_id', uid)
+
+    const pairs = (candidates ?? []).map((c: any) => ({
+      job_id: c.job_id,
+      resume_id: c.resume_id,
+      ai_status: c.ai_status,
+      filter_points: c.filter_points,
+      rank_position: c.rank_position,
+      updated_at: c.updated_at,
+    }))
+
+    res.json({ queue: queueStatus, pairs })
+  })
+
+  // --- Rebuild endpoint: re-evaluate after profile/job changes ---
+  r.post('/matches/rebuild', async (req, res) => {
+    const uid = req.user!.id
+    const { resume_id } = req.body ?? {}
+
+    const viewer = await studentRow(uid)
+    if (!viewer) return res.status(401).json({ error: 'unauthorized' })
+
+    let resumeRow: any = null
+    if (resume_id) {
+      resumeRow = (await sb.from('resume_profiles').select('*').eq('id', resume_id).eq('student_id', uid).maybeSingle()).data as any
+      if (!resumeRow) return res.status(404).json({ error: 'resume_not_found' })
+    } else {
+      resumeRow = (await sb.from('resume_profiles').select('*').eq('student_id', uid).eq('active', 1).maybeSingle()).data as any
+      if (!resumeRow) return res.status(404).json({ error: 'no_active_resume' })
+    }
+
+    // Enqueue resume rebuild — the consumer will re-evaluate all pairs
+    const { enqueueResumeRebuild } = await import('@/lib/matchQueue')
+    await enqueueResumeRebuild(uid, resumeRow.id, (req as any).env)
+
+    res.json({ state: 'queued', resume_id: resumeRow.id })
   })
 }

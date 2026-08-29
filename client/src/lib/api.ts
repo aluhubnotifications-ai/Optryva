@@ -1280,13 +1280,46 @@ export const aiApi = {
   },
 
   /** Application-progress nudges (DB-derived, no AI) — cheap, so the Insights
-   *  Snapshot can render them without re-scoring every role. */
+  *  Snapshot can render them without re-scoring every role. */
   async outcomeNudges(): Promise<{ title: string; message: string; status: string }[]> {
     try {
       return (await apiFetch('/ai/outcome-nudges')) as { title: string; message: string; status: string }[]
     } catch {
       return []
     }
+  },
+
+  /** Manual "Match this job" — always respects hard eligibility. Returns the
+  *  current AI result if one exists, or queues a high-priority review (202).
+  *  Pass refresh=true to force a new AI review even if a current result exists. */
+  async manualMatch(jobId: string, resumeId?: string, refresh = false): Promise<{
+    state: 'ai_reviewed' | 'queued' | 'excluded' | 'error'
+    pair?: any
+    reason?: string
+  }> {
+    try {
+      const body: any = { job_id: jobId }
+      if (resumeId) body.resume_id = resumeId
+      if (refresh) body.refresh = true
+      const res = await apiFetch('/ai/matches/manual', { method: 'POST', body })
+      // 202 = queued, 200 = ai_reviewed or excluded
+      return res as any
+    } catch {
+      return { state: 'error' }
+    }
+  },
+
+  /** Get queue + pair status for the authenticated user. */
+  async matchStatus(): Promise<{
+    queue: { queued: number; processing: number; completed: number; failed: number }
+    pairs: { job_id: string; resume_id: string; ai_status: string; filter_points: number; rank_position: number | null; updated_at: string }[]
+  }> {
+    return (await apiFetch('/ai/matches/status')) as any
+  },
+
+  /** Request a rebuild of all matches for a résumé. */
+  async rebuildMatches(resumeId?: string): Promise<{ state: string; resume_id?: string }> {
+    return (await apiFetch('/ai/matches/rebuild', { method: 'POST', body: resumeId ? JSON.stringify({ resume_id: resumeId }) : JSON.stringify({}) })) as any
   },
 
   /** Bounded re-score of the student's EXISTING matches only (their already-

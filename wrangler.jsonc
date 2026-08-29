@@ -28,5 +28,13 @@
   // on Worker→Worker fetch() over *.workers.dev (error 1042 / prohibited IP).
   "services": [{ "binding": "EXTRACTION", "service": "optryva-extract" }],
 
+  // Cloudflare Queue for the free-first matching engine. The API worker
+  // produces messages; the queue consumer (same Worker) processes them
+  // asynchronously for deterministic evaluation + Groq batch review.
+  "queues": {
+    "producers": [{ "binding": "MATCH_QUEUE", "queue": "optryva-match-evaluation" }],
+    "consumers": [{ "queue": "optryva-match-evaluation", "max_batch_size": 10, "max_retries": 5 }],
+  },
+
   "observability": { "enabled": true }
 }

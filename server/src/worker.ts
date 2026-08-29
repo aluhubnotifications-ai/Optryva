@@ -10,6 +10,7 @@
 import { app } from '@/app'
 import { setExtractionBinding } from '@/lib/extractionClient'
 import { runCalibration } from '@/scripts/calibrate'
+import { consumeMatchBatch } from '@/queue/matchConsumer'
 
 // The Extraction Worker (`optryva-extract`) is called via a SERVICE BINDING, not
 // over HTTPS. Workers cannot fetch other `*.workers.dev` hostnames (error 1042),
@@ -24,6 +25,12 @@ export default {
   fetch(request: Request, env: any, ctx: any) {
     if (env?.EXTRACTION) setExtractionBinding(env.EXTRACTION)
     return app.fetch(request, env, ctx)
+  },
+  // Cloudflare Queue consumer — processes match evaluation batch messages.
+  // Each message triggers deterministic re-evaluation + AI review for
+  // student-job-resume pairs (see queue/matchConsumer.ts).
+  async queue(batch: any, env: any, ctx: any) {
+    await consumeMatchBatch(batch, env, ctx)
   },
   // Nightly cron (see wrangler triggers): the whole self-improving loop, in order.
   //   1. calibrate     — tighten the LLM rubric from real outcomes

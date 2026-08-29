@@ -10,6 +10,7 @@ import { cacheGet, cacheSet, cacheDeletePrefix } from '@/lib/cache'
 import { mistralJsonBlocks, hasMistral, mistralText } from '@/lib/mistral'
 import { getMatch, rowToMatchJob } from './ai/helpers'
 import { claudeText, hasClaude } from '@/lib/claude'
+import { enqueueNewJob, enqueueJobUpdate } from '@/lib/matchQueue'
 
 export const jobs = Router()
 jobs.use(requireAuth)
@@ -674,6 +675,11 @@ jobs.post('/', async (req, res) => {
 
   const job = must(await sb.from('job_listings').select('*').eq('id', id).maybeSingle())
   embedJob(job).catch(() => {}) // semantic index, best-effort
+  // Trigger automatic matching: enqueue a new_job event for the match engine.
+  // Uses ctx.waitUntil-like fire-and-forget — the queue consumer does the real work.
+  if (job.status === 'active') {
+    enqueueNewJob(job.id, (req as any).env).catch((e) => console.warn('[jobs] match enqueue failed:', e))
+  }
   res.json(rowToJob(job))
 })
 
@@ -723,6 +729,10 @@ jobs.patch('/:id', async (req, res) => {
   must(await sb.from('ai_match_cache').update({ stale: 1 }).eq('job_id', r.id))
   const job = must(await sb.from('job_listings').select('*').eq('id', r.id).maybeSingle())
   embedJob(job).catch(() => {}) // re-embed after content change, best-effort
+  // Trigger re-matching: mark existing pairs stale + re-enqueue
+  if (job.status === 'active') {
+    enqueueJobUpdate(job.id, 'updated', (req as any).env).catch((e) => console.warn('[jobs] match update enqueue failed:', e))
+  }
   res.json(rowToJob(job))
 })
 
