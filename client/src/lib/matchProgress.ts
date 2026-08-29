@@ -70,7 +70,8 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
   hydrate: async (userId, resumeId) => {
     const s = get()
     if (resumeId && s.activeResumeId !== resumeId) {
-      // Different resume — clear and re-hydrate.
+      // Different resume — clear matches so the UI doesn't show stale scores
+      // while we wait for the new resume's cached scores to load.
       set({ userId, phase: 'idle', done: 0, total: 0, label: '', matches: [], missing: [], scoring: [], activeResumeId: resumeId })
     }
     if (s.userId === userId && resumeId === s.activeResumeId && s.matches.length > 0) return
@@ -79,6 +80,10 @@ export const useMatchProgress = create<MatchProgressState>((set, get) => ({
       const taskId = useAiActivity.getState().start('Restoring cached match scores')
       useAiActivity.getState().finish(taskId)
       set({ userId, phase: 'done', matches: cached, done: cached.length, total: cached.length, label: '', missing: [], scoring: [], activeResumeId: resumeId ?? null })
+    } else if (resumeId) {
+      // No cached scores for this résumé yet — kick off a match run so the
+      // student sees live results instead of an empty board.
+      void get().run(userId, false, resumeId)
     }
   },
 
